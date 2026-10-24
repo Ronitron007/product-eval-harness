@@ -56,7 +56,7 @@ flowchart LR
 
 | Item | Why |
 |---|---|
-| Each paid run: the first real run of each stage, each judge golden run, each improvement run, each nightly trial | `rules.gates`: show the exact prompt, the model, and the cost first |
+| Each paid run: the first real run of each stage, each judge golden run, each improvement run, each rule trial | `rules.gates`: show the exact prompt, the model, and the cost first |
 | The account and key of the search API for `plan.research_tools` | Claude never creates accounts or enters keys for Rohan. |
 | A private database for the held-out suite | The held-out cases must stay out of this public repo (`improve.boundaries.firewall`). |
 | Each promotion of a rule version out of watch | `rules.gates` |

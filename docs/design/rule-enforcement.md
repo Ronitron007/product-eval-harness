@@ -4,7 +4,7 @@ Status. Design of 2026-10-24. No code implements it yet. It answers the second h
 
 ## The idea in one paragraph `enforce.idea`
 
-Each rule is a record with an id, a version, and a scope. A deterministic compiler turns each rule into the things that enforce it. These things are a part of the output schema, an instruction for the prompt, a code check, and a question for an LLM judge. After a stage drafts its output, the ruleset judge runs each rule in scope. Each check gives pass, fail, or cannot verify. The binding of each rule decides what a fail does. The harness logs each verdict with the rule id and version. A rule changes through a watch-only trial and a person's yes.
+Each rule is a record with an id, a version, and a scope. A deterministic compiler turns each rule into the things that enforce it. These things are a part of the output schema, an instruction for the prompt, a code check, and a question for an LLM judge. After a stage drafts its output, the ruleset judge runs each rule in scope. Each check gives pass, fail, or cannot verify. The binding of each rule decides what a fail does. The harness logs each verdict with the rule id and version. A rule changes through a watch-only trial and Rohan's yes.
 
 ```mermaid
 flowchart LR
@@ -33,7 +33,7 @@ Stage rules and derived rules (`graph.rule_kinds`) use the same record.
 | Field | What it holds | Why |
 |---|---|---|
 | `id` | A stable dotted name, such as `criteria.reason_has_record` | Logs, tests, and people refer to the rule by name. |
-| `version` | A number, plus a hash of the statement, the examples, and the policy | Two runs with the same version used the same words. A changed word gives a new hash. |
+| `version` | A number, plus a hash of the canonical JSON of the statement, the reason, the kind, the scope, the binding, the `judge` field, and the examples | Two runs with the same version used the same words. A changed word gives a new hash. |
 | `statement` | The rule in plain words, as one instruction | The prompt prints these words. |
 | `judge` | For a `judgement` rule only: the judge question and its short policy. Rohan owns it. | The check stays fixed while the wording of the instruction improves (`improve.boundaries.surface`). |
 | `reason` | Why the rule exists | A judge that knows the reason decides edge cases better. A person can see if the rule still makes sense. |

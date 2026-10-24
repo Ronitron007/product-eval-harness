@@ -64,7 +64,7 @@ flowchart TB
 | Binding `watch` | The judge step, and experiments | The judge step logs the verdict and nothing else. A trial of a candidate rule runs as an experiment over stored outputs (`mastra.change`). | Live scorers score live runs only, so they cannot score stored outputs. Verified. |
 | Cheap guards on an agent | Output processors, `abort(msg, { retry: true })`, `maxProcessorRetries` | Only deterministic guards, such as "the reply is valid JSON". `maxProcessorRetries: 1`. Verified. | Each retry adds the failed reply to the context. Verified. |
 | Verdict log (`enforce.audit`) | Workflow state, `tracingOptions.metadata` | The resolved rule set hash goes on the root span. Each judge step adds its rule ids. Verified. | Traces are telemetry. The verdicts of an accepted output go to our table. |
-| Golden examples | Datasets, `runEvals` with `gates` | Code synchs the examples of each rule file into a dataset. CI runs the free code checks as gates. Verified. | A judge golden run calls models, so it is a paid run with a yes. |
+| Golden examples | Datasets, `runEvals` with `gates` | Code synchs the examples of each rule file into a dataset. CI runs each free code check over its dataset, with a gate that compares the verdict with the expected verdict (`mastra.change`). Verified. | A judge golden run calls models, so it is a paid run with a yes. |
 | Rule change trial (`enforce.change`) | Experiments with `grouping`, `compareExperiments`, schedules | Two experiments on one pinned dataset version: the current and the candidate rule version. Verified. | No delta, no statistics, no promotion. We build the report and the gate. |
 | Held-out suite (`improve.boundaries.firewall`) | Datasets and experiments in a second, private Mastra storage | The held-out cases and the held-out judge prompts live there, never in this repo. | The firewall is ours. |
 | Graph store | None | Our own tables, through Drizzle ORM, on the same database client as Mastra. Verified for the shared client. | Mastra storage has 24 fixed domains and refuses a custom one. Verified. |
@@ -132,7 +132,7 @@ The compiler (`enforce.compile`) is our code. For one stage run at one node, it 
 
 5. Make one scorer for each `code_check` rule and each `judgement` rule. The scorer id holds the rule id and version, such as `criteria.attribute_is_product@1`.
 
-Decision: the stage rules are YAML files in `rules/`, one rule in each file. Code validates each file with Zod at load time and in CI. The version hash covers the canonical JSON of the statement, the reason, the kind, the scope, the binding, and the examples. We do not use the Mastra editor for rules.
+Decision: the stage rules are YAML files in `rules/`, one rule in each file. Code validates each file with Zod at load time and in CI. The version hash covers the canonical JSON of the statement, the reason, the kind, the scope, the binding, the `judge` field, and the examples (`enforce.rule_record`). We do not use the Mastra editor for rules.
 
 Decision: a rule scope is a typed object (nodes, stages, fields), not a Mastra predicate. Inheritance needs our own resolver anyway. A Mastra predicate returns false on a missing path, so a typo in a scope would make a rule apply nowhere, in silence. Verified.
 
