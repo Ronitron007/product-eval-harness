@@ -8,6 +8,7 @@ Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but 
 | [rule-enforcement.md](rule-enforcement.md) | `enforce` | The rule record, the compiler, the ruleset judge, the bindings, the repair loop, the verdict log, and rule changes |
 | [self-improvement.md](self-improvement.md) | `improve` | The self-improvement loop, its boundaries, and its parts |
 | [mastra-mapping.md](mastra-mapping.md) | `mastra` | Each part on Mastra 1.79.0, what we do not use, and what we build |
+| [data-layers.md](data-layers.md) | `data` | What each layer of data holds, where it lives, and how the isolated steps hand off work |
 
 ## Name map `harness.names`
 
@@ -34,4 +35,7 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `mastra_ref` | The sections of the Mastra reference | [../research/2026-10-24-mastra-primitives.md](../research/2026-10-24-mastra-primitives.md) |
 | `lane` | One sequence of items of the improvement stream, one for each domain | `improve.parts` |
 | `get_node_context`, `search_records`, `web_search`, `web_fetch` | The research tools | `mastra.research_tools` |
+| `data` | The data layers | [data-layers.md](data-layers.md) |
+| `data.authoring_graph`, `data.run_state`, `data.artifacts`, `data.bundles`, `data.evaluations` | The five data layers | `data.layers` |
+| `publish` | The step that writes one hashed bundle for each leaf after the pack gate | `data.layers` |
 | `plan.<unit>` | One unit of the plan, such as `plan.scaffold` | [../plans/2026-10-24-harness-plan.md](../plans/2026-10-24-harness-plan.md) |

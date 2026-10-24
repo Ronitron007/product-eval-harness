@@ -209,4 +209,4 @@ A model that knows its node, its inherited criteria, and its rules does not inve
 
 - How the harness imports an existing category tree, such as the Kyaloon tree.
 
-- The storage schema of the graph. The Mastra mapping gives the first choice.
+- The storage schema of the graph. [data-layers.md](data-layers.md) sets the layers. The concrete stores are open (`data.open`).

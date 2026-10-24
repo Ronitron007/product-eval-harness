@@ -156,7 +156,7 @@ Decision: a rule scope is a typed object (nodes, stages, fields), not a Mastra p
 
 - Each write to our graph tables is append-only. A new stage run writes new rows and never updates an accepted output (`rules.gates`, never overwrite an expensive output).
 
-- Decision: Postgres comes when a second writer or a hosted deploy needs it. The first units use LibSQL only.
+- The authoring database is one shared, persistent database ([data-layers.md](data-layers.md), `data.layers`). Its store is open (`data.open`). Tests and local development use a LibSQL file or memory.
 
 ## Research tools `mastra.research_tools`
 

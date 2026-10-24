@@ -42,7 +42,16 @@
 		{"id":"ifw","type":"text","text":"## `measurement_firewall`\nKeeps the held-out suite away.\nrefuses: held-out paths and verdicts","x":900,"y":1860,"width":280,"height":190,"color":"1"},
 		{"id":"ival","type":"text","text":"## `proposal_validator`\nChecks the structure of each edit.\nretry: one, then the base","x":760,"y":1540,"width":280,"height":190,"color":"2"},
 		{"id":"ied","type":"text","text":"## editors\nPropose edits to the stage rules.\nkinds: process, domain\nreads: evidence pack, lessons","x":240,"y":1540,"width":280,"height":190,"color":"2"},
-		{"id":"ipr","type":"text","text":"## probes\nOne stage run for each candidate.\nwrites: traces, outputs","x":1260,"y":1540,"width":280,"height":190,"color":"2"}
+		{"id":"ipr","type":"text","text":"## probes\nOne stage run for each candidate.\nwrites: traces, outputs","x":1260,"y":1540,"width":280,"height":190,"color":"2"},
+		{"id":"gF","type":"group","x":-400,"y":2480,"width":3700,"height":700,"color":"6","label":"Where does each piece of data live?"},
+		{"id":"dauth","type":"text","text":"## authoring database\nShared and persistent, not a local file.\nholds: authoring graph, Mastra run state\nwrites: the authoring stages","x":-340,"y":2560,"width":320,"height":200,"color":"5"},
+		{"id":"dart","type":"text","text":"## object storage\nLarge artifacts and published bundles.\nholds: research results, captures, transcripts\nholds: one hashed bundle per leaf","x":60,"y":2560,"width":320,"height":200,"color":"5"},
+		{"id":"dpub","type":"text","text":"## `publish`\nWrites one bundle per leaf.\nreads: the gated pack and layout\nwrites: a hashed bundle","x":460,"y":2560,"width":320,"height":200,"color":"3"},
+		{"id":"deval","type":"text","text":"## eval author\nGrades products in its own environment.\nreads: one pinned bundle\nwrites: `product_evals`","x":860,"y":2560,"width":320,"height":200,"color":"4"},
+		{"id":"dchat","type":"text","text":"## chat\nReads the published knowledge.\nreads: a pinned bundle, or imported attributes","x":1260,"y":2560,"width":320,"height":200,"color":"4"},
+		{"id":"dkdb","type":"text","text":"## Kyaloon database\nHolds the product evaluations.\nholds: `product_evals`","x":1660,"y":2560,"width":320,"height":200,"color":"5"},
+		{"id":"dopen","type":"text","text":"## open\nStores, bundle format, public reads.\nstatus: Rohan decides later","x":2060,"y":2560,"width":320,"height":200,"color":"1"},
+		{"id":"f6","type":"file","x":-340,"y":2900,"width":400,"height":120,"file":"design/data-layers.md"}
 	],
 	"edges":[
 		{"id":"eA1","fromNode":"dom","fromSide":"right","toNode":"inn","toSide":"left","label":"criteria"},
@@ -76,6 +85,13 @@
 		{"id":"eF2","fromNode":"gC","fromSide":"bottom","toNode":"f2","toSide":"top"},
 		{"id":"eF3","fromNode":"gE","fromSide":"bottom","toNode":"f3","toSide":"top"},
 		{"id":"eF4","fromNode":"gD","fromSide":"bottom","toNode":"f4","toSide":"top"},
-		{"id":"eB8","fromNode":"jud","fromSide":"left","toNode":"asm","toSide":"top","label":"all strict pass"}
+		{"id":"eB8","fromNode":"jud","fromSide":"left","toNode":"asm","toSide":"top","label":"all strict pass"},
+		{"id":"eG1","fromNode":"dauth","fromSide":"right","toNode":"dart","toSide":"left","label":"artifacts by hash"},
+		{"id":"eG2","fromNode":"dauth","fromSide":"bottom","toNode":"dpub","toSide":"bottom","label":"gated pack"},
+		{"id":"eG3","fromNode":"dpub","fromSide":"top","toNode":"dart","toSide":"top","label":"hashed bundle"},
+		{"id":"eG4","fromNode":"dpub","fromSide":"right","toNode":"deval","toSide":"left","label":"pinned bundle"},
+		{"id":"eG5","fromNode":"deval","fromSide":"right","toNode":"dchat","toSide":"left","label":"same bundle"},
+		{"id":"eG6","fromNode":"deval","fromSide":"bottom","toNode":"dkdb","toSide":"bottom","label":"evaluations"},
+		{"id":"eG7","fromNode":"gF","fromSide":"left","toNode":"f6","toSide":"left"}
 	]
 }

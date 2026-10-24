@@ -12,11 +12,13 @@ Start here. Each doc has one kind (`rules.documentation`). Evergreen docs change
 
 4. [design/mastra-mapping.md](design/mastra-mapping.md): how each part maps onto Mastra 1.79.0.
 
-5. [plans/2026-10-24-harness-plan.md](plans/2026-10-24-harness-plan.md): the units of work, one PR each.
+5. [design/data-layers.md](design/data-layers.md): what each layer of data holds, and where it lives.
 
-6. [glossary.md](glossary.md): one definition for each term.
+6. [plans/2026-10-24-harness-plan.md](plans/2026-10-24-harness-plan.md): the units of work, one PR each.
 
-7. [decisions.tsv](decisions.tsv): each ruling and each decision, with who made it and when. This trail outranks the other docs.
+7. [glossary.md](glossary.md): one definition for each term.
+
+8. [decisions.tsv](decisions.tsv): each ruling and each decision, with who made it and when. This trail outranks the other docs.
 
 The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and links them to these docs.
 
@@ -29,6 +31,7 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [design/rule-enforcement.md](design/rule-enforcement.md) | `enforce`: how the harness enforces each rule |
 | [design/self-improvement.md](design/self-improvement.md) | `improve`: the self-improvement loop |
 | [design/mastra-mapping.md](design/mastra-mapping.md) | `mastra`: the parts on Mastra |
+| [design/data-layers.md](design/data-layers.md) | `data`: the data layers and their stores |
 
 ## Plan `docs.plan`
 

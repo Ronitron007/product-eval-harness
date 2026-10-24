@@ -8,7 +8,9 @@ Each term has one definition. Docs link here at the first use of a term.
 | Blind selector | The part of the improvement loop that picks one of k anonymous final outputs, with no view of the rules that made them. |
 | Assimilate | To accept a stage output into the graph, with its research records and the id, version, and verdict of each rule in scope. |
 | Attribute | One measurable property of a product. Its value is a number with a unit, a word from a closed list, a list of words, or a flag with details. It describes the product, not the category, the market, or public opinion. |
+| Authoring database | The one shared, persistent database of the authoring stages. It holds the authoring graph and the run state of Mastra. |
 | Binding | The part of a rule that sets what a fail does: `strict`, `soft`, or `watch`. |
+| Bundle | The published knowledge of one leaf node: the pack, the layout, the attributes, and their rule versions, with one hash. A consumer pins the hash. |
 | Cannot verify | The check result that means "no evidence either way". It is never a fail and never a pass. |
 | Category tree | The tree of product types, such as skincare, then sunscreen, then mineral sunscreen. |
 | Check | A test of one output item against one rule. It gives pass, fail, or cannot verify. |
