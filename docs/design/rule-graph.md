@@ -91,7 +91,7 @@ Rules and instructions are the same thing (`graph.source`). Each instruction to 
 
 | Kind | What it governs | Who makes it | Where it lives | Example |
 |---|---|---|---|---|
-| Stage rule | How a stage works, and the shape of its output | A person writes it. An LLM may draft it, and a person approves it. | Files in git, reviewed by PR | "Each criterion cites at least one research record." |
+| Stage rule | How a stage works, and the shape of its output | A person or an LLM drafts it. Rohan approves it. | Files in git, reviewed by PR | "Each criterion cites at least one research record." |
 | Derived rule | How a later stage works at this node and below | A stage makes it as part of its output | The graph store, with a version and a provenance record | "At sunscreen, the criterion `efficacy` consists of the labeled SPF and the labeled UVA mark." |
 
 A criterion is a derived rule for the stages below it, and for the final product evaluation. So the graph stores the rules of each evaluation as objects. The stage rules check each derived rule before the graph accepts it. This is the answer to `graph.problem`.

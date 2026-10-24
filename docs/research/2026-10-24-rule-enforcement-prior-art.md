@@ -2,7 +2,7 @@
 
 Status. Research of 2026-10-24. Claude made it for the Kyaloon eval vocabulary redesign, and this repo keeps a copy because the harness design ([rule-enforcement.md](../design/rule-enforcement.md)) builds on it. It changes no code and decides nothing. It answers the question in `rule_prior_art.question`.
 
-Base. The Kyaloon RealDose repo (private), commit `e95ead79` on branch `rohan/eval-vocabulary-plan`. This research read public papers and documentation only. It ran no paid model call. The copy here changes only the links into the private repo, which now name the file in plain text.
+Base. The Kyaloon RealDose repo (private), commit `e95ead79` on branch `rohan/eval-vocabulary-plan`. This research read public papers and documentation only. It ran no paid model call. The copy here changes the Status line, this Base line, and the links into the private repo, which now name the file in plain text.
 
 Labels. Four labels mark each claim.
 
@@ -34,7 +34,7 @@ This file uses four example rules from the brief. The rule names are drafts.
 
 - `rules.no_reference_values`. A reference value, such as an RDA or an upper limit, is never a product fact.
 
-- `rules.llm_grades`. The final grade is always an LLM judgement. Code only measures and verifies. This is the project invariant on match and grade in the Kyaloon RealDose `CLAUDE.md` (invariant 11), and `rules.harness` in this repo.
+- `rules.llm_grades`. The final grade is always an LLM judgement. Code only measures and verifies. This is the invariant on match and grade in the Kyaloon RealDose `CLAUDE.md`, and `rules.harness` in this repo.
 
 ## Terms `rule_prior_art.terms`
 

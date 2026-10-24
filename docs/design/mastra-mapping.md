@@ -61,12 +61,12 @@ flowchart TB
 | "cannot verify" | None | Our `VerdictRow` keeps it. | `notScorable` means "the rule does not apply". `runEvals` drops it from the gates. Verified. So we never use it for "cannot verify". |
 | Binding `strict` | `.dountil` in the stage | A strict fail sends the exact errors to the next round. | None |
 | Binding `soft` | The judge step | The verdict and a warning go to our store. | None |
-| Binding `watch` | The judge step, and live scorers with `sampling` | The judge step logs the verdict. A nightly trial runs a candidate rule as a sampled live scorer. Verified. | A live score row has no verdict field. |
+| Binding `watch` | The judge step, and experiments | The judge step logs the verdict and nothing else. A trial of a candidate rule runs as an experiment over stored outputs (`mastra.change`). | Live scorers score live runs only, so they cannot score stored outputs. Verified. |
 | Cheap guards on an agent | Output processors, `abort(msg, { retry: true })`, `maxProcessorRetries` | Only deterministic guards, such as "the reply is valid JSON". `maxProcessorRetries: 1`. Verified. | Each retry adds the failed reply to the context. Verified. |
 | Verdict log (`enforce.audit`) | Workflow state, `tracingOptions.metadata` | The resolved rule set hash goes on the root span. Each judge step adds its rule ids. Verified. | Traces are telemetry. The verdicts of an accepted output go to our table. |
 | Golden examples | Datasets, `runEvals` with `gates` | Code synchs the examples of each rule file into a dataset. CI runs the free code checks as gates. Verified. | A judge golden run calls models, so it is a paid run with a yes. |
 | Rule change trial (`enforce.change`) | Experiments with `grouping`, `compareExperiments`, schedules | Two experiments on one pinned dataset version: the current and the candidate rule version. Verified. | No delta, no statistics, no promotion. We build the report and the gate. |
-| Held-out suite (`improve.boundaries.firewall`) | Datasets in a private database | The held-out datasets live in a private database, never in this repo. | The firewall is ours. |
+| Held-out suite (`improve.boundaries.firewall`) | Datasets and experiments in a second, private Mastra storage | The held-out cases and the held-out judge prompts live there, never in this repo. | The firewall is ours. |
 | Graph store | None | Our own tables, through Drizzle ORM, on the same database client as Mastra. Verified for the shared client. | Mastra storage has 24 fixed domains and refuses a custom one. Verified. |
 | Rules | None | YAML files in `rules/`, read by our compiler. | The Mastra editor versions prompt text only. An unpublished block drops out of the instructions with no error. Verified. |
 | Self-improvement (`improve.parts`) | Agents with structured output, `.parallel`, `.foreach`, datasets, experiments | See `mastra.improve`. | No optimizer in Mastra. Verified. |
@@ -97,18 +97,20 @@ export const defineCriteria = createWorkflow({
 })
   .dountil(draftAndJudge, async ({ inputData, iterationCount }) =>
     inputData.errors.length === 0 || iterationCount >= REPAIR_BUDGET)
-  .then(person)      // suspends when a verdict is not pass; a reviewer resumes
+  .then(person)      // suspends when a strict verdict is not pass; a reviewer resumes
   .then(assimilate)  // writes the output, its records, and its verdicts
   .commit()
 ```
 
 The judge step in the sketch shows three rules of `enforce.deciders`:
 
-- It runs the code check first. It calls the LLM judge only when the strict code checks pass.
+- It runs the code check first. It calls the LLM judge only when the strict code checks pass. For each judgement rule that it skips, it writes "cannot verify", so each rule in scope has a verdict.
 
 - It writes one `VerdictRow` for each item, with the rule id and the version.
 
 - When the judge gives no result, it writes "cannot verify". It never writes a pass and never a fail in that case.
+
+- Only a `strict` fail goes into the errors of the next round, and only a `strict` verdict that is not pass stops at the `person` step. The judge step logs a `soft` or `watch` fail, and the fail changes nothing else.
 
 Decision: the stages are code-defined workflows. A ruleset changes the data that the steps read, not the shape of the workflow. Mastra also has dynamic workflows from JSON definitions, but they are beta and can call registered parts only. Verified.
 
@@ -144,7 +146,9 @@ Decision: a rule scope is a typed object (nodes, stages, fields), not a Mastra p
 
 ## Storage `mastra.storage`
 
-- One database holds the Mastra domains and our graph tables. Locally it is a LibSQL file. `LibSQLStore` takes the same client as our own tables. Verified.
+- One database holds the Mastra domains of the harness and our graph tables. Locally it is a LibSQL file. `LibSQLStore` takes the same client as our own tables. Verified.
+
+- A second, private Mastra storage holds the held-out suite: its datasets, its experiments, and the prompts of the held-out judges (`improve.boundaries.firewall`).
 
 - Decision: our graph tables use Drizzle ORM. Its team maintains it, it has typed tables and migrations, and it supports both LibSQL and Postgres.
 
@@ -167,13 +171,13 @@ Each tool result that comes from the web is data, not instructions. The research
 
 1. The rule files carry their visible golden examples. A sync step writes them into one Mastra dataset for each rule. A dataset version pins the examples that a rule version passed. Verified.
 
-2. CI runs `runEvals` with the code-check scorers as gates over their datasets. These checks call no model, so they are free. Verified.
+2. CI runs `runEvals` over each dataset of a code-check rule. The target is a pass-through workflow that returns the stored output of the example. The gate is a scorer that gives 1 when the verdict of the rule check equals the expected verdict in `groundTruth`. So an example whose expected verdict is "fail" passes the gate when the check fails it. These checks call no model, so they are free. Verified for `runEvals`, targets, and gates.
 
 3. A judge rule runs over its dataset only on request, because each judge call costs money (`rules.gates`).
 
 4. A candidate rule version runs as a second experiment on the same dataset version, with one `comparisonId` and two `variantId` values. `compareExperiments` gives the rows. Our report gives the changes. Verified for the rows.
 
-5. A nightly schedule can run a candidate rule in `watch` binding over recent outputs, as a sampled live scorer. This is a paid run, so the schedule needs Rohan's yes before it starts. Verified for schedules and sampling.
+5. A trial of a candidate rule in `watch` binding over recent stored outputs runs as an experiment. Each trial run is a paid run and needs its own yes for its prompt, model, and cost (`rules.gates`). A schedule can prepare a trial, but it never starts one without that yes.
 
 6. The promotion step is a workflow step that suspends with the report. Rohan resumes it with his yes. Verified for suspend and resume.
 
@@ -191,13 +195,13 @@ Each tool result that comes from the web is data, not instructions. The research
 | `budget_ledger` | The workflow `onStart` option as a pre-flight check | The expected counts, the cost estimate, and the paid-run yes. `TokenCostControl` is only approximate. Verified. |
 | `run_identity` | Workflow snapshots | Hashes of the rule set and of each call input |
 | `held_out_measurement` | Datasets, experiments, `runEvals` | The noise warnings of harness2 |
-| `promotion_gate` | `suspend` and `resume` | The regression over the node and each descendant |
+| `promotion_gate` | `suspend` and `resume` | The regression over the subtree of the rule owner, and the PR with the new rule files |
 
 ## What we do not use, and why `mastra.not_used`
 
 | Mastra part | Why not |
 |---|---|
-| The editor and prompt blocks for rules | It versions text with no binding, scope, or examples. An unpublished block drops out with no error. Part of `@mastra/editor` needs an Enterprise license, and its npm record has no license field. Verified. |
+| The editor and prompt blocks for rules | It versions text with no binding, scope, or examples. An unpublished block drops out with no error. Part of `@mastra/editor` needs an Enterprise license, and its npm record has no license field. Verified ([the harness2 research](../research/2026-10-24-harness2/abstractions.md), `rule_surface`, read the npm registry record). |
 | `notScorable` for "cannot verify" | It means "does not apply", and gates drop it. Verified. |
 | `structuredOutput` with `errorStrategy: 'fallback'` | It hides a failure behind a stored value. Verified. |
 | Agent skills for strict rules | The model loads a skill only when it chooses to, so a strict rule could stay unread. Verified. Skills can hold optional reference text. |

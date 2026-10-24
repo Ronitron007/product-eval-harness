@@ -4,7 +4,7 @@ Verified against `@mastra/core@1.79.0`, `@mastra/evals@1.10.8`, `@mastra/memory@
 
 This file is a reference for the design of the product evaluation harness. It maps each part of the design to a Mastra primitive. It also states the gap when no primitive fits.
 
-## How to read this file `mastra.how_to_read`
+## How to read this file `mastra_ref.how_to_read`
 
 Each claim has one of these labels:
 
@@ -44,9 +44,9 @@ Terms used in this file:
 
 - A **verdict** in our design is one of `pass`, `fail`, or `cannot_verify`.
 
-## Workflows `mastra.workflows`
+## Workflows `mastra_ref.workflows`
 
-### Steps and workflows `mastra.workflows.schemas`
+### Steps and workflows `mastra_ref.workflows.schemas`
 
 **Answer.** `createStep()` takes `inputSchema`, `outputSchema`, `stateSchema`, `suspendSchema`, `resumeSchema`, and `requestContextSchema`. Each schema is any Standard JSON Schema value, for example Zod, Valibot, or ArkType. A step also takes `retries`, `metadata`, and `scorers`. The `execute` function receives `inputData`, `resumeData`, `suspendData`, `state`, `setState`, `suspend`, `bail`, `getStepResult`, `getInitData`, `requestContext`, `retryCount`, and `runId`. `createWorkflow()` takes the same schemas plus `retryConfig`, `schedule`, and `options`. Label: verified (type-checked). Exception: `schedule` is only verified (read docs).
 
@@ -64,7 +64,7 @@ Terms used in this file:
 
 **Fit.** Good. A stage maps to one workflow. The workflow state can carry the rule ids and versions that each output passed. The workflow option `onStart` runs before any step, and an error thrown in it stops the run. It can act as a pre-flight gate, for example a budget check. Label: verified (read `reference-workflows-workflow.md`).
 
-### Control flow `mastra.workflows.control_flow`
+### Control flow `mastra_ref.workflows.control_flow`
 
 **Answer.** The workflow builder has these methods:
 
@@ -103,7 +103,7 @@ Every control-flow method also takes an optional last argument with `id`, `descr
 
 - In a loop, a value reaches the next iteration only when the body schema declares it. A Zod object schema removes other keys. Label: verified (read `docs-workflows-control-flow.md`).
 
-### Workflow as a step `mastra.workflows.nesting`
+### Workflow as a step `mastra_ref.workflows.nesting`
 
 **Answer.** Pass a committed workflow to any method that accepts a step, for example to `.then()`, `.parallel()`, `.foreach()`, or `.dountil()`. State flows from the parent workflow to the child workflow. `cloneWorkflow(workflow, { id })` reuses a workflow under a new id. Label: verified (type-checked) for nesting in `.then()`, verified (read docs) for state and cloning.
 
@@ -123,13 +123,13 @@ export const testWorkflow = createWorkflow({
 
 **Fit.** Good. Each graph level (top, middle, leaf) can have its own stage workflow. A parent workflow can compose them.
 
-### Dynamic workflows `mastra.workflows.dynamic`
+### Dynamic workflows `mastra_ref.workflows.dynamic`
 
 **Answer.** Mastra has two ways to build a workflow at run time:
 
-- Build it in code with `createWorkflow()` and register it with `mastra.addWorkflow(workflow, key)`. Steps can hold closures. The registration is not persisted. The method throws when the key already exists. Label: verified (read `mastra/index.d.ts`).
+- Build it in code with `createWorkflow()` and register it with `mastra_ref.addWorkflow(workflow, key)`. Steps can hold closures. The registration is not persisted. The method throws when the key already exists. Label: verified (read `mastra/index.d.ts`).
 
-- Register a JSON definition with `mastra.addDynamicWorkflow(definition)`. The feature is beta. Mastra validates the structure, the references, and the schema flow before it stores the definition in the `workflowDefinitions` storage domain. Mastra loads stored definitions again at startup. Label: verified (type-checked).
+- Register a JSON definition with `mastra_ref.addDynamicWorkflow(definition)`. The feature is beta. Mastra validates the structure, the references, and the schema flow before it stores the definition in the `workflowDefinitions` storage domain. Mastra loads stored definitions again at startup. Label: verified (type-checked).
 
 A JSON definition has no code. Its graph entries are `agent`, `classifier`, `tool`, `mapping`, `workflow`, `parallel`, `conditional`, `foreach`, `loop`, `sleep`, and `sleepUntil`. Each entry refers to a component that the `Mastra` instance holds in its registry.
 
@@ -153,7 +153,7 @@ Conditions use a JSON predicate language. An agent entry stores only `outputSche
 
 **Fit.** Partial. A ruleset version can compile to a JSON definition with an id such as `stage-sunscreen-ruleset-12`. The definition then survives restarts and records the ruleset in `metadata`. Each deterministic check must first exist as a registered tool, and each LLM judge as a registered agent, classifier, or workflow. Mapping entries must stay at the top level of the graph. The beta label means that the format can change in a minor release.
 
-### Errors and retries `mastra.workflows.errors`
+### Errors and retries `mastra_ref.workflows.errors`
 
 **Answer.** A run result has the status `success`, `failed`, `suspended`, `tripwire`, or `paused`. A step retries with `retries`. A workflow sets a default with `retryConfig: { attempts, delay }`.
 
@@ -170,9 +170,9 @@ A step ends the run early with a success result through `bail(payload)`. A throw
 
 **Reference.** `docs-workflows-error-handling.md` (https://mastra.ai/docs/workflows/error-handling).
 
-**Fit.** Good for transient errors. A retry runs the same `execute` again with the same input. It does not send the error to a model. The repair loop with the exact error must use a loop or a processor. See `mastra.processors.repair`.
+**Fit.** Good for transient errors. A retry runs the same `execute` again with the same input. It does not send the error to a model. The repair loop with the exact error must use a loop or a processor. See `mastra_ref.processors.repair`.
 
-### Snapshots and time travel `mastra.workflows.snapshots`
+### Snapshots and time travel `mastra_ref.workflows.snapshots`
 
 **Answer.** Mastra writes a snapshot when a step suspends. The snapshot holds the input, each step status, the suspend and resume payloads, the execution path, and the request context. The table is `workflow_snapshots`, keyed by run id.
 
@@ -191,7 +191,7 @@ const result = await run.timeTravel({
 
 **Fit.** Partial. Time travel helps to debug one stage and to run a failed judge step again. It is not a good tool to run a new rule version over old outputs, because it acts on an existing run record. Use a new run or an experiment for that. Label: inferred.
 
-### Human approval `mastra.workflows.approval`
+### Human approval `mastra_ref.workflows.approval`
 
 **Answer.** A step calls `suspend(payload, { resumeLabel })`. The payload must match `suspendSchema`. The run returns `status: 'suspended'` and the list of suspended step paths.
 
@@ -212,9 +212,9 @@ const stream = run.resume({
 
 **Fit.** Good. The approval step suspends with the failed rule ids, the output, and the evidence. The reviewer decision returns as `resumeData`.
 
-## Agents `mastra.agents`
+## Agents `mastra_ref.agents`
 
-### Structured output `mastra.agents.structured_output`
+### Structured output `mastra_ref.agents.structured_output`
 
 **Answer.** Pass `structuredOutput: { schema }` to `generate()` or `stream()`. The schema can be Zod, another Standard JSON Schema library, or plain JSON Schema. Mastra sends the schema through the provider response format by default. `jsonPromptInjection` puts the schema in the prompt instead. `model` adds a second structuring model. `errorStrategy` controls a schema failure:
 
@@ -242,7 +242,7 @@ type FallbackFields<OUTPUT = undefined> = {
 
 **Fit.** Partial. The schema can come from the rules at run time. A schema failure throws, and the stage must catch it. The repair loop must come from a processor retry or a workflow loop. The `fallback` strategy hides a failure behind a stored value, so do not use it for rule outputs.
 
-### Dynamic configuration `mastra.agents.dynamic`
+### Dynamic configuration `mastra_ref.agents.dynamic`
 
 **Answer.** The `Agent` constructor accepts a function of `{ requestContext }` for `instructions`, `model`, `tools`, `agents`, `workflows`, `memory`, `scorers`, `inputProcessors`, `outputProcessors`, `defaultOptions`, and `skills`. Each function can be async. A call to `generate()` can also replace `instructions`. A `requestContextSchema` on the agent validates the context before the run. Label: verified (type-checked) for the functions on `instructions`, `model`, and `tools`. Verified (read docs) for the other fields.
 
@@ -258,7 +258,7 @@ type FallbackFields<OUTPUT = undefined> = {
 
 **Fit.** Good. One research agent can serve every graph node. The instructions function reads the node id, the inherited criteria, and the active rule texts from request context.
 
-### Loop limits `mastra.agents.loop_limits`
+### Loop limits `mastra_ref.agents.loop_limits`
 
 **Answer.** `generate()` and `stream()` take these limits and controls:
 
@@ -283,9 +283,9 @@ The docs do not state a default for `maxSteps`. Label: verified (type-checked) f
 
 **Reference.** `reference-agents-generate.md`, `docs-subagents.md` (https://mastra.ai/docs/subagents).
 
-**Fit.** Good. `isTaskComplete` with `strategy: 'all'` and one scorer for each strict rule gives "continue until all rules pass". `maxSteps` and `totalMs` give the stop. See also `mastra.harness.goals`.
+**Fit.** Good. `isTaskComplete` with `strategy: 'all'` and one scorer for each strict rule gives "continue until all rules pass". `maxSteps` and `totalMs` give the stop. See also `mastra_ref.harness.goals`.
 
-### Subagents and networks `mastra.agents.subagents`
+### Subagents and networks `mastra_ref.agents.subagents`
 
 **Answer.** Put agents in the `agents` property of a parent agent. The parent agent, called a supervisor, calls each subagent as a tool. The `delegation` option has these hooks:
 
@@ -314,9 +314,9 @@ const stream = await parentAgent.stream('Research AI trends', {
 
 **Fit.** Good for a research stage that sends sub-questions to specialist researchers. For a fixed stage order, a workflow is more predictable than a supervisor.
 
-## Processors and guardrails `mastra.processors`
+## Processors and guardrails `mastra_ref.processors`
 
-### Hooks and abort `mastra.processors.hooks`
+### Hooks and abort `mastra_ref.processors.hooks`
 
 **Answer.** A processor implements one or more of these hooks: `processInput`, `processInputStep`, `computeStateSignal`, `processLLMRequest`, `processLLMResponse`, `processOutputStream`, `processOutputStep`, `processToolResult`, `processOutputResult`, and `processAPIError`. An agent has three lists: `inputProcessors`, `outputProcessors`, and `errorProcessors`. Each list can also contain a workflow that uses `ProcessorStepSchema`.
 
@@ -341,7 +341,7 @@ export interface TripWireOptions<TMetadata = unknown> {
 
 **Fit.** Good. A ruleset guard can run as an output processor on the agent of each stage.
 
-### Repair with the exact error `mastra.processors.repair`
+### Repair with the exact error `mastra_ref.processors.repair`
 
 **Answer.** Yes. In `processOutputStep` or `processInputStep`, call `abort(message, { retry: true })`. Mastra replays the step and adds the message, word for word, at the end of the conversation as a system reminder. The processor reads `retryCount` to stop. The agent or the call must set `maxProcessorRetries`. Without it, these retries are off.
 
@@ -368,7 +368,7 @@ The retry mechanism:
 
 - Processors attach to agents. A code step in a workflow has no processor. Use a `.dountil()` loop there.
 
-### Built-in guardrails and budgets `mastra.processors.builtins`
+### Built-in guardrails and budgets `mastra_ref.processors.builtins`
 
 **Answer.** `@mastra/core/processors` includes `ModerationProcessor`, `PIIDetector`, `PromptInjectionDetector`, `UnicodeNormalizer`, `LanguageDetector`, `SystemPromptScrubber`, `TokenLimiterProcessor`, `TokenCostControl`, `ClassifierProcessor`, `StreamErrorRetryProcessor`, and others. Many take a `strategy` of `block`, `warn`, `detect`, `redact`, `rewrite`, or `translate`. `TokenCostControl` blocks or warns when cost passes `maxCost` in a scope such as `run`, `thread`, or `resource`. Its cost check is approximate. It counts only model calls inside an agent run. Label: verified (type-checked) for `TokenCostControl`, verified (read docs) for the others.
 
@@ -383,9 +383,9 @@ The retry mechanism:
 
 **Fit.** Partial. The soft binding maps to a `warn` strategy and `onViolation`. A money budget for a stage needs our own ledger, because `TokenCostControl` is approximate and skips judge calls made outside an agent.
 
-## Scorers `mastra.scorers`
+## Scorers `mastra_ref.scorers`
 
-### createScorer `mastra.scorers.create`
+### createScorer `mastra_ref.scorers.create`
 
 **Answer.** `createScorer({ id, name, description, judge, type, prepareRun })` returns a builder. Chain `.preprocess()`, `.analyze()`, `.generateScore()`, and `.generateReason()`. Only `.generateScore()` is mandatory. Each step is either a plain function or a prompt object with `description`, `createPrompt`, and an `outputSchema` (not for `generateScore`). Only prompt-object steps call the judge model.
 
@@ -413,7 +413,7 @@ const scorer = createScorer({
 
 **Fit.** Good. A code scorer uses only function steps. An LLM judge scorer uses an `analyze` prompt step that returns `{ verdict, reason }`, then a function `generateScore`. One rule version maps to one scorer id, for example `rule-r3-v2`.
 
-### notScorable `mastra.scorers.not_scorable`
+### notScorable `mastra_ref.scorers.not_scorable`
 
 **Answer.** A function step returns `notScorable(reason)` when the run has nothing for the scorer to judge. The remaining steps do not run. `scorer.run()` returns `notScorable: { step, reason }` and no `score`.
 
@@ -431,7 +431,7 @@ Live scoring stores no row. `runEvals()` leaves the run out of averages, gates, 
 
 **Fit.** Weak for `cannot_verify`. `notScorable` means "this rule does not apply here". Our `cannot_verify` means "the rule applies, but the evidence is not enough". Live scoring drops the outcome, and `runEvals` removes it from the gate. That is a silent pass for a strict rule. Use `notScorable` only for rules out of scope. Store `cannot_verify` in our own verdict record.
 
-### Attach scorers, sampling, and storage `mastra.scorers.attach`
+### Attach scorers, sampling, and storage `mastra_ref.scorers.attach`
 
 **Answer.** Attach scorers as `{ name: { scorer, sampling: { type: 'ratio', rate }, filter } }` on an agent, on a step, or in `.agent()` and `.tool()` options. Live scoring runs after the agent or step finishes. It runs in the background and does not block the run. Sampling is deterministic for each trace id.
 
@@ -457,7 +457,7 @@ The `filter` is a JSON predicate over `requestContext.*`, `entity.*`, and other 
 
 **Fit.** Good for the watch-only binding. A new rule version runs as a live scorer with a sampling rate and logs scores without a block. A score row keeps `scorerId`, `requestContext`, `metadata`, `analyzeStepResult`, `reason`, `traceId`, and `spanId`, so the rule id and version can ride in the scorer id or the request context. Label: verified (read `evals/types.d.ts`). Live scorers cannot gate a run, because they run after the step and in the background. A strict gate must call `scorer.run()` inside a step, or use `isTaskComplete` or a goal scorer.
 
-### runEvals, gates, and verdicts `mastra.scorers.run_evals`
+### runEvals, gates, and verdicts `mastra_ref.scorers.run_evals`
 
 **Answer.** `runEvals({ target, data, scorers, gates, targetOptions, concurrency, onItemComplete })` runs each data item through an agent or a workflow, then runs the scorers. A gate must average 1.0 over the items that it scored. A gate that throws counts as 0.
 
@@ -475,7 +475,7 @@ A scorer entry `{ scorer, threshold }` takes a number (minimum) or `{ min, max }
 
 **Fit.** Good for batch checks, for example a CI gate over golden examples. It is not an inline judge for one live output. The verdict `passed`, `scored`, `failed` describes a batch. It is not our per-rule verdict.
 
-### Quick Checks and the rubric scorer `mastra.scorers.quick_checks`
+### Quick Checks and the rubric scorer `mastra_ref.scorers.quick_checks`
 
 **Answer.** `@mastra/evals/checks` exports scorers that need no model: `includes`, `excludes`, `equals`, `matches`, `similarity`, `calledTool`, `didNotCall`, `toolOrder`, `maxToolCalls`, `usedNoTools`, and `noToolErrors`. They check text and tool calls only. `createRubricScorer({ model, criteria })` from `@mastra/evals/scorers/prebuilt` is an LLM judge that returns 1 only when every required criterion passes. Its `reason` lists each criterion. If no rubric resolves at run time, it returns 1. Label: verified (type-checked) for `checks.includes` and `createRubricScorer`. Verified (read docs) for the rest.
 
@@ -489,7 +489,7 @@ A scorer entry `{ scorer, threshold }` takes a number (minimum) or `{ min, max }
 
 **Fit.** Partial. Quick Checks do not check JSON fields, so rule checks on structured output need our own code scorers. The rubric scorer has no `cannot_verify` outcome. Its silent pass when no rubric resolves breaks a strict rule. Always pass `criteria` in code.
 
-## Classifier `mastra.classifier`
+## Classifier `mastra_ref.classifier`
 
 **Answer.** `new Classifier({ id, model, questions })` asks a decision model fixed questions about one JSON `state`. A question is `choice` (one key from `criteria`), `score` (a level from an ordered list), or `boolean` (the probability of true). A model can refuse a question. A refusal is `{ type: 'refusal' }`.
 
@@ -533,11 +533,11 @@ const questions = {
 
 - The judge needs a decision-model provider, not the language model of the agents.
 
-## Datasets and experiments `mastra.datasets`
+## Datasets and experiments `mastra_ref.datasets`
 
-### Datasets `mastra.datasets.items`
+### Datasets `mastra_ref.datasets.items`
 
-**Answer.** `mastra.datasets.create({ name, description, inputSchema, groundTruthSchema })` makes a dataset. The schemas reject bad items at insert time.
+**Answer.** `mastra_ref.datasets.create({ name, description, inputSchema, groundTruthSchema })` makes a dataset. The schemas reject bad items at insert time.
 
 `addItem`, `addItems`, `updateItem`, `deleteItem`, and `deleteItems` each make a new dataset version. `purgeItem` redacts an item in every version and does not make a version. `listVersions`, `getItemHistory`, and `listItems({ version })` read the history. An item can carry `scorerIds` and an `externalId`. `createDatasetSnapshot()` and `parseDatasetSnapshot()` make a JSON file of a dataset with a SHA-256 digest. Label: verified (type-checked) for `create` and `addItems`. Verified (read docs) for the rest.
 
@@ -561,11 +561,11 @@ const dataset = await mastra.datasets.create({
 
 **Fit.** Good. Each rule gets one golden dataset. The ground truth holds the expected verdict. The dataset version pins the golden set that a rule version passed.
 
-### Experiments and comparison `mastra.datasets.experiments`
+### Experiments and comparison `mastra_ref.datasets.experiments`
 
 **Answer.** `dataset.startExperiment({ targetType, targetId, scorers, version, maxConcurrency, itemTimeout, maxRetries, requestContext, agentVersion, versions, provenance, grouping, metadata, persistence })` runs every item. The target type is `agent`, `workflow`, or `scorer`. A scorer target tests the judge itself. `grouping` takes `experimentSetId`, `comparisonId`, `variantId`, and `trialIndex`. `provenance` takes `source`, `sourceId`, `sourceVersion`, and `metadata`.
 
-A caller-driven mode uses `createExperiment`, `runExperimentItem`, `submitExperimentResult`, and `finalizeExperiment`, and each call is idempotent. `mastra.datasets.compareExperiments({ experimentIds, baselineId })` returns the output and the scores of each item for each experiment. Label: verified (type-checked) for `startExperiment` with `grouping`, `provenance`, `requestContext`, and `compareExperiments`. Verified (read docs) for the caller-driven mode.
+A caller-driven mode uses `createExperiment`, `runExperimentItem`, `submitExperimentResult`, and `finalizeExperiment`, and each call is idempotent. `mastra_ref.datasets.compareExperiments({ experimentIds, baselineId })` returns the output and the scores of each item for each experiment. Label: verified (type-checked) for `startExperiment` with `grouping`, `provenance`, `requestContext`, and `compareExperiments`. Verified (read docs) for the caller-driven mode.
 
 **Signature.** From `storage/types.d.ts`:
 
@@ -590,7 +590,7 @@ export interface ExperimentGrouping {
 
 - Experiment status and counts describe execution, not quality. Gates and verdicts exist only in `runEvals`.
 
-## Editor and versioning `mastra.editor`
+## Editor and versioning `mastra_ref.editor`
 
 **Answer.** The editor lives in the separate package `@mastra/editor`, which is not installed. It versions stored agents (instructions and tools), prompt blocks, stored scorer definitions, MCP clients, workspaces, and skills.
 
@@ -598,7 +598,7 @@ With database storage, each save makes a snapshot. The record keeps `activeVersi
 
 A prompt block is reusable instruction text. It can use `{{name}}` values from request context and display conditions over request context fields. An agent instruction list mixes `text`, `prompt_block`, and `prompt_block_ref` entries.
 
-At run time, a reference resolves the published block. A missing or unpublished reference drops out of the instructions without an error. `mastra.getAgentById(id, { status | versionId })` picks a version. Label: verified (read docs). Not type-checked, because `@mastra/editor` is not installed.
+At run time, a reference resolves the published block. A missing or unpublished reference drops out of the instructions without an error. `mastra_ref.getAgentById(id, { status | versionId })` picks a version. Label: verified (read docs). Not type-checked, because `@mastra/editor` is not installed.
 
 **Signature.** From `reference-editor-prompt-blocks.md`:
 
@@ -624,9 +624,9 @@ await editor.agent.update({
 
 - The docs disagree about `editor.agent.update()`. `docs-studio-editor.md` and `reference-editor-mastra-editor.md` say that it activates the new version. `reference-editor-versioning.md` says that it makes an inactive draft. Test it before use.
 
-## Harness `mastra.harness`
+## Harness `mastra_ref.harness`
 
-### Goals `mastra.harness.goals`
+### Goals `mastra_ref.harness.goals`
 
 **Answer.** An agent with a `goal` config keeps a durable objective for one memory thread. After each iteration, a judge scores the conversation against the objective. The loop continues when the score fails and budget remains. It stops with status `done` when the score passes. It stops with status `paused` when `runsUsed >= maxRuns`.
 
@@ -657,7 +657,7 @@ export interface GoalConfig {
 
 - The scorer returns one number, so the per-rule verdicts must go to our store from inside the scorer.
 
-### Durable agents, background tasks, schedules, signals, controller `mastra.harness.other`
+### Durable agents, background tasks, schedules, signals, controller `mastra_ref.harness.other`
 
 **Answer.** Each harness capability has one job:
 
@@ -665,7 +665,7 @@ export interface GoalConfig {
 
 - A background task runs a slow tool call or subagent without a block on the agent loop. `streamUntilIdle()` keeps the stream open until the tasks finish.
 
-- A schedule runs an agent or a workflow on a cron expression through `mastra.schedules`. It needs a storage adapter with the `schedules` domain.
+- A schedule runs an agent or a workflow on a cron expression through `mastra_ref.schedules`. It needs a storage adapter with the `schedules` domain.
 
 - A signal sends context into a running or idle agent thread. A signal provider forwards external events.
 
@@ -684,7 +684,7 @@ Label: verified (read docs).
 
 **Fit.** Goals help the most. Durable agents help when a research stage runs for many minutes. Schedules can run the watch-only shadow check of a candidate rule over recent outputs each night. Background tasks help when research subagents run in parallel. Signals and the controller add little for a batch pipeline.
 
-## Storage `mastra.storage`
+## Storage `mastra_ref.storage`
 
 **Answer.** Mastra storage has a fixed list of 24 domains. The list includes `memory`, `workflows`, `workflowDefinitions`, `scores`, `observability`, `datasets`, `experiments`, `agents`, `promptBlocks`, `scorerDefinitions`, `skills`, `schedules`, `backgroundTasks`, `threadState`, and `knowledge`.
 
@@ -700,7 +700,7 @@ export declare const DOMAIN_KEYS: readonly ["memory", "workflows", "workflowDefi
 
 **Fit.** Our graph of nodes, rules, research records, and accepted outputs needs its own database layer. Mastra storage keeps only its own runtime data. The shared client lets both layers use one database and one transaction source. For Postgres, `@mastra/pg` exists, but it is not installed here. Label for `@mastra/pg`: verified (read `docs-storage.md`), not type-checked.
 
-## Request context `mastra.request_context`
+## Request context `mastra_ref.request_context`
 
 **Answer.** Make a `RequestContext<T>` and call `set`. Pass it as `requestContext` to `agent.generate()`, `run.start()`, `run.resume()`, and `tool.execute()`. These places read it:
 
@@ -736,7 +736,7 @@ await agent.generate("What's the weather in London?", {
 
 **Fit.** Good. Put the node id, the inherited criteria, the active rule ids and versions, and the stage name in request context. Durable agents need JSON values.
 
-## RAG and graph RAG `mastra.rag`
+## RAG and graph RAG `mastra_ref.rag`
 
 **Answer.** `createVectorQueryTool({ vectorStore | vectorStoreName, indexName, model, enableFilter, reranker, databaseConfig, includeSources })` gives an agent a semantic search tool. It returns `relevantContext` and `sources` with `id`, `metadata`, `score`, and `document`. With `enableFilter`, the agent writes a metadata filter. `vectorStore` can be a function of request context.
 
@@ -760,7 +760,7 @@ await agent.generate("What's the weather in London?", {
 
 The agent writes the filter, so a strict filter, for example "only this node and its parents", must come from our code. `GraphRAG` does not use our category tree. Its edges come from embedding similarity only. Walk the tree in our own database. The workspace search feature (BM25 and hybrid) exists in `docs-sandbox-search.md`. Label: not verified, because that doc was not read.
 
-## Tools `mastra.tools`
+## Tools `mastra_ref.tools`
 
 **Answer.** `createTool({ id, description, inputSchema, outputSchema, execute, requireApproval, suspendSchema, resumeSchema, requestContextSchema, outputValidation, strict, toModelOutput, inputExamples, background })` makes a tool. `execute(input, context)` receives `context.requestContext`, `context.abortSignal`, `context.agent`, `context.workflow`, and `context.observe`. Approval comes from `requireApproval: true` on the tool or `requireToolApproval` on the call. The agent then emits a `tool-call-approval` chunk and waits. Agent `hooks` run `beforeToolCall` and `afterToolCall`. `@mastra/core/tools` has two web tools:
 
@@ -781,13 +781,13 @@ The agent writes the filter, so a strict filter, for example "only this node and
 
 **Fit.** Good. Our own research API (for example a deep-research provider) becomes a `createTool` tool. Retrieval of past work becomes a tool over our database. `webSearchTool` ties search to the model provider, so a model change changes the search engine. Use our own search tool when results must stay the same across models.
 
-## Observability `mastra.observability`
+## Observability `mastra_ref.observability`
 
 **Answer.** Pass `tracingOptions` to `run.start()` or `agent.generate()`. It takes `rootSpanName`, `metadata`, `requestContextKeys`, `traceId`, `parentSpanId`, `nestUnderParent`, and `tags`.
 
 Inside a step, `execute` receives a tracing context with `currentSpan`. A span has `update({ metadata })`, `createChildSpan()`, and `createEventSpan()`. A tool gets `context.observe` for child spans.
 
-`mastra.observability.addFeedback({ traceId, spanId, feedback })` adds a human rating or comment to a stored trace. The storage method `createFeedback` also takes `experimentId` and `tags`. Label: verified (type-checked) for `tracingOptions.metadata` and `tags` on `run.start()`. Verified (read `workflows/step.d.ts`) for the tracing context in a step. Verified (read docs) for spans and feedback.
+`mastra_ref.observability.addFeedback({ traceId, spanId, feedback })` adds a human rating or comment to a stored trace. The storage method `createFeedback` also takes `experimentId` and `tags`. Label: verified (type-checked) for `tracingOptions.metadata` and `tags` on `run.start()`. Verified (read `workflows/step.d.ts`) for the tracing context in a step. Verified (read docs) for spans and feedback.
 
 **Signature.** From `reference-workflows-run-methods-start.md`:
 
@@ -801,7 +801,7 @@ Inside a step, `execute` receives a tracing context with `currentSpan`. A span h
 
 **Fit.** Good. Put the ruleset version on the root span. Put each rule id and version on the span of its judge step. Reviewer decisions from the approval step can go in as feedback on the same trace. A trace is telemetry, so the rule ids and versions of an accepted output must also go to our own store.
 
-## Skills and workspaces `mastra.skills`
+## Skills and workspaces `mastra_ref.skills`
 
 **Answer.** `createSkill({ name, description, instructions, references })` from `@mastra/core/skills` makes a skill in code. An agent takes `skills: [...]` or a function of request context. A skill can also be a path to a folder with a `SKILL.md` file.
 
@@ -824,9 +824,9 @@ const codeReview = createSkill({
 
 **Fit.** Weak for strict rules. The model loads a skill only when it chooses to, so a rule can stay unread. Put the rules that a stage must obey in the instructions function. A skill fits optional reference text, for example research methods or golden examples.
 
-## Other relevant parts `mastra.other`
+## Other relevant parts `mastra_ref.other`
 
-### Eval loop guide `mastra.other.eval_loop`
+### Eval loop guide `mastra_ref.other.eval_loop`
 
 **Answer.** `docs-guides-build-an-eval-loop.md` shows one loop. It makes a small golden dataset with `groundTruth: { must, mustNot }`. It writes an LLM judge scorer that validates the ground truth with Zod and returns 1 or 0 with a reason.
 
@@ -847,7 +847,7 @@ It runs experiments in Studio and compares them. It adds production traces to th
 
 **Fit.** Good template for golden sets and regression checks. It lacks rule versions, the watch-only binding, a promotion step, and any automatic change of prompts or rules. A person or a coding agent makes each fix by hand.
 
-### Predicate language `mastra.other.predicate`
+### Predicate language `mastra_ref.other.predicate`
 
 **Answer.** `@mastra/core/predicate` exports `predicateSchema`, `createPredicateEvaluator`, `walk`, `collectInvalidPredicatePaths`, and `derivePredicateLabel`. The predicate language has `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `in`, `notIn`, `exists`, `notExists`, `truthy`, `falsy`, `and`, `or`, and `not`. Dynamic workflows and scorer filters use the same language. A missing path returns false and does not throw. Label: verified (type-checked) for the evaluator. Verified (read `reference-workflows-dynamic-workflow-definition.md`) for the operators.
 
@@ -863,11 +863,11 @@ export declare function collectInvalidPredicatePaths(pred: Predicate, roots: rea
 
 **Fit.** Good for the rule scope. A rule scope can be a stored predicate over node fields, stage, and output field paths. The same JSON can feed a scorer filter or a dynamic workflow condition. A missing path returns false, so a typo in a scope makes the rule apply nowhere. Run `collectInvalidPredicatePaths` when a rule is saved.
 
-### Parts not read `mastra.other.not_read`
+### Parts not read `mastra_ref.other.not_read`
 
 These docs exist but this check did not read them: `docs-evals-vitest-integration.md` in `@mastra/evals`, `docs-sandbox-search.md`, `docs-guides-context-engineering.md`, and `docs-memory-*.md`. Label: not verified.
 
-## Concept map `mastra.map`
+## Concept map `mastra_ref.map`
 
 | Our concept | Mastra primitive | Import path | Confidence | Gap |
 |---|---|---|---|---|
@@ -893,15 +893,15 @@ These docs exist but this check did not read them: `docs-evals-vitest-integratio
 | Rule text versions | Prompt blocks, stored scorer definitions | `@mastra/editor` | verified (read docs) | No structured fields, silent drop |
 | Rule scope | Predicate language | `@mastra/core/predicate` | verified (type-checked) | Missing path returns false |
 | Node context | `RequestContext` | `@mastra/core/request-context` | verified (type-checked) | None |
-| Golden examples per rule | Datasets with versions | `mastra.datasets` | verified (type-checked) | None |
-| Candidate vs current version | Experiments, `grouping`, `compareExperiments` | `mastra.datasets` | verified (type-checked) | No delta, no promotion gate |
+| Golden examples per rule | Datasets with versions | `mastra_ref.datasets` | verified (type-checked) | None |
+| Candidate vs current version | Experiments, `grouping`, `compareExperiments` | `mastra_ref.datasets` | verified (type-checked) | No delta, no promotion gate |
 | Batch gate in CI | `runEvals` gates and thresholds | `@mastra/core/evals` | verified (type-checked) | Batch only |
 | Ruleset compiled to a workflow | `addDynamicWorkflow`, `addWorkflow` | `@mastra/core/mastra` | verified (type-checked) | Beta, registered parts only |
-| Nightly shadow run | Schedules | `mastra.schedules` | verified (read docs) | Needs schedules domain |
-| Human review signal | `addFeedback` | `mastra.observability` | verified (read docs) | None |
+| Nightly shadow run | Schedules | `mastra_ref.schedules` | verified (read docs) | Needs schedules domain |
+| Human review signal | `addFeedback` | `mastra_ref.observability` | verified (read docs) | None |
 | Self-improvement | None | Not available | verified (read docs) | No optimizer |
 
-## Look Before You Build `mastra.look_before_you_build`
+## Look Before You Build `mastra_ref.look_before_you_build`
 
 These maintained packages can cover the gaps above. Label for each link and status: not verified in this check, because the check used no network access.
 

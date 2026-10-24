@@ -351,7 +351,7 @@
   {
    "id": "iref2",
    "type": "text",
-   "text": "## `reflector`\nWrites edit verdicts and one lesson.\nwrites: `lesson_library`",
+   "text": "## `reflector`\nWrites edit verdicts and at most one lesson.\nwrites: `lesson_library`",
    "x": 1960,
    "y": 1540,
    "width": 280,
@@ -361,7 +361,7 @@
   {
    "id": "igate",
    "type": "text",
-   "text": "## `promotion_gate`\nHeld-out suite on node and descendants.\ndecides: Rohan says yes",
+   "text": "## `promotion_gate`\nHeld-out suite on the rule owner subtree.\ndecides: Rohan says yes",
    "x": 1640,
    "y": 1800,
    "width": 280,
@@ -668,6 +668,14 @@
    "fromSide": "bottom",
    "toNode": "f4",
    "toSide": "top"
+  },
+  {
+   "id": "eB8",
+   "fromNode": "jud",
+   "fromSide": "left",
+   "toNode": "asm",
+   "toSide": "top",
+   "label": "all strict pass"
   }
  ]
 }

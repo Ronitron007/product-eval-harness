@@ -26,7 +26,7 @@ No score enters the loop. The grader of the benchmark runs only after the loop, 
 
 | Point | harness2 | The rule graph harness |
 |---|---|---|
-| What an improvement changes | The harness of one task. The next task starts again from the base harness. | The stage rules of a node. An adopted change becomes a new rule version that later stage runs use, at the node and at its descendants. |
+| What an improvement changes | The harness of one task. The next task starts again from the base harness. | The stage rules of a node. An adopted change becomes a new rule version that later stage runs use, at each node under the node that owns the rule. |
 | A judge inside the loop | None | Each stage ends in a ruleset judge (`graph.stage`). |
 | Groups that share lessons | One flat folder for each domain | The category tree: ancestors and siblings |
 | A gate before adoption | None, because each task throws its harness away | A promotion gate with a held-out measurement and Rohan's yes |
@@ -52,12 +52,12 @@ flowchart TD
   SEL --> RE["reflector<br/>edit verdicts, at most one lesson"]
   RE --> LIB
   SEL --> DR["draft rule versions"]
-  DR --> GATE{"promotion gate<br/>held-out measurement on the node<br/>and its descendants, then Rohan's yes"}
+  DR --> GATE{"promotion gate<br/>held-out measurement on the subtree<br/>of the rule owner, then Rohan's yes"}
   GATE -->|"publish"| PUB
   GATE -->|"reject or hold"| KEEP["published rules stay"]
 ```
 
-The adopted draft enters the normal change process of rules (`enforce.change`). The promotion gate is that process, run on the node and on each descendant node that inherits the changed rules.
+The adopted draft enters the normal change process of rules (`enforce.change`). The promotion gate is that process, with the held-out suite, run over the subtree of the node that owns each changed rule. An edit to an inherited rule reaches the siblings of the improved node too, so the subtree of the owner is the test set. Rohan's yes opens a PR with the changed rule files, and the new version becomes active when the PR merges.
 
 ## Three boundaries `improve.boundaries`
 
@@ -69,7 +69,7 @@ The adopted draft enters the normal change process of rules (`enforce.change`). 
 
 - The held-out judges use a model from another provider than the editors. A firewall does not stop a bias that two models of one family share.
 
-- The held-out cases live outside this public repo. A public file can reach an editor through web research. harness2 saw a run download the rubric of its own task.
+- The held-out cases and the prompts of the held-out judges live outside this public repo, in a second, private Mastra storage. A public file can reach an editor through web research. harness2 saw a run download the rubric of its own task.
 
 - The golden examples of a rule (`enforce.rule_record`) are visible examples. They teach the model and test the rule. They are not held-out cases.
 
@@ -79,15 +79,15 @@ An editor can make these changes only:
 
 - Add a rule with binding `watch`.
 
-- Change the instruction text of a rule, its reason, or its visible examples, while the judge question of the rule stays the same.
+- Change the statement, the reason, or the visible examples of a rule. The `judge` field and the code check of the rule stay as they are.
 
 - Change the stage prompt and the tool guidance of the stage.
 
-Only a person makes these changes:
+Only Rohan makes these changes:
 
 - Delete a rule, or change its binding or its scope.
 
-- Change a judge question or a code check.
+- Change the `judge` field or the code check of a rule.
 
 - Change an output shape. Later stages and code read the shapes, so a changed shape could make an output pass by a changed contract.
 
@@ -97,7 +97,7 @@ So the loop cannot make its outputs pass by a weaker rule. A rule only changes i
 
 - A lesson has a cue, the lesson, the evidence it rests on, and a confidence. The code keeps a lesson only when the cue, the lesson, and the evidence exist.
 
-- A stage at a node reads the lessons of its ancestors and its siblings, from earlier items of the run order only. A parent node runs before its children.
+- An editor at a node reads the lessons of its ancestors and its siblings, from earlier items of the run order only. A parent node runs before its children. Stage runs never read lessons, so a lesson reaches an output only through a promoted rule.
 
 - A lesson from another node is a hypothesis at this node, not a fact. A fact about one product belongs in a research record, never in a lesson or a category rule.
 
@@ -119,11 +119,11 @@ The abstractions come from [the harness2 research](../research/2026-10-24-harnes
 | `blind_selector` | Pick one of k anonymous final outputs | Blind selection |
 | `reflector` | Edit verdicts and at most one lesson | Reflection |
 | `lesson_library` | The lessons and adopted versions, scoped by the category tree | The experience library |
-| `improvement_stream` | The run order: parents before children, a fixed order in each lane | The task stream |
+| `improvement_stream` | The run order: parents before children, a fixed order in each lane (one lane for each domain) | The task stream |
 | `budget_ledger` | The expected runs and sessions, their cost, and the paid-run yes | The ledger of runs and sessions |
 | `run_identity` | Hashes, a call cache, and a resume check, so no paid output is lost or reused by mistake | Run marks, the call cache, resume |
 | `held_out_measurement` | The held-out suite and its report, with noise warnings | The judge after the sweep, the report |
-| `promotion_gate` | The held-out check on the node and its descendants, then Rohan's yes | None. This is new. |
+| `promotion_gate` | The held-out check over the subtree of the rule owner, then Rohan's yes and a PR | None. This is new. |
 
 No maintained package gives the whole loop. Mastra gives the measurement half: datasets, experiments, gates and verdicts. Verified ([the prior art](../research/2026-10-24-harness2/look-before-you-build.md)).
 

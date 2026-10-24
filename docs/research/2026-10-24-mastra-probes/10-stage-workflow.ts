@@ -14,6 +14,7 @@ const RuleRef = z.object({ id: z.string(), version: z.string(), binding: Binding
 const VerdictRow = z.object({
   ruleId: z.string(),
   ruleVersion: z.string(),
+  binding: Binding,
   target: z.string(),
   verdict: Verdict,
   reason: z.string(),
@@ -112,6 +113,12 @@ const draft = createStep({
   },
 })
 
+// The rules in scope of this run, as the compiler resolves them.
+const RULES = {
+  reasonHasRecord: { id: 'criteria.reason_has_record', version: '1', binding: 'strict' },
+  attributeIsProduct: { id: 'criteria.attribute_is_product', version: '1', binding: 'strict' },
+} as const
+
 const judge = createStep({
   id: 'ruleset-judge',
   inputSchema: Round,
@@ -120,18 +127,24 @@ const judge = createStep({
     if (!inputData.draft) return { ...inputData, errors: ['No draft. Draft the output.'] }
     const verdicts: VerdictRow[] = []
     // Code checks first. Judges only on output that passes the strict code checks.
+    const r1 = RULES.reasonHasRecord
+    const r2 = RULES.attributeIsProduct
     const code = await reasonHasRecord.run({ input: {}, output: inputData.draft })
-    verdicts.push({ ruleId: 'criteria.reason_has_record', ruleVersion: '1', target: 'criteria', verdict: code.score === 1 ? 'pass' : 'fail', reason: code.reason ?? '' })
+    verdicts.push({ ruleId: r1.id, ruleVersion: r1.version, binding: r1.binding, target: 'criteria', verdict: code.score === 1 ? 'pass' : 'fail', reason: code.reason ?? '' })
     if (code.score === 1) {
       const j = await attributeIsProduct.run({ input: {}, output: inputData.draft })
       const items = j.analyzeStepResult?.items
       // No judge result is "cannot verify", never a pass and never a fail.
-      if (!items) verdicts.push({ ruleId: 'criteria.attribute_is_product', ruleVersion: '1', target: 'attributes', verdict: 'cannot_verify', reason: 'the judge gave no result' })
+      if (!items) verdicts.push({ ruleId: r2.id, ruleVersion: r2.version, binding: r2.binding, target: 'attributes', verdict: 'cannot_verify', reason: 'the judge gave no result' })
       for (const item of items ?? []) {
-        verdicts.push({ ruleId: 'criteria.attribute_is_product', ruleVersion: '1', target: `attributes.${item.key}`, verdict: item.verdict, reason: item.reason })
+        verdicts.push({ ruleId: r2.id, ruleVersion: r2.version, binding: r2.binding, target: `attributes.${item.key}`, verdict: item.verdict, reason: item.reason })
       }
+    } else {
+      // A skipped judge still gives each rule in scope a verdict.
+      verdicts.push({ ruleId: r2.id, ruleVersion: r2.version, binding: r2.binding, target: 'attributes', verdict: 'cannot_verify', reason: 'skipped: a strict code check failed' })
     }
-    const errors = verdicts.filter(v => v.verdict === 'fail').map(v => `${v.ruleId} at ${v.target}: ${v.reason}`)
+    // Only a strict fail goes back to the model. Soft and watch fails are logged only.
+    const errors = verdicts.filter(v => v.binding === 'strict' && v.verdict === 'fail').map(v => `${v.ruleId} at ${v.target}: ${v.reason}`)
     return { ...inputData, verdicts, errors }
   },
 })
@@ -149,9 +162,10 @@ const person = createStep({
   suspendSchema: z.object({ reason: z.string(), verdicts: z.array(VerdictRow) }),
   resumeSchema: z.object({ accept: z.boolean(), by: z.string(), note: z.string() }),
   execute: async ({ inputData, resumeData, suspend, bail }) => {
-    const open = inputData.verdicts.filter(v => v.verdict !== 'pass')
+    // Only a strict verdict that is not pass needs a person.
+    const open = inputData.verdicts.filter(v => v.binding === 'strict' && v.verdict !== 'pass')
     if (open.length === 0) return inputData
-    if (resumeData === undefined) return await suspend({ reason: 'strict rules not all pass', verdicts: open })
+    if (resumeData === undefined) return await suspend({ reason: 'a strict rule is not pass', verdicts: open })
     if (!resumeData.accept) return bail({ ...inputData, errors: [`rejected by ${resumeData.by}: ${resumeData.note}`] })
     return inputData
   },

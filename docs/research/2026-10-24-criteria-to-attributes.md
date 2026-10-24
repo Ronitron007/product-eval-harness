@@ -1,6 +1,6 @@
 # Criteria on measurable attributes `criteria_attributes`
 
-Status. Research summary of 2026-10-24. It changes nothing and decides nothing. It summarizes a study that Claude made on 2026-10-22 for Kyaloon. The study split each criterion of four Kyaloon supplement packs into measurable product attributes. The full study, with each attribute and each condition, stays in the private Kyaloon RealDose repo (commit `2266cc74`, branch `rohan/eval-vocabulary-plan`).
+Status. Research summary of 2026-10-24. It changes nothing and decides nothing. It summarizes a study that Claude made on 2026-10-22 for Kyaloon. The study split each criterion of four Kyaloon supplement packs into measurable product attributes. The full study, with each attribute and each condition, stays in the private Kyaloon RealDose repo (commit `b7fa08b4`, branch `rohan/eval-vocabulary-plan`).
 
 ## Why this matters for the harness `criteria_attributes.why`
 
@@ -35,7 +35,7 @@ The study counted the level conditions of each criterion. A measurement conditio
 
 - Most of each criterion is measurable. The four packs need 94 distinct attributes, of which 43 did not exist yet.
 
-- `communication` is the least measurable criterion in each category, because its start level depends on claim verdicts.
+- `communication` is the least measurable criterion in three of the four categories, because its start level depends on claim verdicts. In magnesium, `formulation_cofactors` is lower (56% against 58%).
 
 ## What stays a judgement `criteria_attributes.judgement`
 

@@ -256,7 +256,7 @@ Existing package. Zod for schemas. The rule-graph checks are ours. inferred.
 
 Risks.
 
-- Project invariant 11 forbids deterministic code that decides a match or a grade. The validator may only check structure. It must never reject a rule because it "looks wrong". verified (read `CLAUDE.md` of the RealDose repo, invariant 11).
+- The RealDose `CLAUDE.md` invariant on match and grade forbids deterministic code that decides a match or a grade. The validator may only check structure. It must never reject a rule because it "looks wrong". verified (read the RealDose `CLAUDE.md` invariant on match and grade).
 
 - Output processor retries do nothing unless the agent or call sets `maxProcessorRetries`. The default leaves it unset. Set it to 1 (two attempts in total) to match harness2. verified (read https://mastra.ai/docs/agents/processors.md).
 
@@ -330,7 +330,7 @@ Risks.
 
 - Our in-loop ruleset judge is part of the stage. If its LLM verdicts go into `visibleChecks`, the improver optimizes toward that judge. Keep LLM judge verdicts out of `visibleChecks`, or treat that judge as visible and use a different held-out judge for promotion. inferred.
 
-- Cost. A stage run that produces an evaluation costs about $2 to $5 in our pipeline. One k = 1 improvement round makes 4 rollouts plus 3 to 5 sessions. a guess, based on project invariant 1 in RealDose `CLAUDE.md`.
+- Cost. A stage run that produces an evaluation costs about $2 to $5 in our pipeline. One k = 1 improvement round makes 4 rollouts plus 3 to 5 sessions. a guess, based on the RealDose `CLAUDE.md` invariant on expensive outputs.
 
 ## `evidence_pack`
 
@@ -672,7 +672,7 @@ What it is. Fingerprints, a content-addressed call cache, a resume check, and a 
 
 harness2 source. `runmark`, `_call_fingerprint()`, `_resume()`, and `_check_identity()`. verified (read https://github.com/google-research/harness2/blob/1cfe254e8d25b15f37048c3730134686abe60335/harness2/core/runmark.py#L41-L102, https://github.com/google-research/harness2/blob/1cfe254e8d25b15f37048c3730134686abe60335/harness2/core/proposer.py#L507-L534, https://github.com/google-research/harness2/blob/1cfe254e8d25b15f37048c3730134686abe60335/harness2/cli/run_sweep.py#L209-L235).
 
-Why our rule harness needs it. Our rules forbid overwriting expensive outputs. A crash mid-improvement must resume without paying again. A resume under a different model or stream must fail loudly. verified for our rule (read RealDose `CLAUDE.md`, invariant 1).
+Why our rule harness needs it. Our rules forbid overwriting expensive outputs. A crash mid-improvement must resume without paying again. A resume under a different model or stream must fail loudly. verified for our rule (read the RealDose `CLAUDE.md` invariant on expensive outputs).
 
 ```ts
 interface RunIdentity {

@@ -34,7 +34,8 @@ Stage rules and derived rules (`graph.rule_kinds`) use the same record.
 |---|---|---|
 | `id` | A stable dotted name, such as `criteria.reason_has_record` | Logs, tests, and people refer to the rule by name. |
 | `version` | A number, plus a hash of the statement, the examples, and the policy | Two runs with the same version used the same words. A changed word gives a new hash. |
-| `statement` | The rule in plain words, as one instruction | The prompt and the judge read the same words. |
+| `statement` | The rule in plain words, as one instruction | The prompt prints these words. |
+| `judge` | For a `judgement` rule only: the judge question and its short policy. Rohan owns it. | The check stays fixed while the wording of the instruction improves (`improve.boundaries.surface`). |
 | `reason` | Why the rule exists | A judge that knows the reason decides edge cases better. A person can see if the rule still makes sense. |
 | `kind` | `shape`, `code_check`, or `judgement` | The kind tells the compiler what to make. |
 | `scope` | Nodes, stages, and output fields (`graph.scope`) | The harness applies the rule only where it belongs. |
@@ -62,6 +63,7 @@ interface RuleRecord {
   id: string
   version: { n: number; hash: string }
   statement: string
+  judge?: { question: string; policy: string } // judgement rules only, owned by Rohan
   reason: string
   kind: RuleKind
   scope: RuleScope
@@ -97,11 +99,13 @@ A deterministic compiler reads the rules in scope of one stage run. It makes fou
 | Code check | `code_check`, `shape` | A function that gives pass, fail, or cannot verify for one output item. |
 | Judge question | `judgement` | A short policy for one LLM judge call: definitions, criteria, boundary examples, and an "unknown" answer. |
 
-- One source makes both the instruction and the check. So the prompt and the check cannot drift apart. The Kyaloon pipeline uses this pattern for its layout keys (`layoutFills()`, see [the Kyaloon patterns](../research/2026-10-24-kyaloon-patterns.md)).
+- One record makes both the instruction and the check. Shared parameters, such as the allowed keys and units, feed both, so the prompt and the check cannot drift apart. The Kyaloon pipeline uses this pattern for its layout keys (`layoutFills()`, see [the Kyaloon patterns](../research/2026-10-24-kyaloon-patterns.md)).
+
+- The judge question of a `judgement` rule is its own field. The golden examples test the statement and the judge question together, so a drift between them shows up as a failed example.
 
 - The compiler refuses a rule whose kind does not fit its fields. For example, it refuses a `code_check` that would give a grade or a match.
 
-- The compiler is code, not a model. A model may draft a rule or its examples. A person approves each rule change.
+- The compiler is code, not a model. A model may draft a rule or its examples. Rohan approves each rule change (`rules.gates`).
 
 ## The three results `enforce.verdicts`
 
@@ -166,13 +170,13 @@ The graph accepts an output when each `strict` rule in scope gives pass. A perso
 
 ## How a rule changes `enforce.change`
 
-1. A person writes or approves a new rule version with status `draft`. A model may draft it.
+1. A person or the improvement loop drafts a new rule version with status `draft`. A model may draft it.
 
 2. The new version runs with binding `watch` on its golden examples and on recent outputs. This trial calls models, so it is a paid run and needs a yes.
 
-3. The trial report shows the agreement with the golden examples, and the outputs whose verdicts change.
+3. The trial report shows the agreement with the golden examples, and the outputs whose verdicts change. For a draft from the improvement loop, the trial also runs the held-out suite over the subtree of the node that owns the rule (`improve.loop`).
 
-4. Rohan promotes the version to its real binding. This is a live ruleset change, so it needs his yes (`rules.gates`).
+4. Rohan promotes the version to its real binding. This is a live ruleset change, so it needs his yes (`rules.gates`). A stage rule lives in git, so the promotion is a PR that changes the rule file. The version becomes active when the PR merges.
 
 5. New outputs use the new version. Old outputs keep the versions that they passed. A report lists the outputs that passed an older version. A re-run of a stage is a paid run.
 
@@ -219,4 +223,4 @@ Claude took these choices for Rohan on 2026-10-24. Each is a row in [decisions.t
 
 - Each judge call answers one rule. One call can judge many items of the same rule.
 
-- An attribute value that fails its shape rule stays as raw text with the result "cannot verify". It never becomes a typed value.
+- An attribute value that breaks its shape rule gives "fail" for that rule. The harness keeps the raw text beside the verdict, and it never stores the value as a typed value.
