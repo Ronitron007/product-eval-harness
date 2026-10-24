@@ -9,6 +9,8 @@ This file is a routing index. The rules of this repo are in `.claude/rulebooks/`
 | The rules for agents, gates, git, docs, names, replies, and writing | `.claude/rulebooks/` (each `.md` file) |
 | How the rulebooks load, and how to change them | `.claude/rulebooks/README.md` |
 | The harness design, the research, the plan, and the decisions trail | `docs/README.md` (the docs hub) |
+| Install, type check, test, and Studio | `README.md` (`Develop`) |
+| Mastra code | `.claude/rulebooks/mastra.md`, then the `mastra` skill in `.agents/skills/mastra/` |
 
 ## Rules that this file adds
 

@@ -6,7 +6,32 @@ The harness uses the [Mastra](https://mastra.ai) TypeScript framework.
 
 ## Status
 
-This repo holds the design. It holds no harness code yet.
+The design and the plan are in [docs/README.md](docs/README.md). The code is a Mastra scaffold (`plan.scaffold`). No harness stage exists yet.
+
+## Develop
+
+You need Node.js 22.13 or later.
+
+1. Install the packages:
+
+   ```bash
+   npm ci
+   ```
+
+2. Run the type check and the tests. The tests call no model.
+
+   ```bash
+   npm run typecheck
+   npm test
+   ```
+
+3. To open Mastra Studio, copy `.env.example` to `.env`, then run `npm run dev`. Studio opens at `http://localhost:4111`.
+
+The npm scripts turn off the usage telemetry of the Mastra CLI.
+
+## Agent skills
+
+The repo holds the `mastra` agent skill in `.agents/skills/`, with a link in `.claude/skills/`. `skills-lock.json` pins its version. To update it, run `npx skills update`. The skill comes from [mastra-ai/skills](https://github.com/mastra-ai/skills), copyright Kepler Software, Inc., under Apache-2.0.
 
 ## License
 
