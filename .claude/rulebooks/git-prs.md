@@ -10,7 +10,7 @@
 
 - Put a code change and its docs in two PRs.
 
-- A docs PR changes only files under `docs/`. Merge it at once by the merge rule below, with no CI wait and no review gate. Put `[skip ci]` in each of its commit messages. Prompt, rulebook, and skill `.md` files are code, not docs. Code commits never carry `[skip ci]`.
+- A docs PR changes only files under `docs/`. Merge it at once by the merge rule above, with no CI wait and no review gate. Put `[skip ci]` in each of its commit messages. Prompt, rulebook, and skill `.md` files are code, not docs. Code commits never carry `[skip ci]`.
 
 - For stacked PRs, base each PR on the branch of its parent. After the parent merges, run `gh pr edit <n> --base main`. Then merge.
 
