@@ -1,6 +1,6 @@
 # Design index `design`
 
-Status. Design of 2026-10-24. No code implements it yet.
+Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but no code implements this design yet.
 
 | Doc | Name | What it holds |
 |---|---|---|

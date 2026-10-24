@@ -1,6 +1,6 @@
 # Harness plan `plan`
 
-Status. Plan of 2026-10-24. No unit has started. It splits the design ([rule-graph.md](../design/rule-graph.md), [rule-enforcement.md](../design/rule-enforcement.md), [self-improvement.md](../design/self-improvement.md), [mastra-mapping.md](../design/mastra-mapping.md)) into units.
+Status. Plan of 2026-10-24. `plan.scaffold` shipped on 2026-10-25 in [#5](https://github.com/Ronitron007/product-eval-harness/pull/5). No other unit has started. It splits the design ([rule-graph.md](../design/rule-graph.md), [rule-enforcement.md](../design/rule-enforcement.md), [self-improvement.md](../design/self-improvement.md), [mastra-mapping.md](../design/mastra-mapping.md)) into units.
 
 ## Rules for each unit `plan.rules`
 
@@ -32,12 +32,12 @@ flowchart LR
 
 | Unit | What it adds | The check that can fail |
 |---|---|---|
-| `plan.scaffold` | A TypeScript project with ES2022 modules, exact pins of `@mastra/core` 1.79.0 and the other packages of the Mastra reference, Vitest, and a Mastra instance with LibSQL storage. A CI job runs the type check and the tests. | CI runs `tsc --noEmit` and `vitest run`. A test builds the Mastra instance on an in-memory database. |
+| `plan.scaffold` | A TypeScript project from the official `create-mastra --empty` boilerplate, with ES2022 modules, exact pins of the `@mastra/*` packages that the code uses (`@mastra/core` 1.79.0, `@mastra/libsql` 1.27.0), Vitest, and a Mastra instance with LibSQL storage. Each later unit adds its own packages with exact pins. A CI job runs the type check and the tests. | CI runs `tsc --noEmit` and `vitest run`. A test builds the Mastra instance on an in-memory database. |
 | `plan.rule_record` | The Zod schema of `RuleRecord`, a loader for the YAML rule files in `rules/`, the version hash, and a `rules:check` command | Tests with valid and invalid rule files. An invalid file must make `rules:check` exit 1. CI runs `rules:check` over `rules/`. |
 | `plan.graph_store` | Drizzle tables for nodes, criteria, node criteria, additions, attributes, records, derived rules, stage runs, outputs, and verdicts. Append-only writes. The tree walk: path to the root, descendants, siblings. | Tests on a temporary database. An update of an accepted output must fail. The tree walk must return the expected paths for a fixture tree. |
 | `plan.compiler` | Scope resolution with inheritance, the hash of a resolved rule set, the output schema from the `shape` rules, the instruction text, and one scorer for each check rule | Tests. A child rule that weakens an inherited rule must be refused. A change to a shared parameter of a rule record, such as an allowed unit, must change both its instruction and its check. A compiled schema must reject a bad output. |
 | `plan.judge_step` | The ruleset judge step: code checks first, then judge scorers, `VerdictRow` writes, the three bindings, and "cannot verify" | Tests with mocked judges, one for each binding and each verdict. A judge with no result must give "cannot verify", never pass. |
-| `plan.stage_workflow` | The stage workflow: context, research, draft, judge, the repair loop with a budget of 3 rounds, the person step, assimilate | Tests with mocked agents: a pass on the first round, a pass after a repair, a spent budget that suspends, and a resume with accept and with reject |
+| `plan.stage_workflow` | The stage workflow: context, research, draft, judge, the repair loop with a budget of 3 rounds, the person step, assimilate. Register each stage workflow in `src/mastra/index.ts` too, so that Studio sees it. | Tests with mocked agents: a pass on the first round, a pass after a repair, a spent budget that suspends, and a resume with accept and with reject |
 | `plan.research_tools` | `get_node_context`, `search_records` with a filter that code sets, `web_fetch`, and `web_search` over one search API | Tests with recorded HTTP replies. No live call in CI. The search API needs an account and a key that Rohan creates. |
 | `plan.define_criteria` | The stage rules of `define_criteria` as YAML files, its output shape, and its golden examples, for the domain node `skincare` | `rules:check`, and a test of the stage on recorded model output. A first real run is a paid run that needs Rohan's yes. |
 | `plan.create_node` | The stage rules and the output shape of `create_node`: relevance, meaning, additions, attributes, records | Same kind of checks as `plan.define_criteria`, on the child node `sunscreen` |

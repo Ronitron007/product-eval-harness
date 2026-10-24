@@ -1,6 +1,6 @@
 # The Mastra mapping `mastra`
 
-Status. Design of 2026-10-24. No harness code exists yet. This doc maps three designs onto the Mastra framework. They are the rule graph ([rule-graph.md](rule-graph.md)), rule enforcement ([rule-enforcement.md](rule-enforcement.md)), and self-improvement ([self-improvement.md](self-improvement.md)).
+Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`, [#5](https://github.com/Ronitron007/product-eval-harness/pull/5)). No harness stage exists yet. This doc maps three designs onto the Mastra framework. They are the rule graph ([rule-graph.md](rule-graph.md)), rule enforcement ([rule-enforcement.md](rule-enforcement.md)), and self-improvement ([self-improvement.md](self-improvement.md)).
 
 Version. Each Mastra claim is for `@mastra/core` 1.79.0 and the packages in [the Mastra reference](../research/2026-10-24-mastra-primitives.md). A research agent read the embedded docs of the installed packages and type-checked the APIs. The type-check files are in [the probes](../research/2026-10-24-mastra-probes/README.md). The `mastra` agent skill (mastra-ai/skills, v2.4.0) set the method: embedded docs first, then type definitions, then remote docs (`rules.mastra`).
 
@@ -147,6 +147,8 @@ Decision: a rule scope is a typed object (nodes, stages, fields), not a Mastra p
 ## Storage `mastra.storage`
 
 - One database holds the Mastra domains of the harness and our graph tables. Locally it is a LibSQL file. `LibSQLStore` takes the same client as our own tables. Verified.
+
+- A file URL of the database must be absolute. `mastra dev`, `mastra build`, and `mastra start` each run in another folder, so a relative URL opens a different file in each. Verified (the review of [#5](https://github.com/Ronitron007/product-eval-harness/pull/5) ran the three commands). The code refuses a relative file URL (`resolveDatabaseUrl` in `src/mastra/harness.ts`).
 
 - A second, private Mastra storage holds the held-out suite: its datasets, its experiments, and the prompts of the held-out judges (`improve.boundaries.firewall`).
 

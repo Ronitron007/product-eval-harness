@@ -1,6 +1,6 @@
 # Self-improvement `improve`
 
-Status. Design of 2026-10-24. No code implements it yet. Rohan asked to take the ideas of recursive self-improvement from google-research/harness2. A research agent read harness2 at commit `1cfe254e` and wrote [the concepts](../research/2026-10-24-harness2/concepts.md), [the abstractions](../research/2026-10-24-harness2/abstractions.md), and [the prior art](../research/2026-10-24-harness2/look-before-you-build.md). This doc decides how the rule graph uses them. Terms are in [glossary.md](../glossary.md).
+Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but no code implements this design yet. Rohan asked to take the ideas of recursive self-improvement from google-research/harness2. A research agent read harness2 at commit `1cfe254e` and wrote [the concepts](../research/2026-10-24-harness2/concepts.md), [the abstractions](../research/2026-10-24-harness2/abstractions.md), and [the prior art](../research/2026-10-24-harness2/look-before-you-build.md). This doc decides how the rule graph uses them. Terms are in [glossary.md](../glossary.md).
 
 ## What harness2 does `improve.harness2`
 

@@ -1,6 +1,6 @@
 # The rule graph `graph`
 
-Status. Design of 2026-10-24. No code implements it yet. Rohan stated the model on 2026-10-24 (`graph.source`). Claude wrote this doc and took the open decisions for him. Each decision is a row in [decisions.tsv](../decisions.tsv). Terms are in [glossary.md](../glossary.md).
+Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but no code implements this design yet. Rohan stated the model on 2026-10-24 (`graph.source`). Claude wrote this doc and took the open decisions for him. Each decision is a row in [decisions.tsv](../decisions.tsv). Terms are in [glossary.md](../glossary.md).
 
 ## The problem `graph.problem`
 

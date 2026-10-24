@@ -1,6 +1,6 @@
 # Rule enforcement `enforce`
 
-Status. Design of 2026-10-24. No code implements it yet. It answers the second half of Rohan's ask: what it takes to enforce each rule of the rule graph ([rule-graph.md](rule-graph.md)). It builds on two research files: [the prior art](../research/2026-10-24-rule-enforcement-prior-art.md) and [the Kyaloon patterns](../research/2026-10-24-kyaloon-patterns.md). Terms are in [glossary.md](../glossary.md).
+Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but no code implements this design yet. It answers the second half of Rohan's ask: what it takes to enforce each rule of the rule graph ([rule-graph.md](rule-graph.md)). It builds on two research files: [the prior art](../research/2026-10-24-rule-enforcement-prior-art.md) and [the Kyaloon patterns](../research/2026-10-24-kyaloon-patterns.md). Terms are in [glossary.md](../glossary.md).
 
 ## The idea in one paragraph `enforce.idea`
 
