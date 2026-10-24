@@ -1,0 +1,673 @@
+{
+ "nodes": [
+  {
+   "id": "hdr",
+   "type": "text",
+   "text": "## Evaluation harness\nThe rule graph, its stages, rule enforcement, Mastra, self-improvement.\nparent: [docs hub](../README.md)\nscope: design only",
+   "x": 0,
+   "y": -260,
+   "width": 640,
+   "height": 200
+  },
+  {
+   "id": "stamp",
+   "type": "text",
+   "text": "## stamp\nno harness code yet, so nothing to verify against\nMastra `@mastra/core` 1.79.0, harness2 `1cfe254e`, 2026-10-24\ndescribes: design/*.md, plans/2026-10-24-harness-plan.md\n_unverified_",
+   "x": 700,
+   "y": -260,
+   "width": 640,
+   "height": 200
+  },
+  {
+   "id": "gA",
+   "type": "group",
+   "label": "Which node makes what?",
+   "x": 0,
+   "y": 0,
+   "width": 1000,
+   "height": 640,
+   "color": "6"
+  },
+  {
+   "id": "dom",
+   "type": "text",
+   "text": "## `domain` node\nCreates the criteria of the domain.\nreads: past criteria tables, records\nwrites: criteria, candidate attributes\nstage: `define_criteria`",
+   "x": 40,
+   "y": 60,
+   "width": 280,
+   "height": 200,
+   "color": "5"
+  },
+  {
+   "id": "inn",
+   "type": "text",
+   "text": "## `inner` node\nJudges relevance and meaning of each criterion.\nreads: parent node criteria\nwrites: node criteria, additions, attributes\nstage: `create_node`",
+   "x": 360,
+   "y": 60,
+   "width": 280,
+   "height": 200,
+   "color": "5"
+  },
+  {
+   "id": "leaf",
+   "type": "text",
+   "text": "## `leaf` node\nGets the pack and the layout.\nreads: node criteria, attributes\nwrites: evaluation pack, layout\nstages: `create_pack`, `create_layout`",
+   "x": 680,
+   "y": 60,
+   "width": 280,
+   "height": 200,
+   "color": "5"
+  },
+  {
+   "id": "rec",
+   "type": "text",
+   "text": "## record system\nKeeps the research behind each output.\nwrites: research records, append-only\nlinks: each criterion, attribute, rule",
+   "x": 360,
+   "y": 380,
+   "width": 280,
+   "height": 200,
+   "color": "5"
+  },
+  {
+   "id": "gB",
+   "type": "group",
+   "label": "What runs in one stage?",
+   "x": 1100,
+   "y": 0,
+   "width": 1400,
+   "height": 640,
+   "color": "6"
+  },
+  {
+   "id": "ctx",
+   "type": "text",
+   "text": "## `context`\nReads the graph for one node.\nreads: path to root, rules in scope\nreads: records, sibling nodes",
+   "x": 1140,
+   "y": 60,
+   "width": 240,
+   "height": 180,
+   "color": "4"
+  },
+  {
+   "id": "res",
+   "type": "text",
+   "text": "## `research`\nResearches under the rules.\ntools: `web_search`, `web_fetch`\ntools: `get_node_context`, `search_records`",
+   "x": 1420,
+   "y": 60,
+   "width": 240,
+   "height": 180,
+   "color": "4"
+  },
+  {
+   "id": "dra",
+   "type": "text",
+   "text": "## `draft`\nFills the output that shape rules define.\nwrites: one output",
+   "x": 1700,
+   "y": 60,
+   "width": 240,
+   "height": 180,
+   "color": "4"
+  },
+  {
+   "id": "jud",
+   "type": "text",
+   "text": "## `judge`\nRuns each rule in scope.\ndecides: pass, fail, cannot verify\nwrites: `VerdictRow`",
+   "x": 1980,
+   "y": 60,
+   "width": 240,
+   "height": 180,
+   "color": "4"
+  },
+  {
+   "id": "rep",
+   "type": "text",
+   "text": "## `repair`\nSends the exact errors back.\nbudget: 3 rounds",
+   "x": 1980,
+   "y": 360,
+   "width": 240,
+   "height": 180,
+   "color": "4"
+  },
+  {
+   "id": "per",
+   "type": "text",
+   "text": "## `person`\nDecides on a spent budget.\nAlso decides on a strict cannot verify.",
+   "x": 1700,
+   "y": 360,
+   "width": 240,
+   "height": 180,
+   "color": "4"
+  },
+  {
+   "id": "asm",
+   "type": "text",
+   "text": "## `assimilate`\nAccepts the output into the graph.\nwrites: output, records, verdicts",
+   "x": 1420,
+   "y": 360,
+   "width": 240,
+   "height": 180,
+   "color": "4"
+  },
+  {
+   "id": "gC",
+   "type": "group",
+   "label": "How is a rule enforced?",
+   "x": 0,
+   "y": 740,
+   "width": 1000,
+   "height": 640,
+   "color": "6"
+  },
+  {
+   "id": "rr",
+   "type": "text",
+   "text": "## `RuleRecord`\nOne instruction with its check.\nholds: id, version, statement, reason\nholds: kind, scope, binding, examples",
+   "x": 40,
+   "y": 800,
+   "width": 280,
+   "height": 200,
+   "color": "3"
+  },
+  {
+   "id": "cmp",
+   "type": "text",
+   "text": "## rule compiler\nTurns rules in scope into checks.\nwrites: schema parts, instructions\nwrites: code checks, judge questions",
+   "x": 360,
+   "y": 800,
+   "width": 280,
+   "height": 200,
+   "color": "3"
+  },
+  {
+   "id": "bind",
+   "type": "text",
+   "text": "## binding\nSets what a fail does.\nvalues: `strict`, `soft`, `watch`",
+   "x": 680,
+   "y": 800,
+   "width": 280,
+   "height": 200,
+   "color": "5"
+  },
+  {
+   "id": "chg",
+   "type": "text",
+   "text": "## rule change\nTries a new version as watch.\nreads: golden examples, recent outputs\ndecides: Rohan promotes out of watch",
+   "x": 360,
+   "y": 1100,
+   "width": 280,
+   "height": 200,
+   "color": "3"
+  },
+  {
+   "id": "never",
+   "type": "text",
+   "text": "## never\nCode gives no final grade or match.\nCannot verify is never pass or fail.",
+   "x": 680,
+   "y": 1100,
+   "width": 280,
+   "height": 200,
+   "color": "1"
+  },
+  {
+   "id": "gD",
+   "type": "group",
+   "label": "Where does it run on Mastra?",
+   "x": 1100,
+   "y": 740,
+   "width": 1400,
+   "height": 640,
+   "color": "6"
+  },
+  {
+   "id": "mwf",
+   "type": "text",
+   "text": "## workflows\nOne `createWorkflow` for each stage.\nrepair: `.dountil` with a budget\nperson: `suspend`, `resume`",
+   "x": 1140,
+   "y": 800,
+   "width": 300,
+   "height": 200,
+   "color": "4"
+  },
+  {
+   "id": "mag",
+   "type": "text",
+   "text": "## agents\nResearcher, drafter, editors.\nreads: `RequestContext` with the node\nwrites: `structuredOutput`",
+   "x": 1480,
+   "y": 800,
+   "width": 300,
+   "height": 200,
+   "color": "4"
+  },
+  {
+   "id": "msc",
+   "type": "text",
+   "text": "## scorers\nOne scorer for each check rule.\ncode checks: function steps\njudges: `analyze` prompt step",
+   "x": 1820,
+   "y": 800,
+   "width": 300,
+   "height": 200,
+   "color": "4"
+  },
+  {
+   "id": "mds",
+   "type": "text",
+   "text": "## datasets, experiments\nGolden examples and rule trials.\nCI gate: `runEvals`",
+   "x": 1140,
+   "y": 1100,
+   "width": 300,
+   "height": 200,
+   "color": "3"
+  },
+  {
+   "id": "mdb",
+   "type": "text",
+   "text": "## our graph tables\nNodes, rules, records, verdicts.\nDrizzle ORM on the Mastra client",
+   "x": 1480,
+   "y": 1100,
+   "width": 300,
+   "height": 200,
+   "color": "5"
+  },
+  {
+   "id": "mrules",
+   "type": "text",
+   "text": "## `rules/` in git\nStage rules, one YAML file each.\nreviewed by PR",
+   "x": 1820,
+   "y": 1100,
+   "width": 300,
+   "height": 200,
+   "color": "3"
+  },
+  {
+   "id": "gE",
+   "type": "group",
+   "label": "How does the harness improve its own rules?",
+   "x": 0,
+   "y": 1480,
+   "width": 2500,
+   "height": 560,
+   "color": "6"
+  },
+  {
+   "id": "iref",
+   "type": "text",
+   "text": "## reference runs\nk runs of the published rules.\nwrites: traces, outputs, visible verdicts",
+   "x": 40,
+   "y": 1540,
+   "width": 280,
+   "height": 190,
+   "color": "2"
+  },
+  {
+   "id": "ied",
+   "type": "text",
+   "text": "## editors\nPropose edits to the stage rules.\nkinds: process, domain\nreads: evidence pack, lessons",
+   "x": 360,
+   "y": 1540,
+   "width": 280,
+   "height": 190,
+   "color": "2"
+  },
+  {
+   "id": "ival",
+   "type": "text",
+   "text": "## `proposal_validator`\nChecks the structure of each edit.\nretry: one, then the base",
+   "x": 680,
+   "y": 1540,
+   "width": 280,
+   "height": 190,
+   "color": "2"
+  },
+  {
+   "id": "ipr",
+   "type": "text",
+   "text": "## probes\nOne stage run for each candidate.\nwrites: traces, outputs",
+   "x": 1000,
+   "y": 1540,
+   "width": 280,
+   "height": 190,
+   "color": "2"
+  },
+  {
+   "id": "ico",
+   "type": "text",
+   "text": "## `composer`\nMerges, adopts one, or keeps the base.\nreads: probes against reference runs",
+   "x": 1320,
+   "y": 1540,
+   "width": 280,
+   "height": 190,
+   "color": "2"
+  },
+  {
+   "id": "isel",
+   "type": "text",
+   "text": "## `blind_selector`\nPicks one anonymous final output.",
+   "x": 1640,
+   "y": 1540,
+   "width": 280,
+   "height": 190,
+   "color": "2"
+  },
+  {
+   "id": "iref2",
+   "type": "text",
+   "text": "## `reflector`\nWrites edit verdicts and one lesson.\nwrites: `lesson_library`",
+   "x": 1960,
+   "y": 1540,
+   "width": 280,
+   "height": 190,
+   "color": "2"
+  },
+  {
+   "id": "igate",
+   "type": "text",
+   "text": "## `promotion_gate`\nHeld-out suite on node and descendants.\ndecides: Rohan says yes",
+   "x": 1640,
+   "y": 1800,
+   "width": 280,
+   "height": 190,
+   "color": "1"
+  },
+  {
+   "id": "ifw",
+   "type": "text",
+   "text": "## `measurement_firewall`\nKeeps the held-out suite away.\nrefuses: held-out paths and verdicts",
+   "x": 360,
+   "y": 1800,
+   "width": 280,
+   "height": 190,
+   "color": "1"
+  },
+  {
+   "id": "f1",
+   "type": "file",
+   "file": "design/rule-graph.md",
+   "x": 0,
+   "y": 2120,
+   "width": 400,
+   "height": 120
+  },
+  {
+   "id": "f2",
+   "type": "file",
+   "file": "design/rule-enforcement.md",
+   "x": 440,
+   "y": 2120,
+   "width": 400,
+   "height": 120
+  },
+  {
+   "id": "f3",
+   "type": "file",
+   "file": "design/self-improvement.md",
+   "x": 880,
+   "y": 2120,
+   "width": 400,
+   "height": 120
+  },
+  {
+   "id": "f4",
+   "type": "file",
+   "file": "design/mastra-mapping.md",
+   "x": 1320,
+   "y": 2120,
+   "width": 400,
+   "height": 120
+  },
+  {
+   "id": "f5",
+   "type": "file",
+   "file": "plans/2026-10-24-harness-plan.md",
+   "x": 1760,
+   "y": 2120,
+   "width": 400,
+   "height": 120
+  }
+ ],
+ "edges": [
+  {
+   "id": "eA1",
+   "fromNode": "dom",
+   "fromSide": "right",
+   "toNode": "inn",
+   "toSide": "left",
+   "label": "criteria"
+  },
+  {
+   "id": "eA2",
+   "fromNode": "inn",
+   "fromSide": "right",
+   "toNode": "leaf",
+   "toSide": "left",
+   "label": "node criteria"
+  },
+  {
+   "id": "eA3",
+   "fromNode": "rec",
+   "fromSide": "left",
+   "toNode": "dom",
+   "toSide": "bottom",
+   "label": "justifies"
+  },
+  {
+   "id": "eA4",
+   "fromNode": "rec",
+   "fromSide": "top",
+   "toNode": "inn",
+   "toSide": "bottom",
+   "label": "justifies"
+  },
+  {
+   "id": "eA5",
+   "fromNode": "rec",
+   "fromSide": "right",
+   "toNode": "leaf",
+   "toSide": "bottom",
+   "label": "justifies"
+  },
+  {
+   "id": "eB1",
+   "fromNode": "ctx",
+   "fromSide": "right",
+   "toNode": "res",
+   "toSide": "left",
+   "label": "context bundle"
+  },
+  {
+   "id": "eB2",
+   "fromNode": "res",
+   "fromSide": "right",
+   "toNode": "dra",
+   "toSide": "left",
+   "label": "findings, records"
+  },
+  {
+   "id": "eB3",
+   "fromNode": "dra",
+   "fromSide": "right",
+   "toNode": "jud",
+   "toSide": "left",
+   "label": "the output"
+  },
+  {
+   "id": "eB4",
+   "fromNode": "jud",
+   "fromSide": "bottom",
+   "toNode": "rep",
+   "toSide": "top",
+   "label": "strict fails"
+  },
+  {
+   "id": "eB5",
+   "fromNode": "rep",
+   "fromSide": "left",
+   "toNode": "dra",
+   "toSide": "bottom",
+   "label": "exact errors"
+  },
+  {
+   "id": "eB6",
+   "fromNode": "jud",
+   "fromSide": "bottom",
+   "toNode": "per",
+   "toSide": "right",
+   "label": "open verdicts"
+  },
+  {
+   "id": "eB7",
+   "fromNode": "per",
+   "fromSide": "left",
+   "toNode": "asm",
+   "toSide": "right",
+   "label": "decision"
+  },
+  {
+   "id": "eC1",
+   "fromNode": "rr",
+   "fromSide": "right",
+   "toNode": "cmp",
+   "toSide": "left",
+   "label": "rules in scope"
+  },
+  {
+   "id": "eC2",
+   "fromNode": "cmp",
+   "fromSide": "right",
+   "toNode": "bind",
+   "toSide": "left",
+   "label": "checks"
+  },
+  {
+   "id": "eC3",
+   "fromNode": "chg",
+   "fromSide": "left",
+   "toNode": "rr",
+   "toSide": "bottom",
+   "label": "new version"
+  },
+  {
+   "id": "eD1",
+   "fromNode": "mwf",
+   "fromSide": "right",
+   "toNode": "mag",
+   "toSide": "left",
+   "label": "stage input"
+  },
+  {
+   "id": "eD2",
+   "fromNode": "mag",
+   "fromSide": "right",
+   "toNode": "msc",
+   "toSide": "left",
+   "label": "the output"
+  },
+  {
+   "id": "eD3",
+   "fromNode": "msc",
+   "fromSide": "bottom",
+   "toNode": "mdb",
+   "toSide": "top",
+   "label": "`VerdictRow`"
+  },
+  {
+   "id": "eD4",
+   "fromNode": "mrules",
+   "fromSide": "top",
+   "toNode": "msc",
+   "toSide": "bottom",
+   "label": "rule records"
+  },
+  {
+   "id": "eE1",
+   "fromNode": "iref",
+   "fromSide": "right",
+   "toNode": "ied",
+   "toSide": "left",
+   "label": "evidence pack"
+  },
+  {
+   "id": "eE2",
+   "fromNode": "ied",
+   "fromSide": "right",
+   "toNode": "ival",
+   "toSide": "left",
+   "label": "edit proposals"
+  },
+  {
+   "id": "eE3",
+   "fromNode": "ival",
+   "fromSide": "right",
+   "toNode": "ipr",
+   "toSide": "left",
+   "label": "valid edits"
+  },
+  {
+   "id": "eE4",
+   "fromNode": "ipr",
+   "fromSide": "right",
+   "toNode": "ico",
+   "toSide": "left",
+   "label": "probe outputs"
+  },
+  {
+   "id": "eE5",
+   "fromNode": "ico",
+   "fromSide": "right",
+   "toNode": "isel",
+   "toSide": "left",
+   "label": "final outputs"
+  },
+  {
+   "id": "eE6",
+   "fromNode": "isel",
+   "fromSide": "right",
+   "toNode": "iref2",
+   "toSide": "left",
+   "label": "the adopted edit"
+  },
+  {
+   "id": "eE7",
+   "fromNode": "isel",
+   "fromSide": "bottom",
+   "toNode": "igate",
+   "toSide": "top",
+   "label": "draft rule versions"
+  },
+  {
+   "id": "eE8",
+   "fromNode": "ifw",
+   "fromSide": "top",
+   "toNode": "ied",
+   "toSide": "bottom",
+   "label": "clean evidence"
+  },
+  {
+   "id": "eF1",
+   "fromNode": "gA",
+   "fromSide": "bottom",
+   "toNode": "f1",
+   "toSide": "top"
+  },
+  {
+   "id": "eF2",
+   "fromNode": "gC",
+   "fromSide": "bottom",
+   "toNode": "f2",
+   "toSide": "top"
+  },
+  {
+   "id": "eF3",
+   "fromNode": "gE",
+   "fromSide": "bottom",
+   "toNode": "f3",
+   "toSide": "top"
+  },
+  {
+   "id": "eF4",
+   "fromNode": "gD",
+   "fromSide": "bottom",
+   "toNode": "f4",
+   "toSide": "top"
+  }
+ ]
+}
