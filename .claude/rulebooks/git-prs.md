@@ -6,7 +6,7 @@
 
 - Use the GitHub CLI (`gh`). Merge with a merge commit, so that cited SHAs stay reachable.
 
-- GitHub writes a merge commit with the primary email of the account. So always merge with `gh pr merge <n> --merge --author-email <your GitHub noreply address>`.
+- GitHub writes its merge commit with the primary email of the account, and it refuses a noreply address as the merge author. So merge a reviewed PR in two steps. First merge `main` into the PR branch, so that the branch holds the merge commit. Then fast-forward `main` with `git push origin <PR head SHA>:main`. Never force-push.
 
 - Put a code change and its docs in two PRs.
 
