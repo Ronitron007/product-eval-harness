@@ -15,9 +15,10 @@ jobs:
       - name: Check that settings.json has one hook for each part
         run: |
           parts=$(sed -n 's/^parts=//p' .claude/rulebooks/session-start.sh)
+          want=$(seq 1 "$parts" | tr '\n' ' ')
           for e in SessionStart SubagentStart; do
-            n=$(jq --arg e "$e" '[.hooks[$e][].hooks[] | select(.command | test("session-start.sh"))] | length' .claude/settings.json)
-            [ "$n" = "$parts" ] || { echo "$e has $n rulebook hooks, the script has $parts parts"; exit 1; }
+            got=$(jq -r --arg e "$e" '[.hooks[$e][].hooks[] | .command | select(test("session-start.sh")) | capture("--part (?<n>[0-9]+)").n | tonumber] | sort | map(tostring) | join(" ")' .claude/settings.json)
+            [ "$got " = "$want" ] || { echo "$e loads parts [$got], the script has parts [$want]"; exit 1; }
           done
       - name: Check that the hook prints valid JSON for each part
         run: |

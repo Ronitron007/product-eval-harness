@@ -6,6 +6,8 @@
 
 - Use the GitHub CLI (`gh`). Merge with a merge commit, so that cited SHAs stay reachable.
 
+- GitHub writes a merge commit with the primary email of the account. So always merge with `gh pr merge <n> --merge --author-email <your GitHub noreply address>`.
+
 - Put a code change and its docs in two PRs.
 
 - A docs PR changes only files under `docs/`. Merge it at once with a merge commit, with no CI wait and no review gate. Put `[skip ci]` in each of its commit messages and in the merge commit subject. Prompt, rulebook, and skill `.md` files are code, not docs. Code commits never carry `[skip ci]`.

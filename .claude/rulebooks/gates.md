@@ -4,7 +4,7 @@
 
 - A harness stage calls models, so each stage run is a paid run. A test that calls a real model is a paid run too. Tests use recorded or mocked model output by default.
 
-- A change to a live ruleset needs an explicit yes from Rohan, one change at a time. A rule promotion to strict, a deploy, and a run against live product data are such changes. If the user is not Rohan, stop and tell the user to get his yes. Keep a ledger of each landed commit in your replies.
+- A change to a live ruleset needs an explicit yes from Rohan, one change at a time. A rule promotion out of watch, a deploy, and a run against live product data are such changes. If the user is not Rohan, stop and tell the user to get his yes. Keep a ledger of each landed commit in your replies.
 
 - A post to an outside service needs a yes from the user each time. A bug report to a framework team, an issue or comment in another repo, and a message are posts.
 
