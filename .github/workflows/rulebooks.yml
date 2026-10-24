@@ -1,0 +1,30 @@
+name: rulebooks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that each rulebook part fits one hook
+        run: sh .claude/rulebooks/session-start.sh --check
+      - name: Check that settings.json has one hook for each part
+        run: |
+          parts=$(sed -n 's/^parts=//p' .claude/rulebooks/session-start.sh)
+          want=$(seq 1 "$parts" | tr '\n' ' ')
+          for e in SessionStart SubagentStart; do
+            got=$(jq -r --arg e "$e" '[.hooks[$e][].hooks[] | .command | select(test("session-start.sh")) | capture("--part (?<n>[0-9]+)").n | tonumber] | sort | map(tostring) | join(" ")' .claude/settings.json)
+            [ "$got " = "$want" ] || { echo "$e loads parts [$got], the script has parts [$want]"; exit 1; }
+          done
+      - name: Check that the hook prints valid JSON for each part
+        run: |
+          parts=$(sed -n 's/^parts=//p' .claude/rulebooks/session-start.sh)
+          p=1
+          while [ "$p" -le "$parts" ]; do
+            printf '{"hook_event_name":"SessionStart"}' | sh .claude/rulebooks/session-start.sh --part "$p" | jq -e '.hookSpecificOutput.additionalContext | length > 0' > /dev/null
+            p=$((p + 1))
+          done

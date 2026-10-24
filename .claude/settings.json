@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/rulebooks/session-start.sh\" --part 1" },
+          { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/rulebooks/session-start.sh\" --part 2" }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/rulebooks/session-start.sh\" --part 1" },
+          { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/rulebooks/session-start.sh\" --part 2" }
+        ]
+      }
+    ]
+  }
+}
