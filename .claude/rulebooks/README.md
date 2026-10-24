@@ -10,7 +10,7 @@ This folder holds the rulebooks for agent sessions in this repo. Each topic has 
 | `gates.md` | Harness stage runs count as paid runs. Rule promotion counts as a live change. Posts to outside services need a yes. Research records count as expensive outputs. This copy drops the RealDose eval-runner rule, and the Kyaloon list of live changes (migration, flag, eval runner, eval rules). |
 | `git-prs.md` | `main` is the integration branch. This copy adds the docs-PR rule, the public-repo rule, and the rule to merge with the noreply email. It drops the Kyaloon CI noise, and the line that overrides a fixed `rohan/` prefix of a repo CLAUDE.md, because this repo has none. |
 | `replies.md` | Boards live in this repo, in `docs/canvas/`. |
-| `product.md` | It describes the harness, and Kyaloon as its planned first user. It drops the Kyaloon product vision and its rule "describe Kyaloon by this vision", because this repo is public and describes only what its code does. |
+| `product.md` | It describes the harness, and Kyaloon as its planned first user. It drops the Kyaloon product vision and its rule "describe Kyaloon by this vision". This repo is public and describes only what its code does. |
 | `documentation.md` | Docs live in this repo. This copy drops the RealDose doc tools and the log doc kind. It keeps one decisions trail for the repo, `docs/decisions.tsv`, in place of one trail for each design. It adds links pinned to a commit SHA, and `AGENTS.md` as a routing index. |
 | `harness.md` | New. The design rules of the harness. |
 | `naming.md` | The examples use harness names, and the name map is `harness.names`. It drops the RealDose name map. |
@@ -19,7 +19,7 @@ This folder holds the rulebooks for agent sessions in this repo. Each topic has 
 
 ## How the rulebooks load `rulebooks.load`
 
-- `.claude/settings.json` in this repo runs `session-start.sh` at two events: SessionStart and SubagentStart. Claude Code runs project hooks only in a folder that you trust.
+- `.claude/settings.json` in this repo runs `session-start.sh` at two events: SessionStart and SubagentStart. Claude Code runs project hooks only in a folder that you trust. A `-p` or SDK session treats each folder as trusted.
 
 - Each event has one hook for each part of the rulebooks. Each part stays below the context limit of one hook (see `rulebooks.change`).
 
