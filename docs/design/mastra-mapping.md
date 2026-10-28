@@ -138,6 +138,10 @@ Decision: a rule scope is a typed object (nodes, stages, fields), not a Mastra p
 
 ## Models `mastra.models`
 
+- Each stage agent runs on the Claude CLI by default, through `ClaudeSDKAgent` (`@mastra/claude`). The CLI keeps its own agent loop. The harness tools reach it through one MCP server on `@mastra/mcp` 1.18.0, because the Cursor CLI cannot read the 2.x protocol yet. Verified ([the CLI spike](../research/2026-10-28-mastra-cli-spike/README.md)).
+
+- Each run isolates the settings of the CLI (`settingSources: []`), so that the CLI does not load its full context.
+
 - Each agent and each judge names its model as `provider/model` through the Mastra model router. Before the first use, check each id with the provider registry script of the `mastra` skill (`rules.mastra`).
 
 - A judge uses a model from another provider than the drafter. A held-out judge must use another provider than the editors (`improve.boundaries.firewall`).

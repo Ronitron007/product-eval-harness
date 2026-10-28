@@ -53,3 +53,4 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [research/2026-10-24-mastra-probes/README.md](research/2026-10-24-mastra-probes/README.md) | The type-check probes behind the Mastra claims |
 | [research/2026-10-24-look-before-you-build.md](research/2026-10-24-look-before-you-build.md) | What exists, and why the harness builds the rest |
 | [research/2026-10-25-scaffold-look-before-you-build.md](research/2026-10-25-scaffold-look-before-you-build.md) | The Mastra boilerplate that the scaffold starts from, and what it adds |
+| [research/2026-10-28-mastra-cli-spike/README.md](research/2026-10-28-mastra-cli-spike/README.md) | Mastra with the Claude CLI and the Cursor CLI: SDK agents, one MCP tool server, and its traps |
