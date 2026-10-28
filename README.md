@@ -25,7 +25,13 @@ You need Node.js 22.13 or later.
    npm test
    ```
 
-3. To open Mastra Studio, copy `.env.example` to `.env`. Set `HARNESS_DATABASE_URL` to an absolute file URL in your clone. Then run `npm run dev`. Studio opens at `http://localhost:4111`.
+3. Check the stage rules in `rules/` and their lock:
+
+   ```bash
+   npm run rules:check
+   ```
+
+4. To open Mastra Studio, copy `.env.example` to `.env`. Set `HARNESS_DATABASE_URL` to an absolute file URL in your clone. Then run `npm run dev`. Studio opens at `http://localhost:4111`.
 
 The npm scripts turn off the usage telemetry of the Mastra CLI.
 

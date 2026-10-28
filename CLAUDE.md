@@ -10,6 +10,7 @@ This file is a routing index. The rules of this repo are in `.claude/rulebooks/`
 | How the rulebooks load, and how to change them | `.claude/rulebooks/README.md` |
 | The harness design, the research, the plan, and the decisions trail | `docs/README.md` (the docs hub) |
 | Install, type check, test, and Studio | `README.md` (`Develop`) |
+| Stage rules: the YAML files, the lock, and how to change a rule | `rules/README.md` |
 | Mastra code | `.claude/rulebooks/mastra.md`, then the `mastra` skill in `.agents/skills/mastra/` |
 
 ## Rules that this file adds
