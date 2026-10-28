@@ -132,7 +132,7 @@ The compiler (`enforce.compile`) is our code. For one stage run at one node, it 
 
 5. Make one scorer for each `code_check` rule and each `judgement` rule. The scorer id holds the rule id and version, such as `criteria.attribute_is_product@1`.
 
-Decision: the stage rules are YAML files in `rules/`, one rule in each file. Code validates each file with Zod at load time and in CI. The version hash covers the canonical JSON of the statement, the reason, the kind, the scope, the binding, the `judge` field, and the examples (`enforce.rule_record`). We do not use the Mastra editor for rules.
+Decision: the stage rules are YAML files in `rules/`, one rule in each file. Code validates each file with Zod at load time and in CI. The version hash covers the canonical JSON of the statement, the reason, the kind, the scope, the binding, the `judge` field, the `check` field, and the examples (`enforce.rule_record`). Code: `src/rules/` ([#9](https://github.com/Ronitron007/product-eval-harness/pull/9)). We do not use the Mastra editor for rules.
 
 Decision: a rule scope is a typed object (nodes, stages, fields), not a Mastra predicate. Inheritance needs our own resolver anyway. A Mastra predicate returns false on a missing path, so a typo in a scope would make a rule apply nowhere, in silence. Verified.
 

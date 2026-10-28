@@ -33,11 +33,12 @@ Stage rules and derived rules (`graph.rule_kinds`) use the same record.
 | Field | What it holds | Why |
 |---|---|---|
 | `id` | A stable dotted name, such as `criteria.reason_has_record` | Logs, tests, and people refer to the rule by name. |
-| `version` | A number, plus a hash of the canonical JSON of the statement, the reason, the kind, the scope, the binding, the `judge` field, and the examples | Two runs with the same version used the same words. A changed word gives a new hash. |
+| `version` | A number, plus a hash of the canonical JSON (RFC 8785) of the statement, the reason, the kind, the scope, the binding, the `judge` field, the `check` field, and the examples. Each new version supersedes the version before it. `rules/rules.lock.json` holds each hash and only grows. | Two runs with the same version used the same words. A changed word gives a new hash. |
 | `statement` | The rule in plain words, as one instruction | The prompt prints these words. |
 | `judge` | For a `judgement` rule only: the judge question and its short policy. Rohan owns it. | The check stays fixed while the wording of the instruction improves (`improve.boundaries.surface`). |
 | `reason` | Why the rule exists | A judge that knows the reason decides edge cases better. A person can see if the rule still makes sense. |
 | `kind` | `shape`, `code_check`, or `judgement` | The kind tells the compiler what to make. |
+| `check` | For a `code_check` rule only: the name of its check function in the code registry, such as `min_items` | The compiler finds the code that checks the rule. |
 | `scope` | Nodes, stages, and output fields (`graph.scope`) | The harness applies the rule only where it belongs. |
 | `binding` | `strict`, `soft`, or `watch` | The binding sets what a fail does (`enforce.binding`). |
 | `examples` | Golden examples. Each has an input, an output, and the expected verdict. | The change process tests each new version on them. |

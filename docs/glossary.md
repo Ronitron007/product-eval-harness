@@ -42,6 +42,7 @@ Each term has one definition. Docs link here at the first use of a term.
 | Repair | A round in which a stage sends the exact errors back to the model, and the model fixes its output. |
 | Research record | The research or thinking work behind an output: the question, the sources with quotes, the findings, and the run. Records are append-only. |
 | Rule | One instruction, with an id, a version, a statement, a reason, a kind, a scope, a binding, golden examples, and provenance. A rule and an instruction are the same thing. |
+| Rule library | Every rule that the loader read and checked, with its hash. The compiler takes the rules in scope of one stage run from it. |
 | Rule graph | The graph of nodes that projects the category tree. Each node holds its criteria, attributes, records, rules, and, at a leaf, its pack and layout. |
 | Ruleset | The rules in scope of one stage run at one node. |
 | Ruleset judge | The part of a stage that runs each rule in scope on the output, with code checks and LLM judges. |
