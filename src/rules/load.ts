@@ -27,6 +27,7 @@ export interface RuleLibrary {
 
 export const LOCK_FILE = 'rules.lock.json'
 const NOT_RULES = new Set([LOCK_FILE, 'README.md'])
+const IGNORED = new Set(['.DS_Store'])
 
 // Lists the rule files. Each other entry is a problem, so that no rule file is skipped in silence.
 function ruleFiles(root: string, problems: RuleProblem[]): string[] {
@@ -34,7 +35,7 @@ function ruleFiles(root: string, problems: RuleProblem[]): string[] {
   for (const e of readdirSync(root, { recursive: true, withFileTypes: true })) {
     if (e.isDirectory()) continue
     const file = relative(root, join(e.parentPath, e.name))
-    if (NOT_RULES.has(file)) continue
+    if (NOT_RULES.has(file) || IGNORED.has(e.name)) continue
     if (e.isFile() && /\.ya?ml$/.test(e.name)) files.push(file)
     else problems.push({ file, field: '(file)', message: 'Only regular .yaml or .yml rule files belong in rules/. Move or rename this entry.' })
   }
