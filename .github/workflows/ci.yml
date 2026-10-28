@@ -12,6 +12,8 @@ jobs:
       MASTRA_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -21,5 +23,13 @@ jobs:
         run: npm run typecheck
       - name: Tests
         run: npm test
-      - name: Rule files and the lock
-        run: npm run rules:check
+      - name: Rule files and the lock, which only grows
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$BASE" ] && git cat-file -e "$BASE:rules/rules.lock.json" 2>/dev/null; then
+            git show "$BASE:rules/rules.lock.json" > "$RUNNER_TEMP/base.lock.json"
+            npm run rules:check -- --base "$RUNNER_TEMP/base.lock.json"
+          else
+            npm run rules:check
+          fi

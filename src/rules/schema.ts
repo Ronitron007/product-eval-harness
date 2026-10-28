@@ -25,11 +25,13 @@ export const FieldPath = z
     'Write a path such as criteria[].attributes[]: names joined by dots, with [] after a list.',
   )
 
-export const RuleScope = z.object({
-  nodes: z.union([z.object({ node: NodeId, descendants: z.boolean() }).strict(), z.object({ level: NodeLevel }).strict()]),
-  stages: z.array(Stage).min(1, 'Name at least one stage.'),
-  fields: z.array(FieldPath).min(1, 'Name at least one output field.'),
-})
+export const RuleScope = z
+  .object({
+    nodes: z.union([z.object({ node: NodeId, descendants: z.boolean() }).strict(), z.object({ level: NodeLevel }).strict()]),
+    stages: z.array(Stage).min(1, 'Name at least one stage.'),
+    fields: z.array(FieldPath).min(1, 'Name at least one output field.'),
+  })
+  .strict()
 
 export const Example = z
   .object({
@@ -84,8 +86,8 @@ export const RuleRecord = z
     if (rule.kind === 'code_check' && !rule.check) add('check', 'A code_check rule needs a check field that names its check function.')
     if (rule.kind !== 'code_check' && rule.check) add('check', 'Only a code_check rule has a check field. Remove it, or set kind to code_check.')
     if (rule.version > 1 && rule.supersedes === undefined) add('supersedes', `Version ${rule.version} must name the version it supersedes.`)
-    if (rule.supersedes !== undefined && rule.supersedes >= rule.version) {
-      add('supersedes', `supersedes must be lower than version ${rule.version}.`)
+    if (rule.supersedes !== undefined && rule.supersedes !== rule.version - 1) {
+      add('supersedes', `Version ${rule.version} must supersede version ${rule.version - 1}. Raise the version by one at a time.`)
     }
   })
 
