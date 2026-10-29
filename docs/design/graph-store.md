@@ -1,11 +1,12 @@
 # The graph store `store`
 
-Status. Spec of 2026-10-29 for `plan.graph_store`. No code implements it yet. Rohan ruled on 2026-10-29 that the authoring database is the Kyaloon Supabase Postgres database ([decisions.tsv](../decisions.tsv)). A spike on a local Postgres 18 verified the parts below ([the spike](../research/2026-10-29-postgres-spike.md)). Terms are in [glossary.md](../glossary.md).
+Status. Spec of 2026-10-29 for `plan.graph_store`. The code shipped on 2026-10-30 in [#12](https://github.com/Ronitron007/product-eval-harness/pull/12): `src/store/`, `db/migrations/`, and `db/README.md`. The migrations are not applied to the Kyaloon database yet. Rohan ruled on 2026-10-29 that the authoring database is the Kyaloon Supabase Postgres database ([decisions.tsv](../decisions.tsv)). A spike on a local Postgres 18 verified the parts below ([the spike](../research/2026-10-29-postgres-spike.md)). Terms are in [glossary.md](../glossary.md).
 
 ## Where it lives `store.place`
 
 | Part | Where | Why |
 |---|---|---|
+| `ltree` | Schema `extensions`, as on Supabase. The migration stops if `ltree` sits in another schema. | Supabase keeps extensions in `extensions`. |
 | Our graph tables | Schema `harness` in the Kyaloon Supabase database | One database for the authoring graph and the run state (`data.layers`). A schema of its own keeps it apart from the Kyaloon tables. |
 | Mastra run state | Schema `mastra` in the same database | `PostgresStore({ pool, schemaName: 'mastra' })` takes our connection pool. Verified (ran). |
 | Large artifacts and bundles | Object storage (`data.artifacts`, `data.bundles`) | The database holds their ids and hashes only. |
@@ -19,9 +20,9 @@ The Kyaloon database serves staging and production. Each migration reaches produ
 
 2. **Each migration lives in RealDose.** The migration files go into RealDose `supabase/migrations/`, like each other Kyaloon migration. Rohan runs `supabase db push` after a dry run. Claude writes the files and never applies them.
 
-3. **The harness has its own database role.** The role can read and write the schemas `harness` and `mastra` only. It cannot read or change a Kyaloon table.
+3. **The harness has its own database role, `harness_app`.** It has rights on the schemas `harness` and `mastra`, and usage on `extensions`. It has no right on a Kyaloon table. It still holds each right that Postgres gives to `PUBLIC`, such as the execute right on a public function and the right to make temporary tables. Nothing here revokes a right from `PUBLIC`, because that would change the Kyaloon database outside our schemas. Before the migration, Rohan runs the read-only `db/audit-public-grants.sql`, which lists what `PUBLIC` can reach. Verified (the review of #12 ran it).
 
-4. **Rows only grow.** A database trigger refuses each update and delete of an accepted output, a verdict, a record, and a stage run. A new run writes new rows. Verified (ran, on the verdict table).
+4. **Rows only grow.** Database triggers refuse each update, delete, and truncate of outputs, verdicts, records, stage runs, and derived rules. The role has no update or delete right on any harness table. A trigger also refuses a node whose path does not agree with its parent, and a child under a leaf. Verified (the tests of #12).
 
 5. **No credential in this repo.** The connection string comes from `HARNESS_DATABASE_URL` in the environment.
 
