@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 import { createStep, createWorkflow } from '@mastra/core/workflows'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -7,7 +9,7 @@ import { createHarness } from '../../src/mastra/harness'
 import { ruleHash } from '../../src/rules/hash'
 import { RuleRecord } from '../../src/rules/schema'
 import { createGraphStore, type GraphStore } from '../../src/store/store'
-import { freshDatabase, withUser, type TestDatabase } from '../db'
+import { applyMigrations, freshDatabase, withUser, type TestDatabase } from '../db'
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex')
 const RULE_SET = sha('rule set')
@@ -63,6 +65,23 @@ describe('addNode', () => {
     await expect(store.addNode({ id: 'tinted', parentId: 'mineral_sunscreen', level: 'leaf', label: 'Tinted' })).rejects.toThrow(/is a leaf/)
     await expect(store.addNode({ id: 'serum', parentId: 'haircare', level: 'leaf', label: 'Serum' })).rejects.toThrow(/No node haircare/)
     await expect(store.addNode({ id: 'oral', parentId: 'skincare', level: 'domain', label: 'Oral' })).rejects.toThrow(/A domain node has no parent/)
+  })
+})
+
+describe('the node path trigger', () => {
+  const insert = (id: string, parentId: string | null, level: string, path: string) =>
+    pool.query('insert into harness.nodes (id, parent_id, level, path, label) values ($1, $2, $3, $4, $1)', [id, parentId, level, path])
+
+  it('refuses a path that is not the parent path plus the id', async () => {
+    await expect(insert('gel', 'sunscreen', 'leaf', 'skincare.moisturizer.gel')).rejects.toThrow(/node gel must have the path skincare\.sunscreen\.gel/)
+  })
+
+  it('refuses a root with the path of a child', async () => {
+    await expect(insert('haircare', null, 'domain', 'skincare.haircare')).rejects.toThrow(/root node haircare must have the path haircare/)
+  })
+
+  it('refuses a child under a leaf', async () => {
+    await expect(insert('tinted', 'mineral_sunscreen', 'leaf', 'skincare.sunscreen.mineral_sunscreen.tinted')).rejects.toThrow(/parent mineral_sunscreen is a leaf/)
   })
 })
 
@@ -217,8 +236,61 @@ describe('the harness_app role', () => {
     await expect(appPool.query("insert into public.kyaloon_table values (2, 'y')")).rejects.toThrow(/permission denied for table kyaloon_table/)
   })
 
+  it('writes ltree with no schema name, through its search path', async () => {
+    const { rows } = await appPool.query("select id from harness.nodes where path <@ 'skincare.sunscreen'::ltree order by path")
+    expect(ids(rows)).toEqual(['sunscreen', 'mineral_sunscreen'])
+  })
+
   it('has no update or delete right on the graph tables', async () => {
     await expect(appPool.query("update harness.nodes set label = 'x'")).rejects.toThrow(/permission denied for table nodes/)
     await expect(appPool.query('delete from harness.verdicts')).rejects.toThrow(/permission denied for table verdicts/)
+  })
+})
+
+describe('ltree in schema extensions, as on Supabase', () => {
+  let pre: TestDatabase
+  beforeAll(async () => {
+    pre = await freshDatabase({ migrate: false })
+  })
+  afterAll(async () => {
+    await pre?.drop()
+  })
+
+  it('keeps an ltree that exists in schema extensions, and harness_app walks the tree', async () => {
+    const admin = pre.pool()
+    await admin.query('create schema extensions; create extension ltree with schema extensions')
+    await applyMigrations(pre.url)
+
+    const app = createGraphStore(pre.pool(withUser(pre.url, 'harness_app')))
+    await app.addNode({ id: 'skincare', level: 'domain', label: 'Skincare' })
+    await app.addNode({ id: 'sunscreen', parentId: 'skincare', level: 'inner', label: 'Sunscreen' })
+    expect(ids(await app.pathToRoot('sunscreen'))).toEqual(['skincare', 'sunscreen'])
+    expect(ids(await app.subtree('skincare'))).toEqual(['skincare', 'sunscreen'])
+  })
+})
+
+describe('ltree in another schema', () => {
+  let other: TestDatabase
+  beforeAll(async () => {
+    other = await freshDatabase({ migrate: false })
+  })
+  afterAll(async () => {
+    await other?.drop()
+  })
+
+  it('stops the migration with a clear error', async () => {
+    await other.pool().query('create extension ltree with schema public')
+    await expect(applyMigrations(other.url)).rejects.toThrow(/ltree is installed in schema public, but the harness needs it in schema extensions/)
+  })
+})
+
+describe('db/audit-public-grants.sql', () => {
+  it('lists the rights of PUBLIC, such as TEMPORARY on the database and a security definer function', async () => {
+    await pool.query("create function public.leak() returns int language sql security definer as 'select 1'")
+    const { rows } = await pool.query(readFileSync(join(import.meta.dirname, '..', '..', 'db', 'audit-public-grants.sql'), 'utf8'))
+    const lines = rows.map(r => `${r.kind} ${r.object} ${r.privilege_type}`)
+    expect(lines).toContain('database ' + new URL(db.url).pathname.slice(1) + ' TEMPORARY')
+    expect(lines).toContain('schema public USAGE')
+    expect(lines).toContain('security definer function public.leak() EXECUTE')
   })
 })

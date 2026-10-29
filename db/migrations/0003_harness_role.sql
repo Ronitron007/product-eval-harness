@@ -1,5 +1,16 @@
--- The database role of the harness (store.safety). It can use the schemas harness and mastra only.
--- It gets no right on any other schema, so it cannot read or change a Kyaloon table.
+-- The database role of the harness (store.safety).
+--
+-- This file grants the role these rights only:
+--   - harness: usage, and select and insert on its tables (no update, delete or truncate);
+--   - mastra: usage, and select, insert, update and delete on its tables, and its sequences;
+--   - extensions: usage, for the ltree type and operators.
+-- The role also holds each right that PUBLIC holds in the database. This file revokes nothing
+-- from PUBLIC, because that would change the live database outside the harness schemas.
+-- On a default Postgres, PUBLIC can connect, make temporary tables, use schema public, and
+-- execute each function that grants execute to PUBLIC, security definer functions too.
+-- A security definer function runs with the rights of its owner, so it can give the role rows
+-- of a table that the role cannot read. It can also read any table that grants select to PUBLIC.
+-- Review db/audit-public-grants.sql on the live database before this migration.
 --
 -- This file sets no password. After the migration, an operator sets it by hand:
 --   alter role harness_app password '<a new secret>';
@@ -9,7 +20,8 @@
 do $$
 begin
   create role harness_app login noinherit nocreatedb nocreaterole;
-exception when duplicate_object then
+-- unique_violation: two sessions that make the role at the same time.
+exception when duplicate_object or unique_violation then
   null;
 end
 $$;
@@ -26,15 +38,11 @@ grant usage, select on all sequences in schema mastra to harness_app;
 alter default privileges in schema mastra grant select, insert, update, delete on tables to harness_app;
 alter default privileges in schema mastra grant usage, select on sequences to harness_app;
 
--- The role needs the ltree type and its operators for the path column. Grant usage on the
--- schema that holds the extension (public on a plain Postgres, often extensions on Supabase).
+-- ltree lives in schema extensions (0001_harness_tables.sql). The search path lets the role
+-- write the ltree type and operators with no schema name. The setting holds in this database only.
+grant usage on schema extensions to harness_app;
 do $$
-declare
-  ltree_schema text;
 begin
-  select n.nspname into strict ltree_schema
-    from pg_extension e join pg_namespace n on n.oid = e.extnamespace
-    where e.extname = 'ltree';
-  execute format('grant usage on schema %I to harness_app', ltree_schema);
+  execute format('alter role harness_app in database %I set search_path = harness, mastra, extensions', current_database());
 end
 $$;

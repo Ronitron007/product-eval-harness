@@ -2,9 +2,21 @@
 -- src/store/schema.ts mirrors this file. tests/store/migrations.test.ts fails when they drift.
 -- Each hash column holds a lowercase sha256 hex digest, as ruleHash() in src/rules/hash.ts makes.
 
--- ltree gives the tree walks of store.tree. "if not exists" keeps an ltree that the database
--- already has, in the schema where it is (see db/README.md).
-create extension if not exists ltree;
+-- ltree gives the tree walks of store.tree. It lives in schema extensions, as on Supabase.
+-- This file names the ltree type and functions with that schema, so it needs no search_path.
+-- An ltree in another schema stops the migration with a clear error (see db/README.md).
+create schema if not exists extensions;
+do $$
+declare
+  found text;
+begin
+  select n.nspname into found from pg_extension e join pg_namespace n on n.oid = e.extnamespace where e.extname = 'ltree';
+  if found is not null and found <> 'extensions' then
+    raise exception 'ltree is installed in schema %, but the harness needs it in schema extensions', found;
+  end if;
+end
+$$;
+create extension if not exists ltree with schema extensions;
 
 create schema harness;
 
@@ -14,15 +26,52 @@ create table harness.nodes (
   id text primary key check (id ~ '^[a-z][a-z0-9_]*$'),
   parent_id text references harness.nodes (id),
   level text not null check (level in ('domain', 'inner', 'leaf')),
-  path ltree not null unique,
+  path extensions.ltree not null unique,
   label text not null check (label <> ''),
   created_at timestamptz not null default now(),
   check ((parent_id is null) = (level = 'domain')),
-  check ((parent_id is null) = (nlevel(path) = 1)),
-  check (subpath(path, -1)::text = id)
+  check ((parent_id is null) = (extensions.nlevel(path) = 1)),
+  check (extensions.subpath(path, -1)::text = id)
 );
 create index nodes_path_gist on harness.nodes using gist (path);
 create index nodes_parent_id on harness.nodes (parent_id);
+
+-- A node path is the path of its parent plus its id, and a leaf has no child.
+-- The checks above cannot read the parent row, so a trigger checks it on insert.
+create function harness.check_node_path() returns trigger
+  language plpgsql
+  set search_path = ''
+  as $$
+declare
+  parent_path text;
+  parent_level text;
+begin
+  if new.parent_id is null then
+    if new.path::text <> new.id then
+      raise exception 'harness.nodes: root node % must have the path %, not %', new.id, new.id, new.path
+        using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
+  select p.path::text, p.level into parent_path, parent_level from harness.nodes p where p.id = new.parent_id;
+  if not found then
+    raise exception 'harness.nodes: parent % of node % does not exist', new.parent_id, new.id
+      using errcode = 'foreign_key_violation';
+  end if;
+  if parent_level = 'leaf' then
+    raise exception 'harness.nodes: parent % is a leaf, so it cannot have the child %', new.parent_id, new.id
+      using errcode = 'check_violation';
+  end if;
+  if new.path::text <> parent_path || '.' || new.id then
+    raise exception 'harness.nodes: node % must have the path %.%, not %', new.id, parent_path, new.id, new.path
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end
+$$;
+
+create trigger nodes_check_path before insert on harness.nodes
+  for each row execute function harness.check_node_path();
 
 -- One row for each stage run. run_id is the Mastra run id.
 create table harness.stage_runs (

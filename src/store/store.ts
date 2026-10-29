@@ -6,8 +6,10 @@ import { ruleHash } from '../rules/hash'
 import { Binding, NodeId, NodeLevel, RuleId, RuleRecord, Stage, Verdict } from '../rules/schema'
 import { derivedRules, nodes, outputs, records, stageRuns, verdicts } from './schema'
 
-// The graph store (docs/design/graph-store.md). Writes only add rows: the store has no
-// update or delete function, and the database refuses both (store.safety).
+// The graph store (docs/design/graph-store.md). The ltree type and operators live in
+// schema extensions (db/migrations/0001_harness_tables.sql), so the queries name that schema
+// and work with any search_path. Writes only add rows: the store has no update or delete
+// function, and the database refuses both (store.safety).
 
 const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'Give a lowercase sha256 hex digest.')
 const Text = z.string().min(1)
@@ -144,8 +146,8 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
       return db
         .select()
         .from(nodes)
-        .where(sql`${nodes.path} @> ${node.path}::ltree`)
-        .orderBy(sql`nlevel(${nodes.path})`)
+        .where(sql`${nodes.path} operator(extensions.@>) ${node.path}::extensions.ltree`)
+        .orderBy(sql`extensions.nlevel(${nodes.path})`)
     },
 
     // The node first, then its descendants in path order.
@@ -154,7 +156,7 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
       return db
         .select()
         .from(nodes)
-        .where(sql`${nodes.path} <@ ${node.path}::ltree`)
+        .where(sql`${nodes.path} operator(extensions.<@) ${node.path}::extensions.ltree`)
         .orderBy(asc(nodes.path))
     },
 

@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process'
+import { join } from 'node:path'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -17,9 +19,9 @@ async function columns(pool: pg.Pool, schema: string) {
   return rows
 }
 
-async function indexes(pool: pg.Pool, schema: string) {
-  const { rows } = await pool.query('select tablename, indexname, indexdef from pg_indexes where schemaname = $1 order by indexname', [schema])
-  return rows
+// The normal form of the dump script, so that the test and the committed file agree.
+function dumpMastra(url: string): string {
+  return execFileSync(join(import.meta.dirname, '..', '..', 'scripts', 'pg-dump-mastra.sh'), [url], { encoding: 'utf8' })
 }
 
 let migrated: TestDatabase
@@ -55,14 +57,15 @@ describe('db/migrations', () => {
     expect(await columns(migrated.pool(), 'harness')).toEqual(expected)
   })
 
+  // The whole schema: tables, columns, defaults, constraints, indexes, functions and triggers.
   // Fails after a @mastra/pg upgrade until scripts/dump-mastra-schema.sh runs again.
-  it('makes the same mastra tables and indexes as storage.init() of the installed @mastra/pg', async () => {
+  it('makes the same mastra schema as storage.init() of the installed @mastra/pg', async () => {
     const pool = initialized.pool()
     await harnessStorage(pool, { disableInit: false }).init()
 
-    const fromInit = await columns(pool, 'mastra')
-    expect(new Set(fromInit.map(c => c.table_name)).size).toBeGreaterThan(30)
-    expect(await columns(migrated.pool(), 'mastra')).toEqual(fromInit)
-    expect(await indexes(migrated.pool(), 'mastra')).toEqual(await indexes(pool, 'mastra'))
+    const fromInit = dumpMastra(initialized.url)
+    expect(fromInit.match(/^CREATE TABLE /gm)?.length).toBeGreaterThan(30)
+    expect(fromInit).toMatch(/^CREATE TRIGGER /m)
+    expect(dumpMastra(migrated.url)).toBe(fromInit)
   })
 })

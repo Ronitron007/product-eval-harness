@@ -18,7 +18,7 @@ You need Node.js 22.13 or later.
    npm ci
    ```
 
-2. Start a throwaway local Postgres for the tests. The script needs Postgres 18, for example Homebrew `postgresql@18`. It prints a line. Export that line:
+2. Start a throwaway local Postgres for the tests. The script and the tests need Postgres 18 with `pg_dump`, for example Homebrew `postgresql@18`. It prints a line. Export that line:
 
    ```bash
    scripts/test-db.sh start

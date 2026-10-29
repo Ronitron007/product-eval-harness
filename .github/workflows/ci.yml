@@ -25,6 +25,8 @@ jobs:
     env:
       MASTRA_TELEMETRY_DISABLED: '1'
       HARNESS_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+      # pg_dump must be at least the server version, for the Mastra schema test.
+      PG_BIN: /usr/lib/postgresql/18/bin
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,6 +36,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: pg_dump 18
+        run: |
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
       - name: Type check
         run: npm run typecheck
       - name: Tests
