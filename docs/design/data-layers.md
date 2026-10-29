@@ -76,7 +76,7 @@ flowchart LR
 
 Rohan said on 2026-10-25 that he is not yet sure what lives where, and that it is a major piece of work. These choices stay open:
 
-- The store of the authoring database, for example hosted Postgres or hosted LibSQL. Locally, tests and development use a LibSQL file or memory.
+- The store of the authoring database. Decided on 2026-10-29: the Kyaloon Supabase Postgres database, in the schemas `harness` and `mastra` ([graph-store.md](graph-store.md)).
 
 - The object storage, for example R2, and whether its read endpoints are public.
 
