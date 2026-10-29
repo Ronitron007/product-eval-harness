@@ -8,8 +8,23 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # A throwaway Postgres for the tests. The official image has ltree as a contrib extension.
+    # Trust auth lets the tests log in as the harness_app role, which has no password.
+    services:
+      postgres:
+        image: postgres:18.3
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
     env:
       MASTRA_TELEMETRY_DISABLED: '1'
+      HARNESS_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
     steps:
       - uses: actions/checkout@v4
         with:

@@ -1,10 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { createStep, createWorkflow } from '@mastra/core/workflows'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createHarness, resolveDatabaseUrl } from '../src/mastra/harness'
+import { freshDatabase, type TestDatabase } from './db'
 
 const Count = z.object({ n: z.number() })
 
@@ -17,14 +15,17 @@ const double = createStep({
 
 const smoke = createWorkflow({ id: 'smoke', inputSchema: Count, outputSchema: Count }).then(double).commit()
 
-const tempDirs: string[] = []
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
-})
+describe('createHarness on PostgresStore', () => {
+  let db: TestDatabase
+  beforeAll(async () => {
+    db = await freshDatabase()
+  })
+  afterAll(async () => {
+    await db?.drop()
+  })
 
-describe('createHarness', () => {
-  it('runs a workflow on in-memory LibSQL storage with no model call', async () => {
-    const harness = createHarness({ databaseUrl: ':memory:', workflows: { smoke } })
+  it('runs a workflow on the migrated mastra schema, with init disabled and no model call', async () => {
+    const harness = createHarness({ pool: db.pool(), workflows: { smoke } })
 
     const run = await harness.getWorkflow('smoke').createRun()
     const result = await run.start({ inputData: { n: 21 } })
@@ -33,16 +34,12 @@ describe('createHarness', () => {
     expect(result.status === 'success' && result.result).toEqual({ n: 42 })
   })
 
-  it('stores the run in the LibSQL database, so a second harness reads it back', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'harness-test-'))
-    tempDirs.push(dir)
-    const databaseUrl = `file:${join(dir, 'harness.db')}`
-
-    const writer = createHarness({ databaseUrl, workflows: { smoke } })
+  it('stores the run in Postgres, so a harness on a second pool reads it back', async () => {
+    const writer = createHarness({ pool: db.pool(), workflows: { smoke } })
     const run = await writer.getWorkflow('smoke').createRun()
     await run.start({ inputData: { n: 1 } })
 
-    const reader = createHarness({ databaseUrl, workflows: { smoke } })
+    const reader = createHarness({ pool: db.pool(), workflows: { smoke } })
     const stored = await reader.getWorkflow('smoke').getWorkflowRunById(run.runId)
 
     expect(stored?.runId).toBe(run.runId)
@@ -50,14 +47,36 @@ describe('createHarness', () => {
   })
 })
 
-describe('resolveDatabaseUrl', () => {
-  it('accepts an absolute file URL and a remote URL', () => {
-    expect(resolveDatabaseUrl('file:/data/harness.db')).toBe('file:/data/harness.db')
-    expect(resolveDatabaseUrl('libsql://harness.example.com')).toBe('libsql://harness.example.com')
+describe('disableInit', () => {
+  let empty: TestDatabase
+  beforeAll(async () => {
+    empty = await freshDatabase({ migrate: false })
+  })
+  afterAll(async () => {
+    await empty?.drop()
   })
 
-  it('refuses a missing URL and a relative file URL', () => {
+  it('creates no table: init does nothing, and a run fails on the missing tables', async () => {
+    const pool = empty.pool()
+    const harness = createHarness({ pool, workflows: { smoke }, disableInit: true })
+    await harness.getStorage()?.init()
+    await expect(harness.getWorkflow('smoke').createRun()).rejects.toThrow(/mastra_workflow_snapshot" does not exist/)
+
+    const { rows } = await pool.query<{ n: number }>(
+      "select count(*)::int as n from pg_class c join pg_namespace s on s.oid = c.relnamespace where s.nspname not in ('pg_catalog', 'information_schema', 'pg_toast')",
+    )
+    expect(rows[0]!.n).toBe(0)
+  })
+})
+
+describe('resolveDatabaseUrl', () => {
+  it('accepts a Postgres URL', () => {
+    expect(resolveDatabaseUrl('postgresql://harness_app@db.example.com:5432/postgres')).toBe('postgresql://harness_app@db.example.com:5432/postgres')
+    expect(resolveDatabaseUrl('postgres://localhost/harness')).toBe('postgres://localhost/harness')
+  })
+
+  it('refuses a missing URL and a URL of another database', () => {
     expect(() => resolveDatabaseUrl(undefined)).toThrow(/Set HARNESS_DATABASE_URL/)
-    expect(() => resolveDatabaseUrl('file:./harness.db')).toThrow(/absolute file URL/)
+    expect(() => resolveDatabaseUrl('file:/data/harness.db')).toThrow(/must be a Postgres URL/)
   })
 })

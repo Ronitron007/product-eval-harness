@@ -18,20 +18,33 @@ You need Node.js 22.13 or later.
    npm ci
    ```
 
-2. Run the type check and the tests. The tests call no model.
+2. Start a throwaway local Postgres for the tests. The script needs Postgres 18, for example Homebrew `postgresql@18`. It prints a line. Export that line:
+
+   ```bash
+   scripts/test-db.sh start
+   export HARNESS_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:<port>/postgres
+   ```
+
+3. Run the type check and the tests. The tests call no model and use no network. Each test file makes its own database, applies `db/migrations/`, and drops the database after. Without `HARNESS_TEST_DATABASE_URL`, the tests fail.
 
    ```bash
    npm run typecheck
    npm test
    ```
 
-3. Check the stage rules in `rules/` and their lock:
+4. Stop the test database. This step deletes its data:
+
+   ```bash
+   scripts/test-db.sh stop
+   ```
+
+5. Check the stage rules in `rules/` and their lock:
 
    ```bash
    npm run rules:check
    ```
 
-4. To open Mastra Studio, copy `.env.example` to `.env`. Set `HARNESS_DATABASE_URL` to an absolute file URL in your clone. Then run `npm run dev`. Studio opens at `http://localhost:4111`.
+6. To open Mastra Studio, copy `.env.example` to `.env`. Set `HARNESS_DATABASE_URL` to a Postgres database that has the migrations of `db/migrations/`. Then run `npm run dev`. Studio opens at `http://localhost:4111`. The harness never creates tables (`db/README.md`).
 
 The npm scripts turn off the usage telemetry of the Mastra CLI.
 
