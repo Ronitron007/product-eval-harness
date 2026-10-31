@@ -2,6 +2,7 @@
 # Writes db/migrations/0002_mastra_schema.sql: the tables that storage.init() of
 # PostgresStore makes in schema mastra. It starts its own throwaway local Postgres,
 # runs init once, dumps the schema, and stops the server. It never touches a remote database.
+# scripts/idempotent-mastra-dump.awk makes each statement safe to run twice.
 # Run it again after each @mastra/pg upgrade. tests/store/migrations.test.ts fails when the file is out of date.
 set -euo pipefail
 
@@ -22,7 +23,10 @@ MASTRA_PG="$(node -p "require('$ROOT/node_modules/@mastra/pg/package.json').vers
   echo "-- (--schema-only --schema=mastra --no-owner --no-privileges)."
   echo "-- scripts/pg-dump-mastra.sh removes the session SET lines and the psql \\restrict lines of pg_dump,"
   echo "-- so that the file is plain SQL that leaves the session settings as they were."
+  echo "-- scripts/idempotent-mastra-dump.awk then rewrites each statement so that a second run changes nothing."
+  echo "-- 0003_harness_role.sql turns on row level security and revokes execute on the functions."
   echo
-  "$ROOT/scripts/pg-dump-mastra.sh" "$URL"
-} > "$OUT"
+  "$ROOT/scripts/pg-dump-mastra.sh" "$URL" | awk -f "$ROOT/scripts/idempotent-mastra-dump.awk"
+} > "$OUT.tmp"
+mv "$OUT.tmp" "$OUT"
 echo "Wrote $OUT"

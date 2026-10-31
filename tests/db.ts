@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import pg from 'pg'
 
@@ -26,8 +27,8 @@ export function migrationFiles(): string[] {
 }
 
 // Each file runs on its own connection, as a migration tool runs it.
-export async function applyMigrations(url: string): Promise<void> {
-  for (const file of migrationFiles()) {
+export async function applyMigrations(url: string, files: string[] = migrationFiles()): Promise<void> {
+  for (const file of files) {
     const client = new pg.Client({ connectionString: url })
     await client.connect()
     try {
@@ -82,4 +83,30 @@ export async function freshDatabase({ migrate = true }: { migrate?: boolean } = 
       await c.end()
     },
   }
+}
+
+// The roles that Supabase makes in each project: the public-key roles anon and authenticated,
+// and service_role. A role belongs to the whole cluster, so this keeps a role that exists.
+export async function supabaseRoles(): Promise<void> {
+  const client = new pg.Client({ connectionString: adminUrl() })
+  await client.connect()
+  try {
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      await client.query(`do $$ begin create role ${role} nologin; exception when duplicate_object or unique_violation then null; end $$`)
+    }
+  } finally {
+    await client.end()
+  }
+}
+
+// The pg_dump of the database at url, with the args, less the lines that change on each run.
+// PG_BIN sets the folder of pg_dump, as in scripts/pg-dump-mastra.sh.
+export function pgDump(url: string, args: string[]): string {
+  const brew = '/opt/homebrew/opt/postgresql@18/bin'
+  const bin = process.env.PG_BIN ?? (existsSync(join(brew, 'pg_dump')) ? brew : '')
+  const out = execFileSync(bin ? join(bin, 'pg_dump') : 'pg_dump', [...args, url], { encoding: 'utf8' })
+  return out
+    .split('\n')
+    .filter(line => !/^\\(restrict|unrestrict) /.test(line))
+    .join('\n')
 }

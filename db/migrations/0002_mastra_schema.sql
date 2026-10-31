@@ -4,6 +4,8 @@
 -- (--schema-only --schema=mastra --no-owner --no-privileges).
 -- scripts/pg-dump-mastra.sh removes the session SET lines and the psql \restrict lines of pg_dump,
 -- so that the file is plain SQL that leaves the session settings as they were.
+-- scripts/idempotent-mastra-dump.awk then rewrites each statement so that a second run changes nothing.
+-- 0003_harness_role.sql turns on row level security and revokes execute on the functions.
 
 --
 -- PostgreSQL database dump
@@ -16,13 +18,13 @@
 -- Name: mastra; Type: SCHEMA; Schema: -; Owner: -
 --
 
-CREATE SCHEMA mastra;
+CREATE SCHEMA IF NOT EXISTS mastra;
 
 --
 -- Name: trigger_set_timestamps(); Type: FUNCTION; Schema: mastra; Owner: -
 --
 
-CREATE FUNCTION mastra.trigger_set_timestamps() RETURNS trigger
+CREATE OR REPLACE FUNCTION mastra.trigger_set_timestamps() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
@@ -45,7 +47,7 @@ $$;
 -- Name: mastra_agent_versions; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_agent_versions (
+CREATE TABLE IF NOT EXISTS mastra.mastra_agent_versions (
     id text NOT NULL,
     "agentId" text NOT NULL,
     "versionNumber" integer NOT NULL,
@@ -80,7 +82,7 @@ CREATE TABLE mastra.mastra_agent_versions (
 -- Name: mastra_agents; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_agents (
+CREATE TABLE IF NOT EXISTS mastra.mastra_agents (
     id text NOT NULL,
     status text NOT NULL,
     "activeVersionId" text,
@@ -98,7 +100,7 @@ CREATE TABLE mastra.mastra_agents (
 -- Name: mastra_ai_spans; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_ai_spans (
+CREATE TABLE IF NOT EXISTS mastra.mastra_ai_spans (
     "traceId" text NOT NULL,
     "spanId" text NOT NULL,
     name text NOT NULL,
@@ -155,7 +157,7 @@ CREATE TABLE mastra.mastra_ai_spans (
 -- Name: mastra_background_tasks; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_background_tasks (
+CREATE TABLE IF NOT EXISTS mastra.mastra_background_tasks (
     id text NOT NULL,
     tool_call_id text NOT NULL,
     tool_name text NOT NULL,
@@ -188,7 +190,7 @@ CREATE TABLE mastra.mastra_background_tasks (
 -- Name: mastra_channel_config; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_channel_config (
+CREATE TABLE IF NOT EXISTS mastra.mastra_channel_config (
     platform text NOT NULL,
     data jsonb NOT NULL,
     "updatedAt" timestamp without time zone NOT NULL,
@@ -199,7 +201,7 @@ CREATE TABLE mastra.mastra_channel_config (
 -- Name: mastra_channel_installations; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_channel_installations (
+CREATE TABLE IF NOT EXISTS mastra.mastra_channel_installations (
     id text NOT NULL,
     platform text NOT NULL,
     "agentId" text NOT NULL,
@@ -218,7 +220,7 @@ CREATE TABLE mastra.mastra_channel_installations (
 -- Name: mastra_dataset_items; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_dataset_items (
+CREATE TABLE IF NOT EXISTS mastra.mastra_dataset_items (
     id text NOT NULL,
     "datasetId" text NOT NULL,
     "datasetVersion" integer NOT NULL,
@@ -246,7 +248,7 @@ CREATE TABLE mastra.mastra_dataset_items (
 -- Name: mastra_dataset_versions; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_dataset_versions (
+CREATE TABLE IF NOT EXISTS mastra.mastra_dataset_versions (
     id text NOT NULL,
     "datasetId" text NOT NULL,
     version integer NOT NULL,
@@ -258,7 +260,7 @@ CREATE TABLE mastra.mastra_dataset_versions (
 -- Name: mastra_datasets; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_datasets (
+CREATE TABLE IF NOT EXISTS mastra.mastra_datasets (
     id text NOT NULL,
     name text NOT NULL,
     description text,
@@ -285,7 +287,7 @@ CREATE TABLE mastra.mastra_datasets (
 -- Name: mastra_experiment_results; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_experiment_results (
+CREATE TABLE IF NOT EXISTS mastra.mastra_experiment_results (
     id text NOT NULL,
     "experimentId" text NOT NULL,
     "itemId" text NOT NULL,
@@ -316,7 +318,7 @@ CREATE TABLE mastra.mastra_experiment_results (
 -- Name: mastra_experiments; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_experiments (
+CREATE TABLE IF NOT EXISTS mastra.mastra_experiments (
     id text NOT NULL,
     name text,
     description text,
@@ -354,7 +356,7 @@ CREATE TABLE mastra.mastra_experiments (
 -- Name: mastra_favorites; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_favorites (
+CREATE TABLE IF NOT EXISTS mastra.mastra_favorites (
     "userId" text NOT NULL,
     "entityType" text NOT NULL,
     "entityId" text NOT NULL,
@@ -366,7 +368,7 @@ CREATE TABLE mastra.mastra_favorites (
 -- Name: mastra_mcp_client_versions; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_mcp_client_versions (
+CREATE TABLE IF NOT EXISTS mastra.mastra_mcp_client_versions (
     id text NOT NULL,
     "mcpClientId" text NOT NULL,
     "versionNumber" integer NOT NULL,
@@ -383,7 +385,7 @@ CREATE TABLE mastra.mastra_mcp_client_versions (
 -- Name: mastra_mcp_clients; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_mcp_clients (
+CREATE TABLE IF NOT EXISTS mastra.mastra_mcp_clients (
     id text NOT NULL,
     status text NOT NULL,
     "activeVersionId" text,
@@ -399,7 +401,7 @@ CREATE TABLE mastra.mastra_mcp_clients (
 -- Name: mastra_mcp_server_versions; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_mcp_server_versions (
+CREATE TABLE IF NOT EXISTS mastra.mastra_mcp_server_versions (
     id text NOT NULL,
     "mcpServerId" text NOT NULL,
     "versionNumber" integer NOT NULL,
@@ -424,7 +426,7 @@ CREATE TABLE mastra.mastra_mcp_server_versions (
 -- Name: mastra_mcp_servers; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_mcp_servers (
+CREATE TABLE IF NOT EXISTS mastra.mastra_mcp_servers (
     id text NOT NULL,
     status text NOT NULL,
     "activeVersionId" text,
@@ -440,7 +442,7 @@ CREATE TABLE mastra.mastra_mcp_servers (
 -- Name: mastra_memory_run_fences; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_memory_run_fences (
+CREATE TABLE IF NOT EXISTS mastra.mastra_memory_run_fences (
     "runId" text NOT NULL,
     generation bigint NOT NULL,
     "ownerId" text NOT NULL,
@@ -451,7 +453,7 @@ CREATE TABLE mastra.mastra_memory_run_fences (
 -- Name: mastra_messages; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_messages (
+CREATE TABLE IF NOT EXISTS mastra.mastra_messages (
     id text NOT NULL,
     thread_id text NOT NULL,
     content text NOT NULL,
@@ -466,7 +468,7 @@ CREATE TABLE mastra.mastra_messages (
 -- Name: mastra_notifications; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_notifications (
+CREATE TABLE IF NOT EXISTS mastra.mastra_notifications (
     id text NOT NULL,
     "threadId" text NOT NULL,
     source text NOT NULL,
@@ -514,7 +516,7 @@ CREATE TABLE mastra.mastra_notifications (
 -- Name: mastra_observational_memory; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_observational_memory (
+CREATE TABLE IF NOT EXISTS mastra.mastra_observational_memory (
     id text NOT NULL,
     "lookupKey" text NOT NULL,
     scope text NOT NULL,
@@ -561,7 +563,7 @@ CREATE TABLE mastra.mastra_observational_memory (
 -- Name: mastra_prompt_block_versions; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_prompt_block_versions (
+CREATE TABLE IF NOT EXISTS mastra.mastra_prompt_block_versions (
     id text NOT NULL,
     "blockId" text NOT NULL,
     "versionNumber" integer NOT NULL,
@@ -580,7 +582,7 @@ CREATE TABLE mastra.mastra_prompt_block_versions (
 -- Name: mastra_prompt_blocks; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_prompt_blocks (
+CREATE TABLE IF NOT EXISTS mastra.mastra_prompt_blocks (
     id text NOT NULL,
     status text NOT NULL,
     "activeVersionId" text,
@@ -596,7 +598,7 @@ CREATE TABLE mastra.mastra_prompt_blocks (
 -- Name: mastra_resources; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_resources (
+CREATE TABLE IF NOT EXISTS mastra.mastra_resources (
     id text NOT NULL,
     "workingMemory" text,
     metadata jsonb,
@@ -610,7 +612,7 @@ CREATE TABLE mastra.mastra_resources (
 -- Name: mastra_schedule_triggers; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_schedule_triggers (
+CREATE TABLE IF NOT EXISTS mastra.mastra_schedule_triggers (
     id text NOT NULL,
     schedule_id text NOT NULL,
     run_id text,
@@ -627,7 +629,7 @@ CREATE TABLE mastra.mastra_schedule_triggers (
 -- Name: mastra_schedules; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_schedules (
+CREATE TABLE IF NOT EXISTS mastra.mastra_schedules (
     id text NOT NULL,
     target jsonb NOT NULL,
     cron text NOT NULL,
@@ -647,7 +649,7 @@ CREATE TABLE mastra.mastra_schedules (
 -- Name: mastra_scorer_definition_versions; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_scorer_definition_versions (
+CREATE TABLE IF NOT EXISTS mastra.mastra_scorer_definition_versions (
     id text NOT NULL,
     "scorerDefinitionId" text NOT NULL,
     "versionNumber" integer NOT NULL,
@@ -669,7 +671,7 @@ CREATE TABLE mastra.mastra_scorer_definition_versions (
 -- Name: mastra_scorer_definitions; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_scorer_definitions (
+CREATE TABLE IF NOT EXISTS mastra.mastra_scorer_definitions (
     id text NOT NULL,
     status text NOT NULL,
     "activeVersionId" text,
@@ -687,7 +689,7 @@ CREATE TABLE mastra.mastra_scorer_definitions (
 -- Name: mastra_scorers; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_scorers (
+CREATE TABLE IF NOT EXISTS mastra.mastra_scorers (
     id text NOT NULL,
     "scorerId" text NOT NULL,
     "traceId" text,
@@ -731,7 +733,7 @@ CREATE TABLE mastra.mastra_scorers (
 -- Name: mastra_skill_blobs; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_skill_blobs (
+CREATE TABLE IF NOT EXISTS mastra.mastra_skill_blobs (
     hash text NOT NULL,
     content text NOT NULL,
     size integer NOT NULL,
@@ -744,7 +746,7 @@ CREATE TABLE mastra.mastra_skill_blobs (
 -- Name: mastra_skill_versions; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_skill_versions (
+CREATE TABLE IF NOT EXISTS mastra.mastra_skill_versions (
     id text NOT NULL,
     "skillId" text NOT NULL,
     "versionNumber" integer NOT NULL,
@@ -770,7 +772,7 @@ CREATE TABLE mastra.mastra_skill_versions (
 -- Name: mastra_skills; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_skills (
+CREATE TABLE IF NOT EXISTS mastra.mastra_skills (
     id text NOT NULL,
     status text NOT NULL,
     "activeVersionId" text,
@@ -787,7 +789,7 @@ CREATE TABLE mastra.mastra_skills (
 -- Name: mastra_thread_state; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_thread_state (
+CREATE TABLE IF NOT EXISTS mastra.mastra_thread_state (
     "threadId" text NOT NULL,
     type text NOT NULL,
     value jsonb NOT NULL,
@@ -801,7 +803,7 @@ CREATE TABLE mastra.mastra_thread_state (
 -- Name: mastra_threads; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_threads (
+CREATE TABLE IF NOT EXISTS mastra.mastra_threads (
     id text NOT NULL,
     "resourceId" text NOT NULL,
     title text NOT NULL,
@@ -816,7 +818,7 @@ CREATE TABLE mastra.mastra_threads (
 -- Name: mastra_tool_provider_connections; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_tool_provider_connections (
+CREATE TABLE IF NOT EXISTS mastra.mastra_tool_provider_connections (
     "authorId" text NOT NULL,
     "providerId" text NOT NULL,
     "connectionId" text NOT NULL,
@@ -833,7 +835,7 @@ CREATE TABLE mastra.mastra_tool_provider_connections (
 -- Name: mastra_workflow_definitions; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_workflow_definitions (
+CREATE TABLE IF NOT EXISTS mastra.mastra_workflow_definitions (
     id text NOT NULL,
     description text,
     metadata jsonb,
@@ -856,7 +858,7 @@ CREATE TABLE mastra.mastra_workflow_definitions (
 -- Name: mastra_workflow_run_owners; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_workflow_run_owners (
+CREATE TABLE IF NOT EXISTS mastra.mastra_workflow_run_owners (
     "runId" text NOT NULL,
     generation bigint NOT NULL,
     "ownerId" text NOT NULL,
@@ -868,7 +870,7 @@ CREATE TABLE mastra.mastra_workflow_run_owners (
 -- Name: mastra_workflow_snapshot; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_workflow_snapshot (
+CREATE TABLE IF NOT EXISTS mastra.mastra_workflow_snapshot (
     workflow_name text NOT NULL,
     run_id text NOT NULL,
     "resourceId" text,
@@ -883,7 +885,7 @@ CREATE TABLE mastra.mastra_workflow_snapshot (
 -- Name: mastra_workspace_versions; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_workspace_versions (
+CREATE TABLE IF NOT EXISTS mastra.mastra_workspace_versions (
     id text NOT NULL,
     "workspaceId" text NOT NULL,
     "versionNumber" integer NOT NULL,
@@ -907,7 +909,7 @@ CREATE TABLE mastra.mastra_workspace_versions (
 -- Name: mastra_workspaces; Type: TABLE; Schema: mastra; Owner: -
 --
 
-CREATE TABLE mastra.mastra_workspaces (
+CREATE TABLE IF NOT EXISTS mastra.mastra_workspaces (
     id text NOT NULL,
     status text NOT NULL,
     "activeVersionId" text,
@@ -923,92 +925,170 @@ CREATE TABLE mastra.mastra_workspaces (
 -- Name: mastra_agent_versions mastra_agent_versions_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_agent_versions
-    ADD CONSTRAINT mastra_agent_versions_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_agent_versions'::regclass AND conname = 'mastra_agent_versions_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_agent_versions
+        ADD CONSTRAINT mastra_agent_versions_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_agents mastra_agents_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_agents
-    ADD CONSTRAINT mastra_agents_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_agents'::regclass AND conname = 'mastra_agents_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_agents
+        ADD CONSTRAINT mastra_agents_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_background_tasks mastra_background_tasks_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_background_tasks
-    ADD CONSTRAINT mastra_background_tasks_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_background_tasks'::regclass AND conname = 'mastra_background_tasks_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_background_tasks
+        ADD CONSTRAINT mastra_background_tasks_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_channel_config mastra_channel_config_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_channel_config
-    ADD CONSTRAINT mastra_channel_config_pkey PRIMARY KEY (platform);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_channel_config'::regclass AND conname = 'mastra_channel_config_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_channel_config
+        ADD CONSTRAINT mastra_channel_config_pkey PRIMARY KEY (platform);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_channel_installations mastra_channel_installations_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_channel_installations
-    ADD CONSTRAINT mastra_channel_installations_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_channel_installations'::regclass AND conname = 'mastra_channel_installations_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_channel_installations
+        ADD CONSTRAINT mastra_channel_installations_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_dataset_items mastra_dataset_items_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_dataset_items
-    ADD CONSTRAINT mastra_dataset_items_pkey PRIMARY KEY (id, "datasetVersion");
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_dataset_items'::regclass AND conname = 'mastra_dataset_items_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_dataset_items
+        ADD CONSTRAINT mastra_dataset_items_pkey PRIMARY KEY (id, "datasetVersion");
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_dataset_versions mastra_dataset_versions_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_dataset_versions
-    ADD CONSTRAINT mastra_dataset_versions_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_dataset_versions'::regclass AND conname = 'mastra_dataset_versions_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_dataset_versions
+        ADD CONSTRAINT mastra_dataset_versions_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_datasets mastra_datasets_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_datasets
-    ADD CONSTRAINT mastra_datasets_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_datasets'::regclass AND conname = 'mastra_datasets_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_datasets
+        ADD CONSTRAINT mastra_datasets_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_experiment_results mastra_experiment_results_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_experiment_results
-    ADD CONSTRAINT mastra_experiment_results_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_experiment_results'::regclass AND conname = 'mastra_experiment_results_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_experiment_results
+        ADD CONSTRAINT mastra_experiment_results_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_experiments mastra_experiments_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_experiments
-    ADD CONSTRAINT mastra_experiments_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_experiments'::regclass AND conname = 'mastra_experiments_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_experiments
+        ADD CONSTRAINT mastra_experiments_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_favorites mastra_favorites_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_favorites
-    ADD CONSTRAINT mastra_favorites_pkey PRIMARY KEY ("userId", "entityType", "entityId");
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_favorites'::regclass AND conname = 'mastra_favorites_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_favorites
+        ADD CONSTRAINT mastra_favorites_pkey PRIMARY KEY ("userId", "entityType", "entityId");
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_ai_spans mastra_mastra_ai_spans_traceid_spanid_pk; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_ai_spans
-    ADD CONSTRAINT mastra_mastra_ai_spans_traceid_spanid_pk PRIMARY KEY ("traceId", "spanId");
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_ai_spans'::regclass AND conname = 'mastra_mastra_ai_spans_traceid_spanid_pk') THEN
+    ALTER TABLE ONLY mastra.mastra_ai_spans
+        ADD CONSTRAINT mastra_mastra_ai_spans_traceid_spanid_pk PRIMARY KEY ("traceId", "spanId");
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_workflow_snapshot mastra_mastra_workflow_snapshot_workflow_name_run_id_key; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_workflow_snapshot
-    ADD CONSTRAINT mastra_mastra_workflow_snapshot_workflow_name_run_id_key UNIQUE (workflow_name, run_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_workflow_snapshot'::regclass AND conname = 'mastra_mastra_workflow_snapshot_workflow_name_run_id_key') THEN
+    ALTER TABLE ONLY mastra.mastra_workflow_snapshot
+        ADD CONSTRAINT mastra_mastra_workflow_snapshot_workflow_name_run_id_key UNIQUE (workflow_name, run_id);
+  END IF;
+END
+$$;
 
 ALTER TABLE ONLY mastra.mastra_workflow_snapshot REPLICA IDENTITY USING INDEX mastra_mastra_workflow_snapshot_workflow_name_run_id_key;
 
@@ -1016,507 +1096,663 @@ ALTER TABLE ONLY mastra.mastra_workflow_snapshot REPLICA IDENTITY USING INDEX ma
 -- Name: mastra_mcp_client_versions mastra_mcp_client_versions_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_mcp_client_versions
-    ADD CONSTRAINT mastra_mcp_client_versions_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_mcp_client_versions'::regclass AND conname = 'mastra_mcp_client_versions_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_mcp_client_versions
+        ADD CONSTRAINT mastra_mcp_client_versions_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_mcp_clients mastra_mcp_clients_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_mcp_clients
-    ADD CONSTRAINT mastra_mcp_clients_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_mcp_clients'::regclass AND conname = 'mastra_mcp_clients_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_mcp_clients
+        ADD CONSTRAINT mastra_mcp_clients_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_mcp_server_versions mastra_mcp_server_versions_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_mcp_server_versions
-    ADD CONSTRAINT mastra_mcp_server_versions_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_mcp_server_versions'::regclass AND conname = 'mastra_mcp_server_versions_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_mcp_server_versions
+        ADD CONSTRAINT mastra_mcp_server_versions_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_mcp_servers mastra_mcp_servers_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_mcp_servers
-    ADD CONSTRAINT mastra_mcp_servers_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_mcp_servers'::regclass AND conname = 'mastra_mcp_servers_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_mcp_servers
+        ADD CONSTRAINT mastra_mcp_servers_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_memory_run_fences mastra_memory_run_fences_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_memory_run_fences
-    ADD CONSTRAINT mastra_memory_run_fences_pkey PRIMARY KEY ("runId");
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_memory_run_fences'::regclass AND conname = 'mastra_memory_run_fences_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_memory_run_fences
+        ADD CONSTRAINT mastra_memory_run_fences_pkey PRIMARY KEY ("runId");
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_messages mastra_messages_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_messages
-    ADD CONSTRAINT mastra_messages_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_messages'::regclass AND conname = 'mastra_messages_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_messages
+        ADD CONSTRAINT mastra_messages_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_notifications mastra_notifications_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_notifications
-    ADD CONSTRAINT mastra_notifications_pkey PRIMARY KEY ("threadId", id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_notifications'::regclass AND conname = 'mastra_notifications_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_notifications
+        ADD CONSTRAINT mastra_notifications_pkey PRIMARY KEY ("threadId", id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_observational_memory mastra_observational_memory_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_observational_memory
-    ADD CONSTRAINT mastra_observational_memory_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_observational_memory'::regclass AND conname = 'mastra_observational_memory_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_observational_memory
+        ADD CONSTRAINT mastra_observational_memory_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_prompt_block_versions mastra_prompt_block_versions_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_prompt_block_versions
-    ADD CONSTRAINT mastra_prompt_block_versions_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_prompt_block_versions'::regclass AND conname = 'mastra_prompt_block_versions_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_prompt_block_versions
+        ADD CONSTRAINT mastra_prompt_block_versions_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_prompt_blocks mastra_prompt_blocks_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_prompt_blocks
-    ADD CONSTRAINT mastra_prompt_blocks_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_prompt_blocks'::regclass AND conname = 'mastra_prompt_blocks_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_prompt_blocks
+        ADD CONSTRAINT mastra_prompt_blocks_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_resources mastra_resources_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_resources
-    ADD CONSTRAINT mastra_resources_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_resources'::regclass AND conname = 'mastra_resources_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_resources
+        ADD CONSTRAINT mastra_resources_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_schedule_triggers mastra_schedule_triggers_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_schedule_triggers
-    ADD CONSTRAINT mastra_schedule_triggers_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_schedule_triggers'::regclass AND conname = 'mastra_schedule_triggers_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_schedule_triggers
+        ADD CONSTRAINT mastra_schedule_triggers_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_schedules mastra_schedules_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_schedules
-    ADD CONSTRAINT mastra_schedules_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_schedules'::regclass AND conname = 'mastra_schedules_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_schedules
+        ADD CONSTRAINT mastra_schedules_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_scorer_definition_versions mastra_scorer_definition_versions_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_scorer_definition_versions
-    ADD CONSTRAINT mastra_scorer_definition_versions_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_scorer_definition_versions'::regclass AND conname = 'mastra_scorer_definition_versions_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_scorer_definition_versions
+        ADD CONSTRAINT mastra_scorer_definition_versions_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_scorer_definitions mastra_scorer_definitions_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_scorer_definitions
-    ADD CONSTRAINT mastra_scorer_definitions_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_scorer_definitions'::regclass AND conname = 'mastra_scorer_definitions_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_scorer_definitions
+        ADD CONSTRAINT mastra_scorer_definitions_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_scorers mastra_scorers_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_scorers
-    ADD CONSTRAINT mastra_scorers_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_scorers'::regclass AND conname = 'mastra_scorers_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_scorers
+        ADD CONSTRAINT mastra_scorers_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_skill_blobs mastra_skill_blobs_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_skill_blobs
-    ADD CONSTRAINT mastra_skill_blobs_pkey PRIMARY KEY (hash);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_skill_blobs'::regclass AND conname = 'mastra_skill_blobs_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_skill_blobs
+        ADD CONSTRAINT mastra_skill_blobs_pkey PRIMARY KEY (hash);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_skill_versions mastra_skill_versions_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_skill_versions
-    ADD CONSTRAINT mastra_skill_versions_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_skill_versions'::regclass AND conname = 'mastra_skill_versions_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_skill_versions
+        ADD CONSTRAINT mastra_skill_versions_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_skills mastra_skills_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_skills
-    ADD CONSTRAINT mastra_skills_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_skills'::regclass AND conname = 'mastra_skills_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_skills
+        ADD CONSTRAINT mastra_skills_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_thread_state mastra_thread_state_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_thread_state
-    ADD CONSTRAINT mastra_thread_state_pkey PRIMARY KEY ("threadId", type);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_thread_state'::regclass AND conname = 'mastra_thread_state_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_thread_state
+        ADD CONSTRAINT mastra_thread_state_pkey PRIMARY KEY ("threadId", type);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_threads mastra_threads_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_threads
-    ADD CONSTRAINT mastra_threads_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_threads'::regclass AND conname = 'mastra_threads_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_threads
+        ADD CONSTRAINT mastra_threads_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_tool_provider_connections mastra_tool_provider_connections_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_tool_provider_connections
-    ADD CONSTRAINT mastra_tool_provider_connections_pkey PRIMARY KEY ("authorId", "providerId", "connectionId");
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_tool_provider_connections'::regclass AND conname = 'mastra_tool_provider_connections_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_tool_provider_connections
+        ADD CONSTRAINT mastra_tool_provider_connections_pkey PRIMARY KEY ("authorId", "providerId", "connectionId");
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_workflow_definitions mastra_workflow_definitions_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_workflow_definitions
-    ADD CONSTRAINT mastra_workflow_definitions_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_workflow_definitions'::regclass AND conname = 'mastra_workflow_definitions_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_workflow_definitions
+        ADD CONSTRAINT mastra_workflow_definitions_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_workflow_run_owners mastra_workflow_run_owners_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_workflow_run_owners
-    ADD CONSTRAINT mastra_workflow_run_owners_pkey PRIMARY KEY ("runId");
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_workflow_run_owners'::regclass AND conname = 'mastra_workflow_run_owners_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_workflow_run_owners
+        ADD CONSTRAINT mastra_workflow_run_owners_pkey PRIMARY KEY ("runId");
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_workspace_versions mastra_workspace_versions_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_workspace_versions
-    ADD CONSTRAINT mastra_workspace_versions_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_workspace_versions'::regclass AND conname = 'mastra_workspace_versions_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_workspace_versions
+        ADD CONSTRAINT mastra_workspace_versions_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: mastra_workspaces mastra_workspaces_pkey; Type: CONSTRAINT; Schema: mastra; Owner: -
 --
 
-ALTER TABLE ONLY mastra.mastra_workspaces
-    ADD CONSTRAINT mastra_workspaces_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'mastra.mastra_workspaces'::regclass AND conname = 'mastra_workspaces_pkey') THEN
+    ALTER TABLE ONLY mastra.mastra_workspaces
+        ADD CONSTRAINT mastra_workspaces_pkey PRIMARY KEY (id);
+  END IF;
+END
+$$;
 
 --
 -- Name: idx_dataset_items_dataset_validto; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_dataset_items_dataset_validto ON mastra.mastra_dataset_items USING btree ("datasetId", "validTo");
+CREATE INDEX IF NOT EXISTS idx_dataset_items_dataset_validto ON mastra.mastra_dataset_items USING btree ("datasetId", "validTo");
 
 --
 -- Name: idx_dataset_items_dataset_validto_deleted; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_dataset_items_dataset_validto_deleted ON mastra.mastra_dataset_items USING btree ("datasetId", "validTo", "isDeleted");
+CREATE INDEX IF NOT EXISTS idx_dataset_items_dataset_validto_deleted ON mastra.mastra_dataset_items USING btree ("datasetId", "validTo", "isDeleted");
 
 --
 -- Name: idx_dataset_items_dataset_version; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_dataset_items_dataset_version ON mastra.mastra_dataset_items USING btree ("datasetId", "datasetVersion");
+CREATE INDEX IF NOT EXISTS idx_dataset_items_dataset_version ON mastra.mastra_dataset_items USING btree ("datasetId", "datasetVersion");
 
 --
 -- Name: idx_dataset_items_external_id_history; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_dataset_items_external_id_history ON mastra.mastra_dataset_items USING btree ("datasetId", "externalId", "datasetVersion");
+CREATE INDEX IF NOT EXISTS idx_dataset_items_external_id_history ON mastra.mastra_dataset_items USING btree ("datasetId", "externalId", "datasetVersion");
 
 --
 -- Name: idx_dataset_items_org_project; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_dataset_items_org_project ON mastra.mastra_dataset_items USING btree ("organizationId", "projectId");
+CREATE INDEX IF NOT EXISTS idx_dataset_items_org_project ON mastra.mastra_dataset_items USING btree ("organizationId", "projectId");
 
 --
 -- Name: idx_dataset_versions_dataset_version; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_dataset_versions_dataset_version ON mastra.mastra_dataset_versions USING btree ("datasetId", version);
+CREATE INDEX IF NOT EXISTS idx_dataset_versions_dataset_version ON mastra.mastra_dataset_versions USING btree ("datasetId", version);
 
 --
 -- Name: idx_dataset_versions_dataset_version_unique; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_dataset_versions_dataset_version_unique ON mastra.mastra_dataset_versions USING btree ("datasetId", version);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_versions_dataset_version_unique ON mastra.mastra_dataset_versions USING btree ("datasetId", version);
 
 --
 -- Name: idx_datasets_candidate; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_datasets_candidate ON mastra.mastra_datasets USING btree ("candidateKey", "candidateId");
+CREATE INDEX IF NOT EXISTS idx_datasets_candidate ON mastra.mastra_datasets USING btree ("candidateKey", "candidateId");
 
 --
 -- Name: idx_datasets_org_project; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_datasets_org_project ON mastra.mastra_datasets USING btree ("organizationId", "projectId");
+CREATE INDEX IF NOT EXISTS idx_datasets_org_project ON mastra.mastra_datasets USING btree ("organizationId", "projectId");
 
 --
 -- Name: idx_experiment_results_exp_item_attempt; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_experiment_results_exp_item_attempt ON mastra.mastra_experiment_results USING btree ("experimentId", "itemId", attempt);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_experiment_results_exp_item_attempt ON mastra.mastra_experiment_results USING btree ("experimentId", "itemId", attempt);
 
 --
 -- Name: idx_experiment_results_experimentid; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_experiment_results_experimentid ON mastra.mastra_experiment_results USING btree ("experimentId");
+CREATE INDEX IF NOT EXISTS idx_experiment_results_experimentid ON mastra.mastra_experiment_results USING btree ("experimentId");
 
 --
 -- Name: idx_experiment_results_org_project; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_experiment_results_org_project ON mastra.mastra_experiment_results USING btree ("organizationId", "projectId");
+CREATE INDEX IF NOT EXISTS idx_experiment_results_org_project ON mastra.mastra_experiment_results USING btree ("organizationId", "projectId");
 
 --
 -- Name: idx_experiment_results_tags_gin; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_experiment_results_tags_gin ON mastra.mastra_experiment_results USING gin (tags);
+CREATE INDEX IF NOT EXISTS idx_experiment_results_tags_gin ON mastra.mastra_experiment_results USING gin (tags);
 
 --
 -- Name: idx_experiments_datasetid; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_experiments_datasetid ON mastra.mastra_experiments USING btree ("datasetId");
+CREATE INDEX IF NOT EXISTS idx_experiments_datasetid ON mastra.mastra_experiments USING btree ("datasetId");
 
 --
 -- Name: idx_experiments_grouping; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_experiments_grouping ON mastra.mastra_experiments USING btree ("experimentSetId", "comparisonId", "variantId", "trialIndex");
+CREATE INDEX IF NOT EXISTS idx_experiments_grouping ON mastra.mastra_experiments USING btree ("experimentSetId", "comparisonId", "variantId", "trialIndex");
 
 --
 -- Name: idx_experiments_org_project; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_experiments_org_project ON mastra.mastra_experiments USING btree ("organizationId", "projectId");
+CREATE INDEX IF NOT EXISTS idx_experiments_org_project ON mastra.mastra_experiments USING btree ("organizationId", "projectId");
 
 --
 -- Name: idx_favorites_entity; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_favorites_entity ON mastra.mastra_favorites USING btree ("entityType", "entityId");
+CREATE INDEX IF NOT EXISTS idx_favorites_entity ON mastra.mastra_favorites USING btree ("entityType", "entityId");
 
 --
 -- Name: idx_om_lookup_key; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX idx_om_lookup_key ON mastra.mastra_observational_memory USING btree ("lookupKey");
+CREATE INDEX IF NOT EXISTS idx_om_lookup_key ON mastra.mastra_observational_memory USING btree ("lookupKey");
 
 --
 -- Name: mastra_idx_channel_installations_platform_agent; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_idx_channel_installations_platform_agent ON mastra.mastra_channel_installations USING btree (platform, "agentId");
+CREATE INDEX IF NOT EXISTS mastra_idx_channel_installations_platform_agent ON mastra.mastra_channel_installations USING btree (platform, "agentId");
 
 --
 -- Name: mastra_idx_channel_installations_webhook; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE UNIQUE INDEX mastra_idx_channel_installations_webhook ON mastra.mastra_channel_installations USING btree ("webhookId");
+CREATE UNIQUE INDEX IF NOT EXISTS mastra_idx_channel_installations_webhook ON mastra.mastra_channel_installations USING btree ("webhookId");
 
 --
 -- Name: mastra_idx_mastra_schedule_triggers_schedule_fire; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_idx_mastra_schedule_triggers_schedule_fire ON mastra.mastra_schedule_triggers USING btree (schedule_id, actual_fire_at DESC);
+CREATE INDEX IF NOT EXISTS mastra_idx_mastra_schedule_triggers_schedule_fire ON mastra.mastra_schedule_triggers USING btree (schedule_id, actual_fire_at DESC);
 
 --
 -- Name: mastra_idx_mastra_schedules_status_next_fire; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_idx_mastra_schedules_status_next_fire ON mastra.mastra_schedules USING btree (status, next_fire_at);
+CREATE INDEX IF NOT EXISTS mastra_idx_mastra_schedules_status_next_fire ON mastra.mastra_schedules USING btree (status, next_fire_at);
 
 --
 -- Name: mastra_idx_mcp_client_versions_client_version; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE UNIQUE INDEX mastra_idx_mcp_client_versions_client_version ON mastra.mastra_mcp_client_versions USING btree ("mcpClientId", "versionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS mastra_idx_mcp_client_versions_client_version ON mastra.mastra_mcp_client_versions USING btree ("mcpClientId", "versionNumber");
 
 --
 -- Name: mastra_idx_mcp_server_versions_server_version; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE UNIQUE INDEX mastra_idx_mcp_server_versions_server_version ON mastra.mastra_mcp_server_versions USING btree ("mcpServerId", "versionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS mastra_idx_mcp_server_versions_server_version ON mastra.mastra_mcp_server_versions USING btree ("mcpServerId", "versionNumber");
 
 --
 -- Name: mastra_idx_notifications_coalescing; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_idx_notifications_coalescing ON mastra.mastra_notifications USING btree ("threadId", source, kind, status, "agentId", "resourceId", "dedupeKey", "coalesceKey");
+CREATE INDEX IF NOT EXISTS mastra_idx_notifications_coalescing ON mastra.mastra_notifications USING btree ("threadId", source, kind, status, "agentId", "resourceId", "dedupeKey", "coalesceKey");
 
 --
 -- Name: mastra_idx_notifications_due; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_idx_notifications_due ON mastra.mastra_notifications USING btree (status, "deliverAt", "summaryAt");
+CREATE INDEX IF NOT EXISTS mastra_idx_notifications_due ON mastra.mastra_notifications USING btree (status, "deliverAt", "summaryAt");
 
 --
 -- Name: mastra_idx_notifications_thread_status_updated; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_idx_notifications_thread_status_updated ON mastra.mastra_notifications USING btree ("threadId", status, "updatedAt");
+CREATE INDEX IF NOT EXISTS mastra_idx_notifications_thread_status_updated ON mastra.mastra_notifications USING btree ("threadId", status, "updatedAt");
 
 --
 -- Name: mastra_idx_prompt_block_versions_block_version; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE UNIQUE INDEX mastra_idx_prompt_block_versions_block_version ON mastra.mastra_prompt_block_versions USING btree ("blockId", "versionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS mastra_idx_prompt_block_versions_block_version ON mastra.mastra_prompt_block_versions USING btree ("blockId", "versionNumber");
 
 --
 -- Name: mastra_idx_scorer_definition_versions_def_version; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE UNIQUE INDEX mastra_idx_scorer_definition_versions_def_version ON mastra.mastra_scorer_definition_versions USING btree ("scorerDefinitionId", "versionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS mastra_idx_scorer_definition_versions_def_version ON mastra.mastra_scorer_definition_versions USING btree ("scorerDefinitionId", "versionNumber");
 
 --
 -- Name: mastra_idx_skill_versions_skill_version; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE UNIQUE INDEX mastra_idx_skill_versions_skill_version ON mastra.mastra_skill_versions USING btree ("skillId", "versionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS mastra_idx_skill_versions_skill_version ON mastra.mastra_skill_versions USING btree ("skillId", "versionNumber");
 
 --
 -- Name: mastra_idx_tool_provider_connections_author; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_idx_tool_provider_connections_author ON mastra.mastra_tool_provider_connections USING btree ("authorId", "providerId", toolkit);
+CREATE INDEX IF NOT EXISTS mastra_idx_tool_provider_connections_author ON mastra.mastra_tool_provider_connections USING btree ("authorId", "providerId", toolkit);
 
 --
 -- Name: mastra_idx_workflow_definitions_status; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_idx_workflow_definitions_status ON mastra.mastra_workflow_definitions USING btree (status);
+CREATE INDEX IF NOT EXISTS mastra_idx_workflow_definitions_status ON mastra.mastra_workflow_definitions USING btree (status);
 
 --
 -- Name: mastra_idx_workspace_versions_workspace_version; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE UNIQUE INDEX mastra_idx_workspace_versions_workspace_version ON mastra.mastra_workspace_versions USING btree ("workspaceId", "versionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS mastra_idx_workspace_versions_workspace_version ON mastra.mastra_workspace_versions USING btree ("workspaceId", "versionNumber");
 
 --
 -- Name: mastra_mastra_ai_spans_entitytype_entityid_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_ai_spans_entitytype_entityid_idx ON mastra.mastra_ai_spans USING btree ("entityType", "entityId");
+CREATE INDEX IF NOT EXISTS mastra_mastra_ai_spans_entitytype_entityid_idx ON mastra.mastra_ai_spans USING btree ("entityType", "entityId");
 
 --
 -- Name: mastra_mastra_ai_spans_entitytype_entityname_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_ai_spans_entitytype_entityname_idx ON mastra.mastra_ai_spans USING btree ("entityType", "entityName");
+CREATE INDEX IF NOT EXISTS mastra_mastra_ai_spans_entitytype_entityname_idx ON mastra.mastra_ai_spans USING btree ("entityType", "entityName");
 
 --
 -- Name: mastra_mastra_ai_spans_metadata_gin_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_ai_spans_metadata_gin_idx ON mastra.mastra_ai_spans USING gin (metadata);
+CREATE INDEX IF NOT EXISTS mastra_mastra_ai_spans_metadata_gin_idx ON mastra.mastra_ai_spans USING gin (metadata);
 
 --
 -- Name: mastra_mastra_ai_spans_name_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_ai_spans_name_idx ON mastra.mastra_ai_spans USING btree (name);
+CREATE INDEX IF NOT EXISTS mastra_mastra_ai_spans_name_idx ON mastra.mastra_ai_spans USING btree (name);
 
 --
 -- Name: mastra_mastra_ai_spans_orgid_userid_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_ai_spans_orgid_userid_idx ON mastra.mastra_ai_spans USING btree ("organizationId", "userId");
+CREATE INDEX IF NOT EXISTS mastra_mastra_ai_spans_orgid_userid_idx ON mastra.mastra_ai_spans USING btree ("organizationId", "userId");
 
 --
 -- Name: mastra_mastra_ai_spans_parentspanid_startedat_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_ai_spans_parentspanid_startedat_idx ON mastra.mastra_ai_spans USING btree ("parentSpanId", "startedAt" DESC);
+CREATE INDEX IF NOT EXISTS mastra_mastra_ai_spans_parentspanid_startedat_idx ON mastra.mastra_ai_spans USING btree ("parentSpanId", "startedAt" DESC);
 
 --
 -- Name: mastra_mastra_ai_spans_root_spans_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_ai_spans_root_spans_idx ON mastra.mastra_ai_spans USING btree ("startedAt" DESC) WHERE ("parentSpanId" IS NULL);
+CREATE INDEX IF NOT EXISTS mastra_mastra_ai_spans_root_spans_idx ON mastra.mastra_ai_spans USING btree ("startedAt" DESC) WHERE ("parentSpanId" IS NULL);
 
 --
 -- Name: mastra_mastra_ai_spans_spantype_startedat_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_ai_spans_spantype_startedat_idx ON mastra.mastra_ai_spans USING btree ("spanType", "startedAt" DESC);
+CREATE INDEX IF NOT EXISTS mastra_mastra_ai_spans_spantype_startedat_idx ON mastra.mastra_ai_spans USING btree ("spanType", "startedAt" DESC);
 
 --
 -- Name: mastra_mastra_ai_spans_tags_gin_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_ai_spans_tags_gin_idx ON mastra.mastra_ai_spans USING gin (tags);
+CREATE INDEX IF NOT EXISTS mastra_mastra_ai_spans_tags_gin_idx ON mastra.mastra_ai_spans USING gin (tags);
 
 --
 -- Name: mastra_mastra_ai_spans_traceid_startedat_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_ai_spans_traceid_startedat_idx ON mastra.mastra_ai_spans USING btree ("traceId", "startedAt" DESC);
+CREATE INDEX IF NOT EXISTS mastra_mastra_ai_spans_traceid_startedat_idx ON mastra.mastra_ai_spans USING btree ("traceId", "startedAt" DESC);
 
 --
 -- Name: mastra_mastra_bg_tasks_agent_status_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_bg_tasks_agent_status_idx ON mastra.mastra_background_tasks USING btree (agent_id, status);
+CREATE INDEX IF NOT EXISTS mastra_mastra_bg_tasks_agent_status_idx ON mastra.mastra_background_tasks USING btree (agent_id, status);
 
 --
 -- Name: mastra_mastra_bg_tasks_status_created_at_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_bg_tasks_status_created_at_idx ON mastra.mastra_background_tasks USING btree (status, "createdAt");
+CREATE INDEX IF NOT EXISTS mastra_mastra_bg_tasks_status_created_at_idx ON mastra.mastra_background_tasks USING btree (status, "createdAt");
 
 --
 -- Name: mastra_mastra_bg_tasks_thread_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_bg_tasks_thread_idx ON mastra.mastra_background_tasks USING btree (thread_id, "createdAt");
+CREATE INDEX IF NOT EXISTS mastra_mastra_bg_tasks_thread_idx ON mastra.mastra_background_tasks USING btree (thread_id, "createdAt");
 
 --
 -- Name: mastra_mastra_bg_tasks_tool_call_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_bg_tasks_tool_call_idx ON mastra.mastra_background_tasks USING btree (tool_call_id);
+CREATE INDEX IF NOT EXISTS mastra_mastra_bg_tasks_tool_call_idx ON mastra.mastra_background_tasks USING btree (tool_call_id);
 
 --
 -- Name: mastra_mastra_messages_thread_id_createdat_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_messages_thread_id_createdat_idx ON mastra.mastra_messages USING btree (thread_id, "createdAt" DESC);
+CREATE INDEX IF NOT EXISTS mastra_mastra_messages_thread_id_createdat_idx ON mastra.mastra_messages USING btree (thread_id, "createdAt" DESC);
 
 --
 -- Name: mastra_mastra_scores_trace_id_span_id_created_at_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_scores_trace_id_span_id_created_at_idx ON mastra.mastra_scorers USING btree ("traceId", "spanId", "createdAt" DESC);
+CREATE INDEX IF NOT EXISTS mastra_mastra_scores_trace_id_span_id_created_at_idx ON mastra.mastra_scorers USING btree ("traceId", "spanId", "createdAt" DESC);
 
 --
 -- Name: mastra_mastra_threads_resourceid_createdat_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_threads_resourceid_createdat_idx ON mastra.mastra_threads USING btree ("resourceId", "createdAt" DESC);
+CREATE INDEX IF NOT EXISTS mastra_mastra_threads_resourceid_createdat_idx ON mastra.mastra_threads USING btree ("resourceId", "createdAt" DESC);
 
 --
 -- Name: mastra_mastra_workflow_snapshot_name_createdat_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_workflow_snapshot_name_createdat_idx ON mastra.mastra_workflow_snapshot USING btree (workflow_name, "createdAt" DESC);
+CREATE INDEX IF NOT EXISTS mastra_mastra_workflow_snapshot_name_createdat_idx ON mastra.mastra_workflow_snapshot USING btree (workflow_name, "createdAt" DESC);
 
 --
 -- Name: mastra_mastra_workflow_snapshot_name_status_createdat_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_workflow_snapshot_name_status_createdat_idx ON mastra.mastra_workflow_snapshot USING btree (workflow_name, ((snapshot ->> 'status'::text)), "createdAt" DESC);
+CREATE INDEX IF NOT EXISTS mastra_mastra_workflow_snapshot_name_status_createdat_idx ON mastra.mastra_workflow_snapshot USING btree (workflow_name, ((snapshot ->> 'status'::text)), "createdAt" DESC);
 
 --
 -- Name: mastra_mastra_workflow_snapshot_threadid_idx; Type: INDEX; Schema: mastra; Owner: -
 --
 
-CREATE INDEX mastra_mastra_workflow_snapshot_threadid_idx ON mastra.mastra_workflow_snapshot USING btree (COALESCE((jsonb_path_query_first(snapshot, '$."context".*?(@."status" == "suspended")."suspendPayload"."__streamState"."messageList"."memoryInfo"."threadId"'::jsonpath) #>> '{}'::text[]), (snapshot #>> '{context,input,messageListState,memoryInfo,threadId}'::text[])));
+CREATE INDEX IF NOT EXISTS mastra_mastra_workflow_snapshot_threadid_idx ON mastra.mastra_workflow_snapshot USING btree (COALESCE((jsonb_path_query_first(snapshot, '$."context".*?(@."status" == "suspended")."suspendPayload"."__streamState"."messageList"."memoryInfo"."threadId"'::jsonpath) #>> '{}'::text[]), (snapshot #>> '{context,input,messageListState,memoryInfo,threadId}'::text[])));
 
 --
 -- Name: mastra_ai_spans mastra_ai_spans_timestamps; Type: TRIGGER; Schema: mastra; Owner: -
 --
 
-CREATE TRIGGER mastra_ai_spans_timestamps BEFORE INSERT OR UPDATE ON mastra.mastra_ai_spans FOR EACH ROW EXECUTE FUNCTION mastra.trigger_set_timestamps();
+CREATE OR REPLACE TRIGGER mastra_ai_spans_timestamps BEFORE INSERT OR UPDATE ON mastra.mastra_ai_spans FOR EACH ROW EXECUTE FUNCTION mastra.trigger_set_timestamps();
 
 --
 -- PostgreSQL database dump complete

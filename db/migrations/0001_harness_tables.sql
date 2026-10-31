@@ -1,6 +1,8 @@
 -- The graph tables of store.tables (docs/design/graph-store.md), in schema harness.
 -- src/store/schema.ts mirrors this file. tests/store/migrations.test.ts fails when they drift.
 -- Each hash column holds a lowercase sha256 hex digest, as ruleHash() in src/rules/hash.ts makes.
+-- A second run of this file changes nothing: each create statement has "if not exists" or "or replace".
+-- 0003_harness_role.sql turns on row level security and revokes execute on the functions.
 
 -- ltree gives the tree walks of store.tree. It lives in schema extensions, as on Supabase.
 -- This file names the ltree type and functions with that schema, so it needs no search_path.
@@ -18,11 +20,11 @@ end
 $$;
 create extension if not exists ltree with schema extensions;
 
-create schema harness;
+create schema if not exists harness;
 
 -- The category tree that the operator names. A domain node is a root. The path is the chain
 -- of ids from the root, such as skincare.sunscreen.mineral_sunscreen.
-create table harness.nodes (
+create table if not exists harness.nodes (
   id text primary key check (id ~ '^[a-z][a-z0-9_]*$'),
   parent_id text references harness.nodes (id),
   level text not null check (level in ('domain', 'inner', 'leaf')),
@@ -33,12 +35,12 @@ create table harness.nodes (
   check ((parent_id is null) = (extensions.nlevel(path) = 1)),
   check (extensions.subpath(path, -1)::text = id)
 );
-create index nodes_path_gist on harness.nodes using gist (path);
-create index nodes_parent_id on harness.nodes (parent_id);
+create index if not exists nodes_path_gist on harness.nodes using gist (path);
+create index if not exists nodes_parent_id on harness.nodes (parent_id);
 
 -- A node path is the path of its parent plus its id, and a leaf has no child.
 -- The checks above cannot read the parent row, so a trigger checks it on insert.
-create function harness.check_node_path() returns trigger
+create or replace function harness.check_node_path() returns trigger
   language plpgsql
   set search_path = ''
   as $$
@@ -70,11 +72,11 @@ begin
 end
 $$;
 
-create trigger nodes_check_path before insert on harness.nodes
+create or replace trigger nodes_check_path before insert on harness.nodes
   for each row execute function harness.check_node_path();
 
 -- One row for each stage run. run_id is the Mastra run id.
-create table harness.stage_runs (
+create table if not exists harness.stage_runs (
   run_id text primary key check (run_id <> ''),
   stage text not null check (stage in ('define_criteria', 'create_node', 'create_pack', 'create_layout', 'evaluate_product')),
   node_id text not null references harness.nodes (id),
@@ -85,7 +87,7 @@ create table harness.stage_runs (
 );
 
 -- Each accepted stage output. The composite key makes stage, node and rule set hash agree with the run.
-create table harness.outputs (
+create table if not exists harness.outputs (
   id uuid primary key default gen_random_uuid(),
   run_id text not null,
   stage text not null,
@@ -95,10 +97,10 @@ create table harness.outputs (
   accepted_at timestamptz not null default now(),
   foreign key (run_id, stage, node_id, rule_set_hash) references harness.stage_runs (run_id, stage, node_id, rule_set_hash)
 );
-create index outputs_node_stage on harness.outputs (node_id, stage);
+create index if not exists outputs_node_stage on harness.outputs (node_id, stage);
 
 -- One row for each target and each rule (VerdictRow of enforce.rule_record).
-create table harness.verdicts (
+create table if not exists harness.verdicts (
   id uuid primary key default gen_random_uuid(),
   run_id text not null references harness.stage_runs (run_id),
   rule_id text not null check (rule_id ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'),
@@ -126,11 +128,11 @@ create table harness.verdicts (
     false)),
   created_at timestamptz not null default now()
 );
-create index verdicts_run_id on harness.verdicts (run_id);
-create index verdicts_rule on harness.verdicts (rule_id, rule_version);
+create index if not exists verdicts_run_id on harness.verdicts (run_id);
+create index if not exists verdicts_rule on harness.verdicts (rule_id, rule_version);
 
 -- The metadata of each research record. The record itself is an artifact in object storage.
-create table harness.records (
+create table if not exists harness.records (
   id text not null check (id <> ''),
   version integer not null check (version >= 1),
   question text not null check (question <> ''),
@@ -142,7 +144,7 @@ create table harness.records (
 );
 
 -- Each derived rule. record holds the whole RuleRecord. The key columns repeat its fields.
-create table harness.derived_rules (
+create table if not exists harness.derived_rules (
   id text not null check (id ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'),
   version integer not null check (version >= 1),
   hash text not null check (hash ~ '^[0-9a-f]{64}$'),
@@ -156,8 +158,9 @@ create table harness.derived_rules (
 
 -- Rows only grow (store.safety). These triggers refuse each update, delete and truncate,
 -- also for the table owner. A new run writes new rows.
-create function harness.refuse_change() returns trigger
+create or replace function harness.refuse_change() returns trigger
   language plpgsql
+  set search_path = ''
   as $$
 begin
   raise exception 'harness.% is append-only: % is refused', tg_table_name, lower(tg_op)
@@ -165,23 +168,23 @@ begin
 end
 $$;
 
-create trigger stage_runs_append_only before update or delete on harness.stage_runs
+create or replace trigger stage_runs_append_only before update or delete on harness.stage_runs
   for each row execute function harness.refuse_change();
-create trigger stage_runs_no_truncate before truncate on harness.stage_runs
+create or replace trigger stage_runs_no_truncate before truncate on harness.stage_runs
   for each statement execute function harness.refuse_change();
-create trigger outputs_append_only before update or delete on harness.outputs
+create or replace trigger outputs_append_only before update or delete on harness.outputs
   for each row execute function harness.refuse_change();
-create trigger outputs_no_truncate before truncate on harness.outputs
+create or replace trigger outputs_no_truncate before truncate on harness.outputs
   for each statement execute function harness.refuse_change();
-create trigger verdicts_append_only before update or delete on harness.verdicts
+create or replace trigger verdicts_append_only before update or delete on harness.verdicts
   for each row execute function harness.refuse_change();
-create trigger verdicts_no_truncate before truncate on harness.verdicts
+create or replace trigger verdicts_no_truncate before truncate on harness.verdicts
   for each statement execute function harness.refuse_change();
-create trigger records_append_only before update or delete on harness.records
+create or replace trigger records_append_only before update or delete on harness.records
   for each row execute function harness.refuse_change();
-create trigger records_no_truncate before truncate on harness.records
+create or replace trigger records_no_truncate before truncate on harness.records
   for each statement execute function harness.refuse_change();
-create trigger derived_rules_append_only before update or delete on harness.derived_rules
+create or replace trigger derived_rules_append_only before update or delete on harness.derived_rules
   for each row execute function harness.refuse_change();
-create trigger derived_rules_no_truncate before truncate on harness.derived_rules
+create or replace trigger derived_rules_no_truncate before truncate on harness.derived_rules
   for each statement execute function harness.refuse_change();
