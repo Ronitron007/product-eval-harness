@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import type pg from 'pg'
@@ -163,7 +164,7 @@ describe('on a database with the roles and default privileges of Supabase', () =
       alter default privileges for role postgres grant all on tables to public, anon, authenticated, service_role;
       alter default privileges for role postgres grant all on sequences to public, anon, authenticated, service_role;
       alter default privileges for role postgres grant all on functions to anon, authenticated, service_role;
-      alter default privileges for role postgres grant all on schemas to anon, authenticated, service_role`)
+      alter default privileges for role postgres grant all on schemas to public, anon, authenticated, service_role`)
     await applyMigrations(db.url)
   })
   afterAll(async () => {
@@ -189,5 +190,26 @@ describe('on a database with the roles and default privileges of Supabase', () =
     await expect(applyMigrations(db.url, ['0003_harness_role.sql'])).rejects.toThrow(/table harness.zz_extra has no row level security/)
     const { rows } = await pool.query(`select relrowsecurity from pg_class where oid = 'harness.zz_extra'::regclass`)
     expect(rows).toEqual([{ relrowsecurity: false }])
+  })
+
+  // The role belongs to the whole test cluster, so the grant stays in a transaction that rolls back.
+  it('stops the migration when harness_app has a system attribute or a membership', async () => {
+    const pool = db.pool()
+    await pool.query(`do $$ begin create role zz_group nologin; exception when duplicate_object then null; end $$`)
+    const role = readFileSync(join(import.meta.dirname, '..', '..', 'db', 'migrations', '0003_harness_role.sql'), 'utf8')
+    for (const [change, error] of [
+      ['grant zz_group to harness_app', /harness_app is a member of zz_group/],
+      ['alter role harness_app createdb', /harness_app has a system attribute/],
+    ] as const) {
+      const client = await pool.connect()
+      try {
+        await client.query('begin')
+        await client.query(change)
+        await expect(client.query(role)).rejects.toThrow(error)
+      } finally {
+        await client.query('rollback')
+        client.release()
+      }
+    }
   })
 })

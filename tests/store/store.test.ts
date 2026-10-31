@@ -284,10 +284,29 @@ describe('ltree in another schema', () => {
   })
 })
 
+const audit = () => readFileSync(join(import.meta.dirname, '..', '..', 'db', 'audit-public-grants.sql'), 'utf8')
+
 describe('db/audit-public-grants.sql', () => {
+  // The first result is the pre-check. A role belongs to the whole test cluster, so another
+  // test database can have made harness_app. On a live database with no migration, it gives no row.
+  it('pre-checks for the schemas and the role of the migration', async () => {
+    const precheck = async (p: pg.Pool) => {
+      const [first] = (await p.query(audit())) as unknown as pg.QueryResult[]
+      return first.rows.map(r => r.nspname).sort()
+    }
+    expect(await precheck(pool)).toEqual(['harness', 'harness_app', 'mastra'])
+    const fresh = await freshDatabase({ migrate: false })
+    try {
+      expect((await precheck(fresh.pool())).filter(n => n !== 'harness_app')).toEqual([])
+    } finally {
+      await fresh.drop()
+    }
+  })
+
+
   it('lists the rights of PUBLIC, such as TEMPORARY on the database and a security definer function', async () => {
     await pool.query("create function public.leak() returns int language sql security definer as 'select 1'")
-    const { rows } = await pool.query(readFileSync(join(import.meta.dirname, '..', '..', 'db', 'audit-public-grants.sql'), 'utf8'))
+    const [, { rows }] = (await pool.query(audit())) as unknown as pg.QueryResult[]
     const lines = rows.map(r => `${r.kind} ${r.object} ${r.privilege_type}`)
     expect(lines).toContain('database ' + new URL(db.url).pathname.slice(1) + ' TEMPORARY')
     expect(lines).toContain('schema public USAGE')

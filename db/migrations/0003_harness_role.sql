@@ -117,8 +117,12 @@ begin
 end
 $$;
 
+-- A default privilege of the database can also give PUBLIC a right on a new schema.
+revoke all on schema harness, mastra from public;
+
 -- The guard: stop the migration, and roll it back, when an object in harness or mastra
 -- has no row level security, or when PUBLIC, anon or authenticated holds a right on it.
+-- It also stops when a harness_app that existed before has a system attribute or a membership.
 do $$
 declare
   leftover text;
@@ -146,6 +150,15 @@ begin
       from pg_namespace n, aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a
      where n.nspname in ('harness', 'mastra')
        and (a.grantee = 0 or pg_get_userbyid(a.grantee) in ('anon', 'authenticated'))
+    union all
+    select 'harness_app has a system attribute'
+      from pg_roles r
+     where r.rolname = 'harness_app'
+       and (r.rolsuper or r.rolbypassrls or r.rolcreaterole or r.rolcreatedb or r.rolreplication)
+    union all
+    select format('harness_app is a member of %s', pg_get_userbyid(m.roleid))
+      from pg_auth_members m
+     where m.member = 'harness_app'::regrole
   ) x;
   if leftover is not null then
     raise exception 'harness migration: %', leftover;

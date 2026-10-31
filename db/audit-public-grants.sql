@@ -2,6 +2,14 @@
 -- holds each of them too (0003_harness_role.sql). Review the report on the live database
 -- before the migration. The script changes nothing.
 
+-- The pre-check, the first result. On a database that has never had the harness migration, this query must
+-- return zero rows. A row means that schema harness, schema mastra or the role harness_app
+-- exists already. The migration keeps an object that exists, so review it before the apply.
+select nspname from pg_namespace where nspname in ('harness', 'mastra')
+union all
+select rolname from pg_roles where rolname = 'harness_app';
+
+-- The report, the second result.
 -- The database rights of PUBLIC, such as CONNECT and TEMPORARY.
 select 'database' as kind, d.datname as object, a.privilege_type
   from pg_database d, aclexplode(coalesce(d.datacl, acldefault('d', d.datdba))) a

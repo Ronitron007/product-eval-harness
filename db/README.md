@@ -14,11 +14,11 @@ Apply the files in the order of their names:
 
 - `0003_harness_role.sql` makes the role `harness_app`. The file grants the role rights on the schemas `harness`, `mastra`, and `extensions` only. The role also holds each right of PUBLIC. The header of the file lists these rights.
 
-- `0003_harness_role.sql` also turns on row level security for each table in `harness` and `mastra`, with a policy for `harness_app`. It revokes each right in `harness` and `mastra` from PUBLIC, and from `anon` and `authenticated` when they exist. Its last block stops the migration when one of these rights remains, or when a table has no row level security.
+- `0003_harness_role.sql` also turns on row level security for each table in `harness` and `mastra`, with a policy for `harness_app`. It revokes each right in `harness` and `mastra` from PUBLIC, and from `anon` and `authenticated` when they exist. Its last block stops the migration when one of these rights remains, or when a table has no row level security. It also stops the migration when `harness_app` has a system attribute or a membership in a role.
 
 - A second run of each file changes nothing. The RealDose test drivers apply each migration twice.
 
-- `audit-public-grants.sql` is not a migration. It is a read-only report of the rights of PUBLIC.
+- `audit-public-grants.sql` is not a migration. It is read-only. Its first result is a pre-check, which must give no row on a database that has never had the migration. Its second result is a report of the rights of PUBLIC.
 
 ## Make the Mastra schema again
 
