@@ -1,6 +1,6 @@
 # Harness plan `plan`
 
-Status. Plan of 2026-10-24. `plan.scaffold` shipped on 2026-10-25 in [#5](https://github.com/Ronitron007/product-eval-harness/pull/5). `plan.rule_record` shipped on 2026-10-29 in [#9](https://github.com/Ronitron007/product-eval-harness/pull/9). `plan.graph_store` shipped on 2026-10-30 in [#12](https://github.com/Ronitron007/product-eval-harness/pull/12), without the live migration. It splits the design ([rule-graph.md](../design/rule-graph.md), [rule-enforcement.md](../design/rule-enforcement.md), [self-improvement.md](../design/self-improvement.md), [mastra-mapping.md](../design/mastra-mapping.md)) into units.
+Status. Plan of 2026-10-24. `plan.scaffold` shipped on 2026-10-25 in [#5](https://github.com/Ronitron007/product-eval-harness/pull/5). `plan.rule_record` shipped on 2026-10-29 in [#9](https://github.com/Ronitron007/product-eval-harness/pull/9). `plan.graph_store` shipped on 2026-10-30 in [#12](https://github.com/Ronitron007/product-eval-harness/pull/12), without the live migration. On 2026-10-31, [#14](https://github.com/Ronitron007/product-eval-harness/pull/14) hardened `plan.graph_store` for the live database. The live migration waits for [Ronitron007/RealDose#470](https://github.com/Ronitron007/RealDose/pull/470). It splits the design ([rule-graph.md](../design/rule-graph.md), [rule-enforcement.md](../design/rule-enforcement.md), [self-improvement.md](../design/self-improvement.md), [mastra-mapping.md](../design/mastra-mapping.md)) into units.
 
 ## Rules for each unit `plan.rules`
 

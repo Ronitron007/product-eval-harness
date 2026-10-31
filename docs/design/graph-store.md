@@ -1,6 +1,8 @@
 # The graph store `store`
 
-Status. Spec of 2026-10-29 for `plan.graph_store`. The code shipped on 2026-10-30 in [#12](https://github.com/Ronitron007/product-eval-harness/pull/12): `src/store/`, `db/migrations/`, and `db/README.md`. The migrations are not applied to the Kyaloon database yet. Rohan ruled on 2026-10-29 that the authoring database is the Kyaloon Supabase Postgres database ([decisions.tsv](../decisions.tsv)). A spike on a local Postgres 18 verified the parts below ([the spike](../research/2026-10-29-postgres-spike.md)). Terms are in [glossary.md](../glossary.md).
+Status. Spec of 2026-10-29 for `plan.graph_store`. The code shipped on 2026-10-30 in [#12](https://github.com/Ronitron007/product-eval-harness/pull/12): `src/store/`, `db/migrations/`, and `db/README.md`. Rohan ruled on 2026-10-29 that the authoring database is the Kyaloon Supabase Postgres database ([decisions.tsv](../decisions.tsv)). A spike on a local Postgres 18 verified the parts below ([the spike](../research/2026-10-29-postgres-spike.md)). Terms are in [glossary.md](../glossary.md).
+
+On 2026-10-31, [#14](https://github.com/Ronitron007/product-eval-harness/pull/14) made the migrations safe for the live database (`store.safety`). Nobody applied them to the Kyaloon database yet. They wait for [Ronitron007/RealDose#470](https://github.com/Ronitron007/RealDose/pull/470).
 
 ## Where it lives `store.place`
 
@@ -18,13 +20,33 @@ The Kyaloon database serves staging and production. Each migration reaches produ
 
 1. **Mastra never creates tables at run time.** The harness runs `PostgresStore` with `disableInit: true`. A script runs `storage.init()` once on a local Postgres, dumps the `mastra` schema, and the dump becomes a reviewed migration. Verified (the option exists in `@mastra/pg` 1.32.0).
 
-2. **Each migration lives in RealDose.** The migration files go into RealDose `supabase/migrations/`, like each other Kyaloon migration. Rohan runs `supabase db push` after a dry run. Claude writes the files and never applies them.
+2. **Each migration lives in RealDose.** The migration files go into RealDose `supabase/migrations/`, like each other Kyaloon migration. Rohan runs `supabase db push` after a dry run. Claude writes the files and never applies them. [Ronitron007/RealDose#470](https://github.com/Ronitron007/RealDose/pull/470) copies the three files verbatim into `20261031103326_harness_graph_store.sql`. It also adds an audit file in `supabase/proofs/`, the test driver `api/tests/db/harness-graph-store.sh`, and a mirror in `api/src/db/schema.sql`. The PR is open and not applied. Rohan applies it.
 
-3. **The harness has its own database role, `harness_app`.** It has rights on the schemas `harness` and `mastra`, and usage on `extensions`. It has no right on a Kyaloon table. It still holds each right that Postgres gives to `PUBLIC`, such as the execute right on a public function and the right to make temporary tables. Nothing here revokes a right from `PUBLIC`, because that would change the Kyaloon database outside our schemas. Before the migration, Rohan runs the read-only `db/audit-public-grants.sql`, which lists what `PUBLIC` can reach. Verified (the review of #12 ran it).
+3. **The harness has its own database role, `harness_app`.** It has rights on the schemas `harness` and `mastra`, and usage on `extensions`. It has no right on a Kyaloon table. The migration does not give the role a system attribute or a membership in another role.
 
-4. **Rows only grow.** Database triggers refuse each update, delete, and truncate of outputs, verdicts, records, stage runs, and derived rules. The role has no update or delete right on any harness table. A trigger also refuses a node whose path does not agree with its parent, and a child under a leaf. Verified (the tests of #12).
+4. **Row level security is on for each table.** Each of the 45 tables in `harness` and `mastra` has a policy for `harness_app`. In `harness`, the policies let the role read and insert. In `mastra`, a policy lets the role use all rows. The table owner bypasses row level security. Verified (the tests of #14).
 
-5. **No credential in this repo.** The connection string comes from `HARNESS_DATABASE_URL` in the environment.
+5. **No other role reaches our schemas.** `0003_harness_role.sql` revokes each right on the tables, sequences, and functions in `harness` and `mastra` from `PUBLIC`. It also runs `revoke all on schema harness, mastra from public`. It revokes the same rights from `anon` and `authenticated` when those Supabase roles exist. The trigger functions have an empty search path and no execute right for `PUBLIC`. A trigger fires with no check of that right. Verified (the tests of #14).
+
+6. **The migration revokes nothing from `PUBLIC` outside our two schemas.** That change would alter the rest of the Kyaloon database. So `harness_app` still holds each right that Postgres gives to `PUBLIC` elsewhere. Examples are the execute right on a public function and the right to make temporary tables. A security definer function can give the role rows of another table. Rohan reviews the report of `db/audit-public-grants.sql` before the migration.
+
+7. **A second run changes nothing.** Each migration is idempotent. Each statement uses "if not exists" or "or replace". A role that exists stays. `scripts/idempotent-mastra-dump.awk` rewrites the Mastra dump in the same way. Verified (a second apply gives the same `pg_dump`, in the tests of #14).
+
+8. **A guard stops a bad migration.** The last block of `0003_harness_role.sql` stops the migration and rolls it back in these cases:
+
+   - A table in `harness` or `mastra` has no row level security.
+
+   - `PUBLIC`, `anon`, or `authenticated` holds a right on a schema, table, sequence, or function in `harness` or `mastra`.
+
+   - `harness_app` has a system attribute: superuser, bypassrls, createrole, createdb, or replication.
+
+   - `harness_app` is a member of a role.
+
+9. **A read-only pre-check runs first.** The first result of `db/audit-public-grants.sql` lists the schemas `harness` and `mastra` and the role `harness_app`, if they exist. On a database that never had the migration, it must return zero rows. A row means that an object exists already, and the migration keeps it. Review that object before the apply. The second result is the report of the rights of `PUBLIC`.
+
+10. **Rows only grow.** Database triggers refuse each update, delete, and truncate of outputs, verdicts, records, stage runs, and derived rules. The role has no update or delete right on any harness table. A trigger also refuses a node whose path does not agree with its parent, and a child under a leaf. Verified (the tests of #12).
+
+11. **No credential in this repo.** The connection string comes from `HARNESS_DATABASE_URL` in the environment.
 
 ## The tables of this unit `store.tables`
 
