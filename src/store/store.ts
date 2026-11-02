@@ -3,7 +3,7 @@ import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import type pg from 'pg'
 import { z } from 'zod'
 import { ruleHash } from '../rules/hash'
-import { Binding, NodeId, NodeLevel, RuleId, RuleRecord, Stage, Verdict } from '../rules/schema'
+import { Binding, NodeId, NodeLevel, OWNER_ALL, RuleId, RuleRecord, Stage, Verdict } from '../rules/schema'
 import { derivedRules, nodes, outputs, records, stageRuns, verdicts } from './schema'
 
 // The graph store (docs/design/graph-store.md). The ltree type and operators live in
@@ -14,8 +14,11 @@ import { derivedRules, nodes, outputs, records, stageRuns, verdicts } from './sc
 const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'Give a lowercase sha256 hex digest.')
 const Text = z.string().min(1)
 
+// The id all names the virtual owner of the rules for every domain (compile.scope), never a node.
+const NewNodeId = NodeId.refine(id => id !== OWNER_ALL, `The node id ${OWNER_ALL} is reserved for the rules of every domain (rules/${OWNER_ALL}/). Pick another id.`)
+
 export const NodeInput = z
-  .object({ id: NodeId, parentId: NodeId.optional(), level: NodeLevel, label: Text })
+  .object({ id: NewNodeId, parentId: NodeId.optional(), level: NodeLevel, label: Text })
   .strict()
   .refine(n => (n.parentId === undefined) === (n.level === 'domain'), {
     message: 'A domain node has no parent. An inner or leaf node needs a parent.',
@@ -68,6 +71,8 @@ export interface GraphStore {
   addRecord(input: RecordInput): Promise<ResearchRecord>
   addDerivedRule(input: DerivedRuleInput): Promise<DerivedRule>
   // store.tree: the walks of graph.traversal.
+  tree(): Promise<GraphNode[]> // every node, in path order, for compileStage
+  derivedRules(): Promise<DerivedRule[]> // every derived rule version, for compileStage
   pathToRoot(nodeId: string): Promise<GraphNode[]>
   subtree(nodeId: string): Promise<GraphNode[]>
   siblings(nodeId: string): Promise<GraphNode[]>
@@ -138,6 +143,15 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
         .values({ id: rule.id, version: rule.version, hash: ruleHash(rule), owner: rule.owner, record: rule, runId })
         .returning()
       return row!
+    },
+
+    async tree() {
+      return db.select().from(nodes).orderBy(asc(nodes.path))
+    },
+
+    // Each version, old ones too: the compiler gives each older version the ledger reason superseded.
+    async derivedRules() {
+      return db.select().from(derivedRules).orderBy(asc(derivedRules.id), asc(derivedRules.version))
     },
 
     // From the root down to the node.

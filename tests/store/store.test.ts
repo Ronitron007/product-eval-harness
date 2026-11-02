@@ -61,6 +61,10 @@ describe('addNode', () => {
     ])
   })
 
+  it('refuses the node id all, the virtual owner of the rules for every domain', async () => {
+    await expect(store.addNode({ id: 'all', level: 'domain', label: 'All' })).rejects.toThrow(/The node id all is reserved/)
+  })
+
   it('refuses a child of a leaf, an unknown parent, and a domain node with a parent', async () => {
     await expect(store.addNode({ id: 'tinted', parentId: 'mineral_sunscreen', level: 'leaf', label: 'Tinted' })).rejects.toThrow(/is a leaf/)
     await expect(store.addNode({ id: 'serum', parentId: 'haircare', level: 'leaf', label: 'Serum' })).rejects.toThrow(/No node haircare/)
@@ -105,6 +109,16 @@ describe('the tree walk (store.tree)', () => {
 
   it('refuses an unknown node', async () => {
     await expect(store.subtree('haircare')).rejects.toThrow(/No node haircare/)
+  })
+
+  it('gives every node in path order, for the compiler', async () => {
+    const tree = await store.tree()
+    expect(tree.map(n => [n.id, n.parentId, n.level])).toEqual([
+      ['skincare', null, 'domain'],
+      ['moisturizer', 'skincare', 'leaf'],
+      ['sunscreen', 'skincare', 'inner'],
+      ['mineral_sunscreen', 'sunscreen', 'leaf'],
+    ])
   })
 })
 
@@ -179,6 +193,17 @@ describe('the append-only writes', () => {
     const row = await store.addDerivedRule({ rule, runId: 'run-1' })
     expect(row).toMatchObject({ id: rule.id, version: 1, owner: 'skincare', hash: ruleHash(rule) })
     expect(row.record).toEqual(rule)
+  })
+
+  it('gives every derived rule version, old ones too, for the compiler', async () => {
+    const v2 = RuleRecord.parse({ ...rule, version: 2, supersedes: 1, statement: 'Each attribute describes the product itself.' })
+    await store.addDerivedRule({ rule: v2, runId: 'run-1' })
+    const rows = await store.derivedRules()
+    expect(rows.map(r => [r.id, r.version, r.hash])).toEqual([
+      [rule.id, 1, ruleHash(rule)],
+      [rule.id, 2, ruleHash(v2)],
+    ])
+    expect(rows[1]!.record).toEqual(v2)
   })
 })
 
