@@ -64,6 +64,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: node_modules/.cache/tla2tools
-          key: tla2tools-1.7.4
+          # formal/tlc.ts pins the version and the sha256 of the jar.
+          key: tla2tools-${{ hashFiles('formal/tlc.ts') }}
       - name: Formal checks
         run: npm run formal

@@ -2,11 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { adminUrl, freshDatabase, pgDump, supabaseRoles } from '../../tests/db'
 import {
   apply,
+  caseKey,
   facts,
+  modelEndStates,
   modelView,
   MODES,
-  predict,
   query,
+  type ModelFacts,
   ROLES,
   SCHEMAS,
   schemaSetup,
@@ -17,14 +19,15 @@ import {
 } from './migration'
 
 // The migration sweep: db/migrations/ on each pre-state of formal/models/MigrationApply.tla, in
-// each apply mode, on a real local Postgres. 5 roles x 6 schemas x 2 x 2 modes = 120 cases.
+// each apply mode, on a real local Postgres. 6 roles x 6 schemas x 2 = 72 pre-states, and
+// 2 modes, so 144 cases.
 // Each case checks these rules:
 //   CommittedIsSafe            a committed migration meets store.safety, by what Postgres lets
 //                              PUBLIC, anon and authenticated do (formal/sql/migration.ts)
 //   StopRollsBack              a stopped migration leaves the schema dump as it was
 //   SecondApplyChangesNothing  a second apply commits and leaves the schema dump as it was
 //   GuardStopsNamedCases       the guard stops each case that it names
-//   ModelAgrees                the end state is the one that MigrationApply.tla gives
+//   ModelAgrees                the end state is the one that TLC dumps for MigrationApply.tla
 // FINDINGS lists the rules that break today. A case must break exactly those rules.
 
 type Rule = 'CommittedIsSafe' | 'StopRollsBack' | 'SecondApplyChangesNothing' | 'GuardStopsNamedCases' | 'ModelAgrees'
@@ -34,11 +37,16 @@ const guardNames = (p: PreState) => p.role === 'system_attr' || p.role === 'memb
 // The findings of 2026-11-02. When a fix lands, remove its line here and in the skill.
 const FINDINGS: Record<string, (p: PreState, mode: Mode) => boolean> = {
   // migration.guard_gaps: the guard reads ACL entries only. It misses anon as a member of
-  // harness_app, anon as the owner of the schema or a table, and a default privilege in harness.
+  // harness_app, anon as the owner of the schema or a table, a default privilege that opens new
+  // harness tables (of the schema, or of the database as on Supabase), and a right of
+  // harness_app on a Kyaloon table. Each needs a role, a schema or a default privilege from
+  // before. db/audit-public-grants.sql shows the role and the schemas, if a person reads it.
   CommittedIsSafe: p =>
-    !guardNames(p) && (p.role === 'anon_member' || ['owned_by_anon', 'anon_owns_table', 'default_acl_anon'].includes(p.schema)),
-  // migration.per_file_stop: with each file in its own transaction, a stop in 0003 keeps the
-  // tables of 0001 and 0002, with no row level security and with the rights of default privileges.
+    !guardNames(p) &&
+    (p.supabase || p.role === 'anon_member' || p.role === 'outside_grant' || ['owned_by_anon', 'anon_owns_table', 'default_acl_anon'].includes(p.schema)),
+  // migration.per_file_stop: with each file in its own transaction, as applyMigrations() of
+  // tests/db.ts runs them, a stop in 0003 keeps the tables of 0001 and 0002, with no row level
+  // security and with PUBLIC rights. One RealDose migration file runs in one transaction.
   StopRollsBack: (p, mode) => guardNames(p) && mode === 'per_file',
 }
 
@@ -49,7 +57,10 @@ for (const role of ROLES)
       for (const mode of MODES) cases.push({ p: { role, schema, supabase }, mode, name: `${role} / ${schema}${supabase ? ' / supabase' : ''} / ${mode}` })
 
 let roleBefore = false
+let model: Map<string, ModelFacts>
 beforeAll(async () => {
+  model = await modelEndStates()
+  if (model.size !== cases.length) throw new Error(`TLC gives ${model.size} end states for ${cases.length} cases.`)
   const { rows } = await query(adminUrl(), `select datname from pg_database where datname like 'harness_test_%'`)
   if (rows.length) {
     throw new Error(
@@ -87,16 +98,16 @@ describe('the migration sweep', () => {
       }
       if (guardNames(p) && outcome !== 'aborted') broken.set('GuardStopsNamedCases', 'the guard let a case that it names commit')
 
-      const model = predict(p, mode)
+      const expected = model.get(caseKey(p, mode))
       const real = { outcome, ...modelView(f) }
-      if (JSON.stringify(model) !== JSON.stringify(real)) {
-        broken.set('ModelAgrees', `model ${JSON.stringify(model)} but real ${JSON.stringify(real)}`)
+      if (!expected || Object.entries(expected).some(([k, v]) => real[k as keyof typeof real] !== v)) {
+        broken.set('ModelAgrees', `model ${JSON.stringify(expected)} but real ${JSON.stringify(real)}`)
       }
     } finally {
       await db.drop()
     }
 
-    const expected = Object.entries(FINDINGS)
+    const findings = Object.entries(FINDINGS)
       .filter(([, breaks]) => breaks(p, mode))
       .map(([rule]) => rule)
       .sort()
@@ -105,6 +116,6 @@ describe('the migration sweep', () => {
       actual,
       'A rule broke that FINDINGS does not list (a new bug or a wrong model), or a finding no longer breaks ' +
         `(fixed: update FINDINGS and the skill). Why each rule broke: ${JSON.stringify(Object.fromEntries(broken))}`,
-    ).toEqual(expected)
+    ).toEqual(findings)
   })
 })

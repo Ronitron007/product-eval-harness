@@ -14,6 +14,7 @@ function stagePart(v: Value): string {
     return !(before && before.binding === 'watch' && before.words === e.words)
   })
   const top = Math.max(...lock.map(e => e.v))
+  if (lock.some(e => e.v > 1 && !at(e.v - 1))) return `stage rule locked to v${top}, with a version missing below it`
   if (unwatched) return `stage rule locked to v${top}, a version that never ran as watch`
   return `stage rule locked to v${top}`
 }
@@ -39,13 +40,14 @@ export function state(v: Value): string {
 export function step(action: string): string {
   if (action === 'MergeRulePR') return 'a PR changes the rule file and passes rules:check'
   if (action === 'MergeLockEdit') return 'a PR edits the lock by hand and passes rules:check'
+  if (action === 'MergeLockAdd') return 'a PR adds a lock entry by hand and passes rules:check'
   if (action === 'AddDerivedRule') return 'a stage run adds a derived rule version'
   return action
 }
 
 export function group(v: Value): string {
   const s = state(v)
-  return s.includes('never ran') || s.includes('derived rows:') ? 'broken' : 'ok'
+  return s.includes('never ran') || s.includes('missing') || s.includes('derived rows:') ? 'broken' : 'ok'
 }
 
 export const colors = { ok: 'teal', broken: 'orange' }

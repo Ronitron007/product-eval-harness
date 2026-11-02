@@ -25,29 +25,31 @@ Results == {"pass", "fail", "cannot_verify"}
 
 VARIABLES
   run,       \* [stage, node] of the row in harness.stage_runs, both None before the insert
-  verdicts,  \* the rows in harness.verdicts: a set of [hash, result, row] (row: the insert number)
+  verdicts,  \* the rows in harness.verdicts: a set of [hash, result, round, row] (row: the insert number)
   latest,    \* the result of the last verdict row, or None
-  outputs    \* the rows in harness.outputs: a set of [stage, node, row]
-vars == <<run, verdicts, latest, outputs>>
+  outputs,   \* the rows in harness.outputs: a set of [stage, node, row]
+  person     \* TRUE when a person decided to accept the output. No table records it today.
+vars == <<run, verdicts, latest, outputs, person>>
 
 Rows == Cardinality(verdicts) + Cardinality(outputs)
 Recorded == run.stage # None
 
-Init == run = [stage |-> None, node |-> None] /\ verdicts = {} /\ latest = None /\ outputs = {}
+Init == run = [stage |-> None, node |-> None] /\ verdicts = {} /\ latest = None /\ outputs = {} /\ person = FALSE
 
 \* recordStageRun(): insert into harness.stage_runs. run_id is the primary key.
 RecordStageRun(stage, node) ==
   /\ ~Recorded
   /\ run' = [stage |-> stage, node |-> node]
-  /\ UNCHANGED <<verdicts, latest, outputs>>
+  /\ UNCHANGED <<verdicts, latest, outputs, person>>
 
 \* writeVerdicts(): insert into harness.verdicts. run_id must name a stage run.
 \* No check compares rule_hash with the lock, with harness.derived_rules, or with other rows.
+\* No column names the repair round or the output that a row judged, so round is None.
 WriteVerdict(hash, result) ==
   /\ Recorded
-  /\ verdicts' = verdicts \cup {[hash |-> hash, result |-> result, row |-> Rows + 1]}
+  /\ verdicts' = verdicts \cup {[hash |-> hash, result |-> result, round |-> None, row |-> Rows + 1]}
   /\ latest' = result
-  /\ UNCHANGED <<run, outputs>>
+  /\ UNCHANGED <<run, outputs, person>>
 
 \* insert into harness.outputs, by acceptOutput() or by plain SQL of harness_app.
 \* The composite foreign key makes stage and node agree with the run.
@@ -57,7 +59,7 @@ AcceptOutput(stage, node) ==
   /\ Cardinality(outputs) < MaxOutputs
   /\ stage = run.stage /\ node = run.node
   /\ outputs' = outputs \cup {[stage |-> stage, node |-> node, row |-> Rows + 1]}
-  /\ UNCHANGED <<run, verdicts, latest>>
+  /\ UNCHANGED <<run, verdicts, latest, person>>
 
 Next ==
   \/ \E s \in Stages, n \in Nodes : RecordStageRun(s, n)
@@ -86,14 +88,17 @@ StageFitsNodeLevel ==
 OneVersionOneHash ==
   \A x, y \in verdicts : x.hash = y.hash
 
-\* The graph accepts an output only when each strict rule in scope gives pass
-\* (enforce.binding, rules.harness): the last verdict of the strict rule is pass.
-AcceptedOnlyAfterStrictPass ==
-  outputs # {} => latest = "pass"
+\* The graph accepts an output when each strict rule in scope gives pass (enforce.binding).
+\* When the repair budget is spent, a person decides (decisions.tsv, 2026-10-24). So an
+\* accepted output has a last strict verdict of pass, or a recorded decision of a person.
+AcceptedAfterPassOrPerson ==
+  outputs # {} => latest = "pass" \/ person
 
-\* The log has one row for each output item and each rule (enforce.audit).
-OneVerdictPerTarget ==
-  Cardinality(verdicts) <= 1
+\* The log has one row for each output item and each rule (enforce.audit). A repair loop of
+\* up to 3 rounds judges one target once in each round, so two rows of one target must name
+\* two rounds.
+OneVerdictPerTargetAndRound ==
+  \A x, y \in verdicts : x # y => x.round # y.round
 
 \* A run accepts one output, so that its verdicts answer "why did the graph accept this
 \* output?" (enforce.audit). Inferred from store.tables, not stated as a rule.

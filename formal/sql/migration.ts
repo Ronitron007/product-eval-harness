@@ -2,11 +2,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import pg from 'pg'
 import { adminUrl, applyMigrations, MIGRATIONS_DIR, migrationFiles } from '../../tests/db'
+import { dumpStates } from '../tlc'
 
 // The pre-states, the apply modes, and the safety oracle of the migration sweep
 // (formal/sql/migration-sweep.check.ts). The names match formal/models/MigrationApply.tla.
 
-export const ROLES = ['absent', 'plain', 'system_attr', 'member_of_role', 'anon_member'] as const
+export const ROLES = ['absent', 'plain', 'system_attr', 'member_of_role', 'anon_member', 'outside_grant'] as const
 export const SCHEMAS = ['absent', 'empty', 'owned_by_anon', 'anon_owns_table', 'default_acl_anon', 'table_no_rls'] as const
 export const MODES = ['one_tx', 'per_file'] as const
 export type Role = (typeof ROLES)[number]
@@ -39,6 +40,8 @@ export async function setRole(role: Role): Promise<void> {
     member_of_role: `do $$ begin create role zz_group nologin; exception when duplicate_object then null; end $$;
                      create role harness_app login noinherit; grant zz_group to harness_app`,
     anon_member: 'create role harness_app login noinherit; grant harness_app to anon',
+    // The table and its grant live in one database, so schemaSetup() adds them.
+    outside_grant: 'create role harness_app login noinherit nocreatedb nocreaterole',
   }
   if (make[role]) await query(admin, make[role])
 }
@@ -59,7 +62,8 @@ export function schemaSetup(p: PreState): string {
     default_acl_anon: 'create schema harness; alter default privileges in schema harness grant select on tables to anon;',
     table_no_rls: 'create schema harness; create table harness.zz_no_rls (id int);',
   }
-  return (p.supabase ? supabase : '') + schema[p.schema]
+  const outside = 'create table public.zz_kyaloon (id int); grant select, update on public.zz_kyaloon to harness_app;'
+  return (p.supabase ? supabase : '') + schema[p.schema] + (p.role === 'outside_grant' ? outside : '')
 }
 
 // Applies db/migrations/: in one transaction, as one RealDose migration file (db/README.md),
@@ -105,8 +109,12 @@ export const FACTS_SQL = `select
   coalesce((select rolsuper or rolbypassrls or rolcreaterole or rolcreatedb or rolreplication
               from pg_roles where rolname = 'harness_app'), false) as app_attr,
   (select count(*) from pg_auth_members m join pg_roles r on r.oid = m.member where r.rolname = 'harness_app')::int as app_member_of,
-  (select count(*) from pg_default_acl d, aclexplode(d.defaclacl) a
-     where d.defaclnamespace in (${OURS}) and (a.grantee = 0 or a.grantee in ('anon'::regrole, 'authenticated'::regrole)))::int as default_acl,
+  (select count(*) from pg_roles r, pg_class c, aclexplode(c.relacl) a
+     where r.rolname = 'harness_app' and a.grantee = r.oid and c.relnamespace not in (${OURS}))::int
+   + (select count(*) from pg_roles r, pg_namespace n, aclexplode(n.nspacl) a
+     where r.rolname = 'harness_app' and a.grantee = r.oid and n.nspname not in ('harness', 'mastra', 'extensions'))::int
+   + (select count(*) from pg_roles r, pg_class c where r.rolname = 'harness_app' and c.relowner = r.oid and c.relnamespace not in (${OURS}))::int
+   as app_outside,
   coalesce((select bool_or(has_table_privilege('harness_app', c.oid, 'UPDATE,DELETE,TRUNCATE')) from pg_class c
               where c.relnamespace = to_regnamespace('harness') and c.relkind in ('r', 'p')
                 and exists (select 1 from pg_roles where rolname = 'harness_app')), false) as app_writes,
@@ -123,13 +131,32 @@ export interface Facts {
   anon_is_app: boolean
   app_attr: boolean
   app_member_of: number
-  default_acl: number
+  app_outside: number
+  new_table_open: boolean
   app_writes: boolean
   app_owns: boolean
 }
 
+// new_table_open: a table that a later migration makes in schema harness gets an ACL entry for
+// PUBLIC, anon or authenticated from a default privilege. The probe makes the table and rolls it
+// back. It reads ACL entries, so a membership in harness_app counts in anon_is_app only.
+const NEW_TABLE_SQL = `begin;
+  create schema if not exists harness;
+  create table harness.zz_probe (id int);
+  select exists (select 1 from aclexplode((select relacl from pg_class where oid = 'harness.zz_probe'::regclass)) a
+                  where a.grantee = 0 or a.grantee in ('anon'::regrole, 'authenticated'::regrole)) as open;
+  rollback;`
+
 export async function facts(url: string): Promise<Facts> {
-  return (await query(url, FACTS_SQL)).rows[0] as Facts
+  const client = new pg.Client({ connectionString: url })
+  await client.connect()
+  try {
+    const base = (await client.query(FACTS_SQL)).rows[0]
+    const probe = (await client.query(NEW_TABLE_SQL)) as unknown as pg.QueryResult[]
+    return { ...base, new_table_open: probe[3]!.rows[0].open } as Facts
+  } finally {
+    await client.end()
+  }
 }
 
 // store.safety after a commit, by what Postgres lets each role do.
@@ -142,14 +169,15 @@ export function unsafe(f: Facts): string[] {
   if (f.anon_is_app) out.push('anon or authenticated is a member of harness_app')
   if (f.app_attr) out.push('harness_app has a system attribute')
   if (f.app_member_of) out.push(`harness_app is a member of ${f.app_member_of} roles`)
-  if (f.default_acl) out.push(`${f.default_acl} default privileges in harness or mastra open new objects`)
+  if (f.new_table_open) out.push('a default privilege opens each new harness table to PUBLIC, anon or authenticated')
+  if (f.app_outside) out.push(`harness_app holds ${f.app_outside} rights or objects outside harness, mastra and extensions`)
   if (f.app_writes) out.push('harness_app can update, delete or truncate a harness table')
   if (f.app_owns) out.push('harness_app owns an object')
   return out
 }
 
-// The end state that formal/models/MigrationApply.tla gives for a pre-state and a mode, in the
-// facts of the model. The sweep compares it with the real database, so that a wrong model shows.
+// The end states of formal/models/MigrationApply.tla, from TLC -dump, by pre-state and mode.
+// The sweep compares each of them with the real database, so that a wrong model shows.
 export interface ModelFacts {
   outcome: 'committed' | 'aborted'
   schemas: boolean
@@ -161,27 +189,18 @@ export interface ModelFacts {
   attr: boolean
   memberOf: boolean
   defaultAcl: boolean
+  outsideGrant: boolean
 }
 
-export function predict(p: PreState, mode: Mode): ModelFacts {
-  const before: Omit<ModelFacts, 'outcome'> = {
-    schemas: p.schema !== 'absent',
-    noRls: p.schema === 'table_no_rls',
-    // objects made under the default privileges, and the owner entries of anon on its schema
-    anonRight: (p.supabase && p.schema !== 'absent') || p.schema === 'owned_by_anon',
-    anonOwns: p.schema === 'owned_by_anon' || p.schema === 'anon_owns_table',
-    anonIsApp: p.role === 'anon_member',
-    role: p.role !== 'absent',
-    attr: p.role === 'system_attr',
-    memberOf: p.role === 'member_of_role',
-    defaultAcl: p.schema === 'default_acl_anon',
+export const caseKey = (p: PreState, mode: Mode) => `${p.role}/${p.schema}/${p.supabase}/${mode}`
+
+export async function modelEndStates(): Promise<Map<string, ModelFacts>> {
+  const ends = new Map<string, ModelFacts>()
+  for (const s of (await dumpStates('MigrationApply', 'MigrationApply')) as any[]) {
+    if (s.phase !== 'committed' && s.phase !== 'aborted') continue
+    ends.set(caseKey(s.pre, s.mode), { outcome: s.phase, ...s.db })
   }
-  // PUBLIC can execute each new function until 0003 revokes it.
-  const after0002 = { ...before, schemas: true, noRls: true, anonRight: true }
-  const guard = { ...after0002, role: true, noRls: p.schema === 'table_no_rls', anonRight: false }
-  const stops = guard.noRls || guard.anonRight || guard.attr || guard.memberOf
-  if (!stops) return { outcome: 'committed', ...guard }
-  return { outcome: 'aborted', ...(mode === 'per_file' ? after0002 : before) }
+  return ends
 }
 
 export function modelView(f: Facts): Omit<ModelFacts, 'outcome'> {
@@ -194,6 +213,7 @@ export function modelView(f: Facts): Omit<ModelFacts, 'outcome'> {
     role: f.role,
     attr: f.app_attr,
     memberOf: f.app_member_of > 0,
-    defaultAcl: f.default_acl > 0,
+    defaultAcl: f.new_table_open,
+    outsideGrant: f.app_outside > 0,
   }
 }

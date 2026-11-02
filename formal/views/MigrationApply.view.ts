@@ -12,6 +12,7 @@ function leaks(db: Value): string[] {
   if (db.anonIsApp) out.push('anon is a member of harness_app')
   if (db.attr || db.memberOf) out.push('harness_app has an extra right')
   if (db.defaultAcl) out.push('new tables open to anon')
+  if (db.outsideGrant) out.push('harness_app reaches a Kyaloon table')
   return out
 }
 
@@ -21,6 +22,7 @@ const roleWords: Record<string, string> = {
   system_attr: 'a harness_app with a system attribute',
   member_of_role: 'a harness_app in another role',
   anon_member: 'anon as a member of harness_app',
+  outside_grant: 'a harness_app with a right on a Kyaloon table',
 }
 const schemaWords: Record<string, string> = {
   absent: 'no schema harness',

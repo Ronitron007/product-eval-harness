@@ -14,8 +14,8 @@ export function state(v: Value): string {
   const marks: string[] = []
   if (levelOf[v.run.node] !== stageLevel[v.run.stage]) marks.push('at a node of another level')
   if (new Set(verdicts.map(x => x.hash)).size > 1) marks.push('one rule version with two hashes')
-  if (verdicts.length > 1) marks.push('two verdicts for one target')
-  if (outputs.length > 0 && v.latest !== 'pass') marks.push(v.latest === 'none' ? 'no verdict' : `last verdict ${v.latest}`)
+  if (verdicts.length > 1 && new Set(verdicts.map(x => x.round)).size < verdicts.length) marks.push('two verdicts for one target in one round')
+  if (outputs.length > 0 && v.latest !== 'pass' && !v.person) marks.push(v.latest === 'none' ? 'no verdict' : `last verdict ${v.latest}`)
   if (outputs.length > 1) marks.push('two outputs')
   const phase = outputs.length > 0 ? 'Output accepted' : verdicts.length > 0 ? 'Verdicts written' : 'Run recorded'
   return marks.length ? `${phase}: ${marks.join(', ')}` : phase

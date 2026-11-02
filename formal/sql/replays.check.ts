@@ -114,8 +114,10 @@ describe('VerdictLog', () => {
     expect(runId).toMatch(/^replay-/)
   })
 
-  // AcceptedOnlyAfterStrictPass: record the run, accept the output. Also: after a fail.
-  it('finding verdicts.accept_without_pass: an output with no verdict, and an output after a strict fail', async () => {
+  // AcceptedAfterPassOrPerson: record the run, accept the output. Also: after a fail. A person
+  // may accept after a spent repair budget (decisions.tsv, 2026-10-24), but no table records
+  // that decision, so the store cannot tell such an output from one that skipped the judge.
+  it('finding verdicts.accept_without_pass: an output with no verdict, and an output after a strict fail, with no record of a person', async () => {
     const none = await newRun('define_criteria', 'skincare')
     await store.acceptOutput({ runId: none, body: { criteria: [] } })
     const failed = await newRun('define_criteria', 'skincare')
@@ -145,8 +147,8 @@ describe('VerdictLog', () => {
     expect(rows).toEqual([{ hashes: 2 }])
   })
 
-  // OneVerdictPerTarget: a repair round writes a fail, then a pass, for one target. No column
-  // says which round or which output a row judged.
+  // OneVerdictPerTargetAndRound: a repair round writes a fail, then a pass, for one target. No
+  // column says which round or which output a row judged: the columns are exactly these.
   it('finding verdicts.no_round: a repair round gives two verdict rows for one target and one rule', async () => {
     const runId = await newRun('define_criteria', 'skincare')
     await store.writeVerdicts([verdict(runId, ruleHash(rule), 'fail')])
@@ -155,9 +157,12 @@ describe('VerdictLog', () => {
     const { rows } = await owner.query(`select verdict from harness.verdicts where run_id = $1 order by created_at`, [runId])
     expect(rows.map(r => r.verdict)).toEqual(['fail', 'pass'])
     const { rows: cols } = await owner.query(
-      `select column_name from information_schema.columns where table_schema = 'harness' and table_name = 'verdicts' and column_name in ('output_id', 'round')`,
+      `select column_name from information_schema.columns where table_schema = 'harness' and table_name = 'verdicts' order by column_name`,
     )
-    expect(cols).toEqual([])
+    // A new column fails this check. If it names the round or the output, the finding is fixed.
+    expect(cols.map(c => c.column_name)).toEqual([
+      'binding', 'created_at', 'decider', 'evidence', 'id', 'reason', 'rule_hash', 'rule_id', 'rule_version', 'run_id', 'target', 'verdict',
+    ])
   })
 
   // OneOutputPerRun: accept two outputs for one run.
@@ -187,6 +192,20 @@ describe('RuleVersions', () => {
     const first = loadRuleLibrary(root)
     writeLock(join(root, LOCK_FILE), lockNewVersions(first).lock)
     expect(loadRuleLibrary(root, { baseLock: first.lock }).problems).toEqual([])
+  })
+
+  // RuleVersions, LockSkipsNoVersion: the lock holds version 1. A PR adds an entry for
+  // version 3 by hand, and rules:check --base passes.
+  it('finding rules.lock_hand_entry: a hand-added lock entry for version 3, with no version 2, passes rules:check', () => {
+    const root = mkdtempSync(join(tmpdir(), 'replay-rules-'))
+    roots.push(root)
+    mkdirSync(join(root, 'skincare'))
+    writeFileSync(join(root, 'skincare', `${rule.id}.yaml`), stringify(JSON.parse(JSON.stringify(rule))))
+    const base = lockNewVersions(loadRuleLibrary(root)).lock
+    writeLock(join(root, LOCK_FILE), { lock_version: 1, rules: { [rule.id]: { ...base.rules[rule.id], '3': sha('words that no file had') } } })
+    const library = loadRuleLibrary(root, { baseLock: base })
+    expect(library.problems).toEqual([])
+    expect(Object.keys(library.lock.rules[rule.id]!)).toEqual(['1', '3'])
   })
 
   // RuleVersions_derived, DerivedSkipsNoVersion: add version 2 with no version 1.
@@ -223,7 +242,8 @@ describe('RuleVersions', () => {
   })
 
   // IdNamesOneRule: the lock holds version 1 of a stage rule. A stage run adds a derived rule
-  // with the same id and version and other words.
+  // with the same id and version and other words. rules/rules.lock.json holds no rule today, so
+  // this replay cannot see a fix that reads that lock. Such a fix must update this replay.
   it('finding derived_rules.id_collision: a derived rule takes the id and version of a stage rule, with another hash', async () => {
     const runId = await newRun('define_criteria', 'skincare')
     const derived = version(1, { statement: 'Other words.' })

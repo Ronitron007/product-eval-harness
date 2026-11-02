@@ -1,6 +1,8 @@
 // The expected TLC result of each rule of formal/models/. formal/tlc.ts checks each rule on its
 // own and exits 1 when a result differs. A "breaks" row is a finding of 2026-11-02 that waits
 // for Rohan's ruling. When its fix lands, the row must change to "holds" in the same PR.
+// Some "holds" rows restate a guard of the code that the model copies, such as LockOnlyGrows
+// with the CI --base check. The replays and the sweep check the real code.
 
 export type Result = 'holds' | 'breaks'
 
@@ -33,13 +35,13 @@ export const MODEL_RULES: ModelRule[] = [
     ['OutputAgreesWithRun', 'holds'],
     ['StageFitsNodeLevel', 'breaks', 'verdicts.stage_level'],
     ['OneVersionOneHash', 'breaks', 'verdicts.hash_per_version'],
-    ['AcceptedOnlyAfterStrictPass', 'breaks', 'verdicts.accept_without_pass'],
-    ['OneVerdictPerTarget', 'breaks', 'verdicts.no_round'],
+    ['AcceptedAfterPassOrPerson', 'breaks', 'verdicts.accept_without_pass'],
+    ['OneVerdictPerTargetAndRound', 'breaks', 'verdicts.no_round'],
     ['OneOutputPerRun', 'breaks', 'verdicts.outputs_per_run'],
   ]),
   ...rows('RuleVersions', 'RuleVersions', 'INVARIANT', [
     ['FileMatchesLock', 'holds'],
-    ['LockSkipsNoVersion', 'holds'],
+    ['LockSkipsNoVersion', 'breaks', 'rules.lock_hand_entry'],
     ['NewVersionStartsWatch', 'breaks', 'rules.watch_first'],
   ]),
   ...rows('RuleVersions', 'RuleVersions', 'PROPERTY', [['LockOnlyGrows', 'holds']]),

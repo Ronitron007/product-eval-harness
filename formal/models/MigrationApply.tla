@@ -8,13 +8,15 @@
      tests/db.ts                            applyMigrations(): each file in its own transaction
      db/README.md                           RealDose copies the three files into one migration
    The model abstracts the database to the facts that store.safety names. The transitions come
-   from runs on a real Postgres 18 (formal/sql/migration-sweep.test.ts checks each of them).
+   from runs on a real Postgres 18. formal/sql/migration-sweep.check.ts compares the end state
+   of each pre-state and mode, which TLC dumps, with the real database.
    A file is one transaction. With Mode = "one_tx", the three files are one transaction. *)
 EXTENDS Naturals
 
-Roles == {"absent", "plain", "system_attr", "member_of_role", "anon_member"}
+Roles == {"absent", "plain", "system_attr", "member_of_role", "anon_member", "outside_grant"}
 \* harness_app before the migration: absent, with no extra right, with a system attribute
-\* (such as createdb), as a member of another role, or with anon as its member.
+\* (such as createdb), as a member of another role, with anon as its member, or with a right
+\* on a table outside harness and mastra (a Kyaloon table).
 Schemas == {"absent", "empty", "owned_by_anon", "anon_owns_table", "default_acl_anon", "table_no_rls"}
 \* schema harness before the migration: absent, empty, owned by anon, with a table that anon
 \* owns, with a default privilege for anon, or with a table that has no row level security.
@@ -29,10 +31,13 @@ VARIABLES
 vars == <<pre, mode, phase, db, saved>>
 
 \* The facts that store.safety names, for schemas harness and mastra.
-Facts(schemas, noRls, anonRight, anonOwns, anonIsApp, role, attr, memberOf, defaultAcl) ==
+\* defaultAcl: a new table in schema harness opens to PUBLIC or anon, by a default privilege of
+\* the database (Supabase) or of the schema. outsideGrant: harness_app has a right on a table
+\* outside harness and mastra.
+Facts(schemas, noRls, anonRight, anonOwns, anonIsApp, role, attr, memberOf, defaultAcl, outsideGrant) ==
   [schemas |-> schemas, noRls |-> noRls, anonRight |-> anonRight, anonOwns |-> anonOwns,
    anonIsApp |-> anonIsApp, role |-> role, attr |-> attr, memberOf |-> memberOf,
-   defaultAcl |-> defaultAcl]
+   defaultAcl |-> defaultAcl, outsideGrant |-> outsideGrant]
 
 Before(p) ==
   Facts(p.schema # "absent",
@@ -44,7 +49,8 @@ Before(p) ==
         p.role # "absent",
         p.role = "system_attr",
         p.role = "member_of_role",
-        p.schema = "default_acl_anon")
+        p.supabase \/ p.schema = "default_acl_anon",
+        p.role = "outside_grant")
 
 Init ==
   /\ pre \in [role : Roles, schema : Schemas, supabase : BOOLEAN]
@@ -75,7 +81,8 @@ Apply0002 ==
 \* 0003_harness_role.sql before its guard: makes harness_app if it does not exist, turns on row
 \* level security for the six named harness tables and each mastra table, and revokes each
 \* right of PUBLIC, anon and authenticated on the schemas, tables, sequences and functions.
-\* It changes no owner, no membership in harness_app, and no default privilege.
+\* It changes no owner, no membership in harness_app, no default privilege, and no right
+\* outside harness, mastra and extensions.
 Apply0003 ==
   /\ phase = "after_0002"
   /\ db' = [db EXCEPT !.role = TRUE, !.noRls = (pre.schema = "table_no_rls"), !.anonRight = FALSE]
@@ -112,13 +119,14 @@ Spec == Init /\ [][Next]_vars
 (* The rules. *)
 
 \* store.safety: after a migration commits, each table has row level security, PUBLIC, anon and
-\* authenticated hold no right in harness and mastra, and harness_app has no system attribute
-\* and no membership. The model reads "no right" as what Postgres lets the role do: an owner,
-\* or a member of harness_app, can use the objects with no ACL entry.
+\* authenticated hold no right in harness and mastra, and harness_app has no system attribute,
+\* no membership, and no right on a Kyaloon table. The model reads "no right" as what Postgres
+\* lets the role do: an owner, or a member of harness_app, can use the objects with no ACL entry.
+\* A new table that opens to anon by a default privilege also breaks the rule.
 CommittedIsSafe ==
   phase = "committed" =>
     ~db.noRls /\ ~db.anonRight /\ ~db.anonOwns /\ ~db.anonIsApp
-    /\ ~db.attr /\ ~db.memberOf /\ ~db.defaultAcl
+    /\ ~db.attr /\ ~db.memberOf /\ ~db.defaultAcl /\ ~db.outsideGrant
 
 \* The guard stops the migration "and rolls it back" (0003_harness_role.sql): a stopped
 \* migration leaves the database as it was before.

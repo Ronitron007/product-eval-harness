@@ -72,6 +72,16 @@ MergeLockEdit(e, w) ==
      /\ lock' = L
      /\ UNCHANGED <<file, derived>>
 
+\* A PR that adds a lock entry by hand, for a version that no rule file has had. The loader
+\* checks the version of the file and its supersedes entry, not the other entries of the id.
+MergeLockAdd(v, w, b) ==
+  LET L == lock \cup {Entry(v, w, b)}
+  IN /\ file.v > 0
+     /\ ~InLock(lock, v)
+     /\ CheckPasses(file, L, lock)
+     /\ lock' = L
+     /\ UNCHANGED <<file, derived>>
+
 \* addDerivedRule(): insert into harness.derived_rules. The primary key (id, version) is the
 \* only check across rows. RuleRecord asks supersedes = version - 1, but no code reads that row.
 AddDerivedRule(v, w, o, s) ==
@@ -82,6 +92,7 @@ AddDerivedRule(v, w, o, s) ==
 Next ==
   \/ \E v \in StageVersions, w \in Words, b \in Bindings : MergeRulePR(v, w, b)
   \/ \E e \in lock, w \in Words : MergeLockEdit(e, w)
+  \/ \E v \in StageVersions, w \in Words, b \in Bindings : MergeLockAdd(v, w, b)
   \/ \E v \in DerivedVersions, w \in Words, o \in Owners, s \in Statuses : AddDerivedRule(v, w, o, s)
 
 Spec == Init /\ [][Next]_vars
@@ -93,7 +104,10 @@ Spec == Init /\ [][Next]_vars
 FileMatchesLock ==
   file.v > 0 => InLock(lock, file.v) /\ Hash(lock, file.v) = Entry(file.v, file.words, file.binding)
 
-\* The lock only grows: no merge drops an entry or changes its hash (rule_record.lock).
+\* The lock only grows: no merge drops an entry or changes its hash (rule_record.lock). The CI
+\* check with --base refuses each such merge, so with CiBase = TRUE this rule restates that check.
+\* GitHub does not make a merge wait for CI on main (no branch protection): the model assumes
+\* that each merge waits for its check.
 LockOnlyGrows == [][lock \subseteq lock']_vars
 
 \* Each new version supersedes the version before it (enforce.rule_record): no version skips one.
