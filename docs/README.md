@@ -33,6 +33,7 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [design/mastra-mapping.md](design/mastra-mapping.md) | `mastra`: the parts on Mastra |
 | [design/data-layers.md](design/data-layers.md) | `data`: the data layers and their stores |
 | [design/graph-store.md](design/graph-store.md) | `store`: the graph store in the Kyaloon Supabase database |
+| [design/compiler.md](design/compiler.md) | `compile`: the rule compiler of `plan.compiler`. Spec, not built yet. |
 
 ## Plan `docs.plan`
 
@@ -56,3 +57,4 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [research/2026-10-25-scaffold-look-before-you-build.md](research/2026-10-25-scaffold-look-before-you-build.md) | The Mastra boilerplate that the scaffold starts from, and what it adds |
 | [research/2026-10-29-postgres-spike.md](research/2026-10-29-postgres-spike.md) | Mastra storage and our tables on one Postgres pool |
 | [research/2026-10-28-mastra-cli-spike/README.md](research/2026-10-28-mastra-cli-spike/README.md) | Mastra with the Claude CLI and the Cursor CLI: SDK agents, one MCP tool server, and its traps |
+| [research/2026-11-02-compiler-architect/README.md](research/2026-11-02-compiler-architect/README.md) | The architect run behind the compiler spec: two designs, their probes, and the synthesis |
