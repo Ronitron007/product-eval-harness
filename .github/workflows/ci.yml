@@ -55,3 +55,16 @@ jobs:
           else
             npm run rules:check
           fi
+      # The formal checks (.claude/skills/harness-invariants). TLC needs Java. The first run
+      # downloads the pinned tla2tools.jar into node_modules/.cache and checks its sha256.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/tla2tools
+          # formal/tlc.ts pins the version and the sha256 of the jar.
+          key: tla2tools-${{ hashFiles('formal/tlc.ts') }}
+      - name: Formal checks
+        run: npm run formal

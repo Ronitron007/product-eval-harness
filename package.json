@@ -20,7 +20,10 @@
     "test": "vitest run",
     "rules:check": "tsx src/rules/cli.ts check rules",
     "rules:lock": "tsx src/rules/cli.ts lock rules",
-    "compiler:lock": "tsx scripts/compiler-lock.ts"
+    "compiler:lock": "tsx scripts/compiler-lock.ts",
+    "formal:tla": "tsx formal/tlc.ts",
+    "formal:sql": "vitest run --config formal/vitest.config.ts",
+    "formal": "npm run formal:tla && npm run formal:sql"
   },
   "dependencies": {
     "@mastra/core": "1.79.0",
