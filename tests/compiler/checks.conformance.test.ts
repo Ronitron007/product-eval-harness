@@ -1,12 +1,10 @@
-import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import type { CheckVector, EvidenceKey, Json, RunEvidence } from '../../src/rules/checks/define'
 import { CHECKS, type AnyCheckTemplate } from '../../src/rules/checks'
 import { paramsAtLeastAsStrict } from '../../src/rules/strictness'
-import { importsOf, importsOfFile } from './imports'
-import { REPO } from './files'
+import { planOf } from './library'
+import { checkRule, shapeRule } from './rules'
 
 // checks.conformance: the verify, params and weaken.order_is_sound tests over each entry of CHECKS.
 
@@ -58,28 +56,28 @@ describe.each(templates.map(t => [t.name, t] as const))('checks.conformance %s',
     if (hasOrder) expect(pairs).toBeGreaterThan(0)
   })
 
+  // The runtime path: one plan with this template on a field of its target kind.
+  it('verify.no_pass_without_evidence: an absent value never gives a pass, and for a template with keys in needs, empty evidence never gives a pass', async () => {
+    const v = vectors.find(x => x.expected === 'pass')!
+    const field = t.target === 'list' ? 'items' : 'items[].value'
+    const shapes =
+      t.target === 'list'
+        ? [shapeRule('items.list', 'items', { type: 'list' }, [{ output: [], expected: 'pass' }]), ...Object.keys(v.params).map(k => shapeRule(`items.key_${k}`, `items[].${String(v.params[k])}`, { type: 'text' }, [{ output: 'x', expected: 'pass' }]))]
+        : [shapeRule('items.value', field, { type: 'text' }, [{ output: 'x', expected: 'pass' }])]
+    const rule = checkRule('items.checked', field, { name: t.name, params: v.params }, [{ output: v.value, expected: 'pass' }], { statement: 'Back each item.', reason: 'A grade must rest on evidence.' })
+    const plan = planOf({ rules: [...shapes, rule] })
+    const scorer = plan.scorers.code.find(s => s.rule.id === 'items.checked')!
+    const present = t.target === 'list' ? { items: v.value } : { items: [{ value: v.value }] }
+    expect((await scorer.verify(present, v.evidence)).map(r => r.verdict)).toEqual(['pass'])
+    for (const absent of [{}, { items: [{}] }, 'not JSON'])
+      for (const row of await scorer.verify(absent, v.evidence)) expect(row.verdict).not.toBe('pass')
+    if (t.needs.length > 0) for (const row of await scorer.verify(present, {})) expect(row.verdict).toBe('cannot_verify')
+  })
+
   it('verify.literals_and_render: render and literals read the same params object as check', () => {
     for (const v of vectors) {
       expect(t.render(v.params).length).toBeGreaterThan(0)
       for (const l of t.literals(v.params)) expect(Object.values(v.params).some(p => isDeepStrictEqual(p, l))).toBe(true)
     }
-  })
-})
-
-describe('hash.template_imports', () => {
-  const folder = join(REPO, 'src', 'rules', 'checks')
-  const files = readdirSync(folder).filter(f => f.endsWith('.ts') && f !== 'define.ts' && f !== 'index.ts')
-
-  it('lists one template file for each entry of CHECKS', () => {
-    expect(files.map(f => f.replace(/\.ts$/, '')).sort()).toEqual(templates.map(t => t.name).sort())
-  })
-
-  it.each(files)('the template file %s imports only zod and ./define', file => {
-    expect(importsOfFile(join(folder, file)).filter(m => m !== 'zod' && m !== './define')).toEqual([])
-  })
-
-  it('a template file that imports another module fails the test', () => {
-    const source = "import { z } from 'zod'\nimport { defineCheck } from './define'\nimport { distance } from 'fastest-levenshtein'\n"
-    expect(importsOf(source).filter(m => m !== 'zod' && m !== './define')).toEqual(['fastest-levenshtein'])
   })
 })

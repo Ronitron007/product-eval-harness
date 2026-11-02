@@ -103,3 +103,29 @@ export const FIXTURE: readonly RuleInput[] = [
 // A minimal output that the fixture schema accepts.
 export const GOOD_OUTPUT = { criteria: [{ name: 'spf', attributes: [{ amount: 500, key: 'spf', quote: '500 mg', unit: 'mg' }] }] }
 export const GOOD_EVIDENCE = { sources: { label: 'Each capsule has 500 mg.' }, attribute_keys: ['spf'] }
+
+// A library whose shapes compose from a parent and a child rule, for shape.joint_meet_agrees
+// and hash.schema_round_trip.
+const sun = { owner: 'sunscreen' }
+export const COMPOSED: readonly RuleInput[] = [
+  ...FIXTURE,
+  shapeRule('attributes.list', 'criteria[].attributes', { type: 'list', min_items: 1 }, [{ output: [{}], expected: 'pass' }]),
+  shapeRule('attributes.list_cap', 'criteria[].attributes', { type: 'list', max_items: 3 }, [{ output: [{}], expected: 'pass' }], sun),
+  shapeRule('attributes.amount_cap', 'criteria[].attributes[].amount', { type: 'number', max: 5000 }, [{ output: 5, expected: 'pass' }], sun),
+  shapeRule('attributes.quote_cap', 'criteria[].attributes[].quote', { type: 'text', max_length: 12 }, [{ output: 'q', expected: 'pass' }], sun),
+  shapeRule('attributes.count', 'criteria[].attributes[].count', { type: 'number', integer: true, min: 1 }, [{ output: 2, expected: 'pass' }]),
+  shapeRule('attributes.count_cap', 'criteria[].attributes[].count', { type: 'number', max: 9.5 }, [{ output: 2, expected: 'pass' }], sun),
+  shapeRule('attributes.tested', 'criteria[].attributes[].tested', { type: 'flag' }, [{ output: true, expected: 'pass' }]),
+]
+const ATTRIBUTE = { amount: 500, count: 2, key: 'spf', quote: '500 mg', tested: true, unit: 'mg' }
+export const COMPOSED_OUTPUT = { criteria: [{ name: 'spf', attributes: [ATTRIBUTE] }] }
+export const BOUNDARIES: Readonly<Record<string, readonly unknown[]>> = {
+  'criteria[].attributes': [[], [ATTRIBUTE], [ATTRIBUTE, ATTRIBUTE, ATTRIBUTE], [ATTRIBUTE, ATTRIBUTE, ATTRIBUTE, ATTRIBUTE], 'x'],
+  'criteria[].attributes[].amount': [-0.5, 0, 2500, 5000, 5000.5, '500', null],
+  'criteria[].attributes[].count': [0, 1, 1.5, 9, 9.5, 10, '2'],
+  'criteria[].attributes[].quote': ['', 'a', '123456789012', '1234567890123', 5],
+  'criteria[].attributes[].unit': ['g', 'mcg', 'mg', 'IU', 'MG', '', 1],
+  'criteria[].attributes[].tested': [true, false, 'true', 0],
+  'criteria[].name': ['', 'spf', 7],
+  criteria: [[], 'x'],
+}

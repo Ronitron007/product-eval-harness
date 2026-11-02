@@ -1,0 +1,24 @@
+{
+  "lock_version": 1,
+  "deps": {
+    "zod": "4.6.7",
+    "@mastra/core": "1.79.0"
+  },
+  "runtime": {
+    "1": "2d4006995c7ce27396e8acaaddcd8e4f035e151e8898fa3a93d3e27a19fdb1c3"
+  },
+  "checks": {
+    "key_in_registry": {
+      "1": "e0b98dd774e1465d0a7f9ba01062d7109862654a3f0d642627f962d3ccf8ebb2"
+    },
+    "quote_in_source": {
+      "1": "81a822fb6f1e2f318f687a6b9365deadaac6fff24aa26aab5f3909f9b382a945"
+    },
+    "record_exists": {
+      "1": "395aa92f657dd2f1deb103c10dd12b734abc18d07715ee0a4ba6097fb1367a33"
+    },
+    "unique_by": {
+      "1": "16dfde0e70d320cbeffa0cf2b21db9e1ecf9b27e6766fbd4b3bec8da67805337"
+    }
+  }
+}
