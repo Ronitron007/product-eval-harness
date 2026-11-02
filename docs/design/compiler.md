@@ -275,8 +275,8 @@ export interface LedgerEntry {
 export type ProblemCode =
   | 'library_invalid' | 'derived_invalid' | 'derived_hash_mismatch' | 'id_collision' // compile.admit
   | 'draft_shadows_active' | 'trial_shape_refused' // compile.admit
-  | 'owner_unknown' | 'rule_inert' | 'trial_not_applied' | 'stage_not_at_level' // compile.scope
-  | 'weakens' // compile.weaken
+  | 'owner_unknown' | 'rule_inert' | 'trial_not_applied' | 'stage_not_at_level' | 'node_unknown' // compile.scope
+  | 'weakens' | 'slot_conflict' // compile.weaken
   | 'no_output_fields' | 'shape_conflict' | 'list_without_items' // compile.shape
   | 'field_unresolved' | 'check_on_wrong_kind' // compile.shape, compile.checks
   | 'golden_mismatch' // auditLibrary only
@@ -403,6 +403,8 @@ The record lint (`recordLint`) gives these loader problems. Each problem names t
 
 - A shape rule has a binding other than `strict`. The message says that the decoder enforces each shape rule.
 
+- The statement or the reason of a shape rule or a code check holds a numeral, a digit character. Each number of the rule lives in its `shape` or `check.params`, so that the compiler prints one copy. A judgement rule has no parameters, so its words may hold a number (`record.no_numerals`).
+
 The loader also reports an unknown check name at `check.name`, and a bad parameter at `check.params.<key>`. So `rules:check` exits 1 before any run.
 
 The rule hash (`ruleHash`) covers `owner` (`record.owner_in_hash`). With an anchored scope, the owner decides where a rule applies. So a move of the owner under a locked version fails `rules:check` with the message "The words changed under version N". The author raises the version instead (`hash.rule_hash_covers_owner`).
@@ -441,7 +443,7 @@ A rule applies at node N and stage S when each of these holds:
 
 - Its selector matches N. The selector `owner` matches the owner only. The selector `subtree` matches the owner and each descendant. The selector `{ level }` matches each node of that level in the subtree of the owner.
 
-The level of N must be in `STAGE_LEVELS[S]`, or the compile gives `stage_not_at_level`. Each rule that does not apply gets one ledger reason (`compile.ledger`).
+N must be a node of the tree, or the compile gives `node_unknown`. The level of N must be in `STAGE_LEVELS[S]`, or the compile gives `stage_not_at_level`. Each rule that does not apply gets one ledger reason (`compile.ledger`).
 
 A scope holds no node id. So a rule at `sunscreen` cannot reach `skincare` or the sibling `moisturizer`. The store refuses a node with the id `all`.
 
@@ -480,6 +482,8 @@ Child rule B weakens inherited rule A when each of these holds:
   - B is a `code_check` rule with a lower binding than A. The order is `strict`, then `soft`, then `watch`.
 
 A dimension that only B sets is an addition, and the compiler accepts it. A dimension that only A sets stays in force. The binding test applies to `code_check` rules only, because each shape rule is `strict`. The test reads the binding that the author wrote. The forced watch of a trial is never a weakening. Judgement rules share no slot, so they can only add.
+
+Two applied rules can also restate one slot as peers, or a child can restate it more strictly. Then the instruction would print two values for one dimension. So two applied rules in one slot, at any owner relation, must not set a shared dimension to other values, and a code check must not have another binding (`weaken.slot_conflict`). The compiler refuses each such pair with `slot_conflict`. A pair where the child is looser than an inherited rule gives `weakens` instead. A trial version and the live version of the same id are one rule, so they never conflict.
 
 One order table for each parameter drives the weaken test and the meet of `compile.shape`. The order of a parameter is one of these:
 
@@ -631,7 +635,7 @@ The instruction text lists the fields in path order, by code unit. For each fiel
 
 4. The golden examples of the rule, as canonical JSON.
 
-A rule on more than one field prints once, under its first field, with "Also on" and the other fields. A judgement rule prints its statement and its reason, but never its judge question. A `watch` rule never prints and never shapes the schema. So "watch changes nothing" holds in full. A watch rule from an editor cannot steer a draft without the promotion gate.
+Each field that a printed rule names gets its own composed shape line (`instructions.shape_line_each_field`). A rule on more than one field prints in full under its first field, with "Also on" and the other fields. Under each other field, it prints one pointer line, such as "strict `units.label_unit@1`, as under criteria[].attributes[].unit." A judgement rule prints its statement and its reason, but never its judge question. A `watch` rule never prints and never shapes the schema. So "watch changes nothing" holds in full. A watch rule from an editor cannot steer a draft without the promotion gate.
 
 The statement holds no parameter literal (`compile.record`). So the only words about a parameter come from the params object, through `describe` and `render`.
 
@@ -753,9 +757,9 @@ Each hazard has a mechanism, and tests that fail when the mechanism breaks. The 
 
 | Hazard | Mechanism | Tests |
 |---|---|---|
-| `noop`. A rule or the schema applies nowhere, in silence | Each applied field and each path of `requires()` resolves in the trie, with a kind that fits. A stage with no shape rule fails. The walk never returns an empty list. An active rule with an unknown owner or with no reach blocks each compile. A trial that does not apply fails, and the ledger lists each rule. The decode gate refuses an output that breaks the schema. | `noop.field_typo`, `noop.requires_typo`, `noop.no_shape_rule`, `noop.owner_unknown`, `noop.rule_inert`, `noop.trial_not_applied`, `noop.level_stage_lint`, `noop.ci_field_guard`, `noop.closed_output_refused` |
-| `drift`. The instruction and the check read two copies of a parameter | Each parameter lives once, in the params object. `render`, `describe`, `check`, and the printer read it. The literal lint keeps parameters out of the statement and the reason. | `drift.values_move_both`, `drift.case_sensitive_moves_both`, `drift.literal_in_statement` |
-| `weaken`. A child rule restates an inherited rule more loosely | The weaken test of `compile.weaken`. Anchored scopes. One order table for the meet and the weaken test. | `weaken.bigger_values`, `weaken.lower_min`, `weaken.lower_binding`, `weaken.addition_accepted`, `weaken.parent_compiles`, `weaken.foreign_owner`, `weaken.trial_not_weaker`, `weaken.order_is_sound` |
+| `noop`. A rule or the schema applies nowhere, in silence | Each applied field and each path of `requires()` resolves in the trie, with a kind that fits. A stage with no shape rule fails. The walk never returns an empty list. An active rule with an unknown owner or with no reach blocks each compile. A trial that does not apply fails, and the ledger lists each rule. The decode gate refuses an output that breaks the schema. | `noop.field_typo`, `noop.requires_typo`, `noop.no_shape_rule`, `noop.owner_unknown`, `noop.rule_inert`, `noop.trial_not_applied`, `noop.level_stage_lint`, `noop.ci_field_guard`, `noop.closed_output_refused`, `noop.node_unknown` |
+| `drift`. The instruction and the check read two copies of a parameter | Each parameter lives once, in the params object. `render`, `describe`, `check`, and the printer read it. The literal lint keeps parameters out of the statement and the reason. | `drift.values_move_both`, `drift.case_sensitive_moves_both`, `drift.literal_in_statement`, `drift.numeral_in_statement`, `drift.shape_line_each_field` |
+| `weaken`. A child rule restates an inherited rule more loosely | The weaken test of `compile.weaken`. Anchored scopes. One order table for the meet and the weaken test. | `weaken.bigger_values`, `weaken.lower_min`, `weaken.lower_binding`, `weaken.addition_accepted`, `weaken.parent_compiles`, `weaken.foreign_owner`, `weaken.trial_not_weaker`, `weaken.order_is_sound`, `weaken.peer_restatement` |
 | `hash`. Other artifacts with one hash, or one set of artifacts with two hashes | The manifest of artifacts. A total order in each list. Declared code versions and the code lock. The rule hash covers the owner. | `hash.same_inputs`, `hash.shuffled_inputs`, `hash.changes`, `hash.draft_no_change`, `hash.node_not_in_hash`, `hash.fixture_literal`, `hash.code_lock`, `hash.template_imports`, `hash.schema_round_trip`, `hash.rule_hash_covers_owner` |
 | `status`. A draft or retired rule applies, or an active rule drops out with no trace | The ledger partition. The trial is the only door for a rule that is not active, and it runs as watch. | `status.ledger_partition`, `status.ids_agree`, `status.never_draft_or_retired`, `status.derived_superseded`, `status.retired_drops`, `status.trial_is_watch`, `status.trial_shape_refused` |
 | `admit`. An unlocked or invalid rule reaches the compile | `admit` and the `Admitted` brand. Derived rows get a new parse and a new hash. | `admit.library_problem`, `admit.derived_hash_mismatch`, `admit.derived_invalid`, `admit.derived_columns`, `admit.derived_shape`, `admit.id_collision`, `admit.draft_shadows_active`, `admit.brand` |
@@ -782,6 +786,8 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `noop.level_stage_lint`. With no tree, a selector `{ level: domain }` with the stage `create_pack` gives a loader problem.
 
+- `noop.node_unknown`. A compile at a node that is not in the tree gives `node_unknown`, and does not throw.
+
 - `noop.closed_output_refused`. A mock reply with the extra keys `grade` and `best_match` gives `decode.ok === false` under `errorStrategy: 'warn'`. The judge step does not run, and the stage run keeps the issues.
 
 - `noop.ci_field_guard`. With no tree, `rules:check` refuses a field that no shape rule of that stage defines.
@@ -791,6 +797,10 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 - `drift.case_sensitive_moves_both`. A change of `quote_in_source.case_sensitive` changes the instruction line and the verdict on a quote with other letter case.
 
 - `drift.literal_in_statement`. A statement that holds `mg`, with `values: [mg]`, gives a loader problem.
+
+- `drift.numeral_in_statement`. A shape rule whose statement holds `12`, and a code check whose reason holds `3`, give loader problems. A judgement rule with a numeral passes.
+
+- `drift.shape_line_each_field`. A rule on `unit` and `unit_alt` prints a shape line under each field.
 
 - `weaken.bigger_values`. At `sunscreen`, a child rule with `values: [mg, mcg, g, IU]` gives `weakens`.
 
@@ -805,6 +815,8 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 - `weaken.foreign_owner`. A rule owned by `sunscreen` gets `owner_not_on_path` at `skincare` and at `moisturizer`.
 
 - `weaken.trial_not_weaker`. A strict child candidate in a trial compiles as watch and gives no `weakens`.
+
+- `weaken.peer_restatement`. Two rules of one owner on the slot of `quote_in_source`, with another `case_sensitive` and another binding, give `slot_conflict`. A stricter child gives `slot_conflict` too. A looser child gives `weakens`.
 
 - `weaken.order_is_sound`. Take two vector parameters a and b of one template, where a is at least as strict as b. Each item that passes under a passes under b.
 
@@ -1017,7 +1029,6 @@ The code of [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007
 |---|---|---|
 | "TypeScript refuses an extra field in an object literal that a check returns" (`compile.checks`) | `CheckTemplate` has a fourth type parameter, `R`, the return type of `check`. `defineCheck` adds the constraint `NoExtraOutcomeField<R>`. | TypeScript 6.0.3 does no check of extra fields in an object that an arrow function returns. A spike with the plain union compiled a check that returns `{ verdict: 'pass', score: 0.9 }`. With the constraint, the three bad templates of `verify.outcome_types` fail the type check. |
 | `boundary.internals_unreachable` reads each file outside `src/compiler/` | The test reads `src/` and `scripts/`. It does not read `tests/`. | The test `admit.brand` must pass raw rules to an internal step. So `tests/compiler/admit.test.ts` imports `src/compiler/scope.ts`. All other tests use `src/compiler/index.ts`. |
-| `compileStage` never throws on rule data | `compileStage` throws an `Error` for a node that is not in the tree. | The node is input of the call site, not rule data. No problem code fits it. |
 | Each step adds its problems to one list | An admission problem stops `compileStage` after `admit`. `auditLibrary` goes on with the rules that passed admission. | Later steps would report noise about rules that admission refused. The audit still runs the golden examples of a rule that is not locked yet. |
 | The problem codes of a trial | A trial candidate that is not a valid record, or that has no canonical form, gives `library_invalid`. A trial with the id and version of an existing rule gives `id_collision`. | The candidate comes from the rule library of a PR branch. Two entries with one version would break the ledger partition. |
 | `CheckRef` problems name the fix | The loader gives its own message for a missing `shape`, `check`, or `judge` field. It also does so for an unknown `kind` or check, a bad `scope.nodes`, and `unique` in a list shape. | Zod gives "Invalid input" for a bad union member (`compile.limits`). |
@@ -1025,6 +1036,18 @@ The code of [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007
 | The policy table covers shape rules and code checks | A judgement rule on an existing empty list gives `pass`, decided by code. An absent target gives `cannot_verify`, decided by code. Only the rows that the model answered have the decider `judge`. | This follows the empty list tradeoff of `compile.limits`. Code never answers a judge question. |
 | The judge returns a quote for each item | The row of a judge keeps the observed value at the target in `evidence.quote`, with `source: output`. The quote of the judge goes into the reason. | Each row then holds the same kind of evidence, so `verify.observed_from_runtime` holds for all rows. |
 | `literals(params)` of each template | `quote_in_source` gives `[source]`. `unique_by` gives `[by]`. The other two templates give `[]`. | The spec does not name them. A statement that names the source or the key would hold a second copy of a parameter. |
+
+### Changes from the review of #19 `compile.reconciliation.review`
+
+The review of 2026-11-02 found four faults. The text above now holds each fix, and the decisions trail holds a row for each.
+
+- Each field of a rule on two fields gets its own shape line (`compile.instructions`).
+
+- The words of a shape rule or a code check hold no numeral (`compile.record`).
+
+- Two applied rules that restate one slot with other values give `slot_conflict`, peers included (`compile.weaken`).
+
+- A node that is not in the tree gives `node_unknown`, and the compile never throws for it (`compile.scope`).
 
 ### Parts that the spec left open `compile.reconciliation.open_parts`
 
