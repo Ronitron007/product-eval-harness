@@ -1,0 +1,11 @@
+import { z } from 'zod'
+const S = z.object(Object.fromEntries([['__proto__', z.enum(['mg','g'])], ['unit', z.enum(['mg','g'])]])).strict()
+const j = o => JSON.parse(o)
+console.log('schema requires:', z.toJSONSchema(S).required)
+console.log('__proto__ missing entirely  ->', S.safeParse({ unit: 'mg' }).success)
+console.log('__proto__ = "WRONG"         ->', S.safeParse(j('{"__proto__":"WRONG","unit":"mg"}')).success)
+console.log('__proto__ = "mg" (valid)    ->', S.safeParse(j('{"__proto__":"mg","unit":"mg"}')).success)
+const C = z.object({ constructor: z.enum(['mg','g']), unit: z.string() }).strict()
+console.log('constructor = "WRONG"       ->', C.safeParse({ constructor: 'WRONG', unit: 'mg' }).success, '| missing ->', C.safeParse({ unit: 'mg' }).success)
+const back = z.fromJSONSchema(z.toJSONSchema(S))
+console.log('round-trip schema: __proto__ missing ->', back.safeParse({ unit: 'mg' }).success, '| wrong ->', back.safeParse(j('{"__proto__":"WRONG","unit":"mg"}')).success)
