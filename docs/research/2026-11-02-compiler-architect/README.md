@@ -4,7 +4,7 @@ Status. Research record of 2026-11-02 for `plan.compiler`. Two runners designed 
 
 The spec that came from this run is [compiler.md](../../design/compiler.md). Each decision of the synthesis is a row in [decisions.tsv](../../decisions.tsv).
 
-Two adversaries then interrogated the spec, one on Opus and one on Sonnet. Their repros are in `interrogate/`. The spec folds in the eight fixes, and each fix is a row in the decisions trail.
+Two adversaries then interrogated the spec, one on Opus and one on Sonnet. Their repros are in `interrogate/`. The spec folds in the eight fixes, and each fix is a row in the decisions trail. The verify round of the fixes found one more fault, with its repro in `interrogate/verify/`.
 
 The files are the outputs of the runs, with one change. Local absolute paths in the probes, the repros, and `grounding.md` became relative paths. The copy leaves out the `node_modules` folders and the repo copy of the Sonnet runner. It also leaves out `interrogate-sonnet/opusprobes/`, a byte-equal copy of `runner-opus/probes/`.
 
@@ -35,6 +35,7 @@ The files are the outputs of the runs, with one change. Local absolute paths in 
 | `interrogate/opus/dormant.mjs`, `interrogate/sonnet/p8_scope.mjs` | A rule that applies nowhere, and a trial that applies nowhere, compile in silence. | `scope.inert_rule` |
 | `interrogate/sonnet/p5_proto.mjs`, `interrogate/sonnet/p5b_proto.mjs` | A `__proto__` or `constructor` segment breaks the schema and the hash. | `record.reserved_names` |
 | `interrogate/opus/outcome/outcome.ts` | The old `CheckOutcome` type lets `observed` carry a score and a best match. | `checks.outcome_type` |
+| `interrogate/verify/warn-extra-key.mjs` | Under `errorStrategy: 'warn'`, a reply with extra keys gives no error, and each rule row passes. Found in the verify round. | `scorers.closed_output` |
 | `interrogate/sonnet/p2_mastra.mjs`, `interrogate/sonnet/p4_loader.mjs`, `interrogate/sonnet/p6_canon.mjs` | Checks of the Mastra scorer ids, the loader messages, and canonical JSON | No fix of this list rests on them. |
 
 No repro file holds the fix `scorers.skipped_judges`. It rests on the text of `mastra.stage_workflow`.

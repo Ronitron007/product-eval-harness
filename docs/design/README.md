@@ -51,5 +51,6 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `CheckTemplate`, `CHECKS`, `CheckRef`, `FactKind`, `CheckOutcome`, `RunEvidence` | The check registry and its types | `compile.checks` |
 | `quote_in_source`, `key_in_registry`, `record_exists`, `unique_by` | The first check templates | `compile.checks` |
 | `manifest`, `rule_set_hash`, `code.lock.json`, `RUNTIME_VERSION` | What the rule-set hash covers, the hash, and the versions of the compiler code | `compile.hash` |
+| `decode` | The decode gate of a plan. It tests the whole output schema before the judges and the graph. | `compile.scorers` |
 | `ledger`, `trial` | The record of what a compile did with each rule, and the compile of one candidate as watch | `compile.ledger` |
 | `noop`, `drift`, `weaken`, `hash`, `status`, `admit`, `verify`, `params`, `shape`, `judge` | The hazards of the compiler. Each test name starts with one of them. | `compile.hazards` |

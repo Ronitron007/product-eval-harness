@@ -4,7 +4,7 @@ Status. Spec of 2026-11-02 for `plan.compiler`. Not built yet. This spec matches
 
 Source. Claude wrote this spec from the architect run of 2026-11-02 ([the record](../research/2026-11-02-compiler-architect/README.md)). The design of the Opus runner is the base. The synthesis of the run changes that base, and the synthesis wins each conflict. Each choice is a row in [decisions.tsv](../decisions.tsv), for Rohan to review.
 
-Review. Two adversaries then interrogated this spec on 2026-11-02, and the coordinator ran each repro again. The spec folds in their eight fixes. Their repros are in [the interrogate folder](../research/2026-11-02-compiler-architect/interrogate/) of the record.
+Review. Two adversaries then interrogated this spec on 2026-11-02, and the coordinator ran each repro again. The spec folds in their eight fixes, and one more fix from the verify round. Their repros are in [the interrogate folder](../research/2026-11-02-compiler-architect/interrogate/) of the record.
 
 ## The idea `compile.idea`
 
@@ -144,17 +144,26 @@ await store.recordStageRun({ runId, stage: plan.stage, nodeId: plan.node, ruleSe
 // text holds the raw reply. The default 'strict' throws and loses the draft (verified, ran with
 // createMockModel on @mastra/core 1.79.0). Never use 'fallback' (mastra.not_used).
 const draft = await drafter.generate(prompt, { structuredOutput: { schema: plan.schema, errorStrategy: 'warn' }, requestContext })
-const output: unknown = draft.object !== undefined ? draft.object : parseJsonOrRaw(draft.text) // the raw string if not JSON
+// The one decode gate (scorers.closed_output). 'warn' gives no error for a reply that breaks the
+// schema, such as one with an extra key that no rule owns. plan.decode parses a string as JSON
+// and runs plan.schema.safeParse on it.
+const decoded = plan.decode(draft.object !== undefined ? draft.object : draft.text)
+const output: unknown = decoded.ok ? decoded.output : decoded.raw // the parsed JSON, or the raw string
 
-// judge step (plan.judge_step owns the rest): code scorers first, judges only when each strict code verdict passed
+// judge step (plan.judge_step owns the rest): code scorers first, judges only when the output
+// decoded and each strict code verdict passed
 const rows: ItemVerdict[] = []
 for (const s of plan.scorers.code) rows.push(...(await s.verify(output, evidence))) // a broken shape gives fail rows
-if (rows.every(r => r.binding !== 'strict' || r.verdict === 'pass')) {
+if (decoded.ok && rows.every(r => r.binding !== 'strict' || r.verdict === 'pass')) {
   for (const s of plan.scorers.judges(judgeModel)) rows.push(...(await s.verify(output, evidence)))
 } else {
-  rows.push(...plan.scorers.skippedJudges('A strict code check failed, so no judge ran.')) // no model
+  rows.push(...plan.scorers.skippedJudges('The output broke the schema or a strict code check, so no judge ran.')) // no model
 }
 await store.writeVerdicts(rows.map(r => ({ ...r, runId })))
+// A failed decode is a strict failure of the stage. Its issues, such as an extra key or a missing
+// field, go into the problems of the stage run, which the workflow keeps. The next step is a repair
+// round with the issues, or the person step when the budget is spent. acceptOutput never sees it.
+if (!decoded.ok) stageRunProblems.push(...decoded.issues)
 
 // Call site: CI, inside `npm run rules:check`. No tree, no database, no model.
 const problems = await auditLibrary({ library: loadRuleLibrary('rules'), derived: [], tree: 'unknown' })
@@ -165,7 +174,7 @@ const trial = compileStage({ stage: 'create_node', node: 'sunscreen', library, d
 
 | Call site | Call | What it gets |
 |---|---|---|
-| Stage workflow (`planFor`, the context step, the judge step) | `compileStage` in each step that needs the plan | The schema, the instructions, the scorers, and the hash. A resume after a rule change gets another hash and refuses. Nothing that JSON cannot hold sits in a workflow snapshot. A draft that breaks the schema still reaches the scorers. |
+| Stage workflow (`planFor`, the context step, the judge step) | `compileStage` in each step that needs the plan | The schema, the instructions, the scorers, and the hash. A resume after a rule change gets another hash and refuses. Nothing that JSON cannot hold sits in a workflow snapshot. A draft that breaks the schema still reaches the code scorers, but never the judges or the graph. |
 | CI golden gate (`rules:check`) | `auditLibrary` with `tree: 'unknown'` | The problems that need no tree. The golden examples of each shape rule and each code check run through the real scorer path. |
 | Change trial (`plan.change_process`) | `compileStage` with `trial` | The live plan plus one watch scorer for the candidate. Its hash differs from the live hash. |
 
@@ -216,11 +225,21 @@ export interface StagePlan {
     // No model. One cannot_verify row for each field of each judgement rule (scorers.skipped_judges).
     skippedJudges(reason: string): readonly ItemVerdict[]
   }
+  // The one decode gate (scorers.closed_output). It parses a string as JSON, then runs plan.schema.safeParse.
+  decode(raw: unknown): DecodeResult
   readonly ledger: readonly LedgerEntry[] // one entry for each input rule version
   readonly manifest: Manifest // exactly what the hash covers (compile.hash)
 }
 
 export type ItemVerdict = Omit<VerdictInput, 'runId'> // plus runId, a row for store.writeVerdicts
+
+export interface DecodeIssue {
+  readonly path: string // such as criteria[0].attributes[0].grade
+  readonly message: string // from the Zod issue
+}
+export type DecodeResult =
+  | { readonly ok: true; readonly output: Json }
+  | { readonly ok: false; readonly issues: readonly DecodeIssue[]; readonly raw: unknown } // raw: the parsed JSON, or the string
 
 export interface RuleScorer {
   readonly id: `${string}@${number}` // rule.id@version, also the Mastra scorer id
@@ -628,6 +647,18 @@ A code scorer takes the raw output as `unknown`, and never assumes that it passe
 
 Each broken shape rule then gives a `fail` row, with the raw value in `evidence.quote`. A reply that is not JSON reaches the scorers as a string, so each shape rule gives `fail`.
 
+A shape scorer checks only the field of its own rule. So no rule owns an extra key, and a reply with an extra key gives no `fail` row. Under `errorStrategy: 'warn'`, Mastra gives no error for that reply either (verified, the verify repro `warn-extra-key.mjs`). That output could reach the judges and the graph, which would hide a failure as `fallback` does (`mastra.not_used`).
+
+So the plan has one decode gate, `plan.decode(raw)` (`scorers.closed_output`). It parses a string as JSON, then runs `plan.schema.safeParse`. When the result is not `ok`, these rules apply:
+
+- The output never reaches the judges or `acceptOutput`.
+
+- The stage counts a strict failure. It sends the issues to a repair round, or to the person step when the budget is spent.
+
+- The shape scorers still run on the raw value, so each broken shape rule gets its `fail` row (`scorers.decode_failure_rows`).
+
+- The problems of the stage run keep each issue that no rule owns. Examples are an extra key and a missing field.
+
 No template can bypass this policy:
 
 | Case at a target | Shape rule | Code check |
@@ -722,7 +753,7 @@ Each hazard has a mechanism, and tests that fail when the mechanism breaks. The 
 
 | Hazard | Mechanism | Tests |
 |---|---|---|
-| `noop`. A rule applies nowhere, in silence | Each applied field and each path of `requires()` resolves in the trie, with a kind that fits. A stage with no shape rule fails. The walk never returns an empty list. An active rule with an unknown owner or with no reach blocks each compile. A trial that does not apply fails, and the ledger lists each rule. | `noop.field_typo`, `noop.requires_typo`, `noop.no_shape_rule`, `noop.owner_unknown`, `noop.rule_inert`, `noop.trial_not_applied`, `noop.level_stage_lint`, `noop.ci_field_guard` |
+| `noop`. A rule or the schema applies nowhere, in silence | Each applied field and each path of `requires()` resolves in the trie, with a kind that fits. A stage with no shape rule fails. The walk never returns an empty list. An active rule with an unknown owner or with no reach blocks each compile. A trial that does not apply fails, and the ledger lists each rule. The decode gate refuses an output that breaks the schema. | `noop.field_typo`, `noop.requires_typo`, `noop.no_shape_rule`, `noop.owner_unknown`, `noop.rule_inert`, `noop.trial_not_applied`, `noop.level_stage_lint`, `noop.ci_field_guard`, `noop.closed_output_refused` |
 | `drift`. The instruction and the check read two copies of a parameter | Each parameter lives once, in the params object. `render`, `describe`, `check`, and the printer read it. The literal lint keeps parameters out of the statement and the reason. | `drift.values_move_both`, `drift.case_sensitive_moves_both`, `drift.literal_in_statement` |
 | `weaken`. A child rule restates an inherited rule more loosely | The weaken test of `compile.weaken`. Anchored scopes. One order table for the meet and the weaken test. | `weaken.bigger_values`, `weaken.lower_min`, `weaken.lower_binding`, `weaken.addition_accepted`, `weaken.parent_compiles`, `weaken.foreign_owner`, `weaken.trial_not_weaker`, `weaken.order_is_sound` |
 | `hash`. Other artifacts with one hash, or one set of artifacts with two hashes | The manifest of artifacts. A total order in each list. Declared code versions and the code lock. The rule hash covers the owner. | `hash.same_inputs`, `hash.shuffled_inputs`, `hash.changes`, `hash.draft_no_change`, `hash.node_not_in_hash`, `hash.fixture_literal`, `hash.code_lock`, `hash.template_imports`, `hash.schema_round_trip`, `hash.rule_hash_covers_owner` |
@@ -750,6 +781,8 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 - `noop.trial_not_applied`. A trial candidate whose scope does not name the compiled stage gives `trial_not_applied`, not a trial with the live hash.
 
 - `noop.level_stage_lint`. With no tree, a selector `{ level: domain }` with the stage `create_pack` gives a loader problem.
+
+- `noop.closed_output_refused`. A mock reply with the extra keys `grade` and `best_match` gives `decode.ok === false` under `errorStrategy: 'warn'`. The judge step does not run, and the stage run keeps the issues.
 
 - `noop.ci_field_guard`. With no tree, `rules:check` refuses a field that no shape rule of that stage defines.
 
@@ -904,7 +937,7 @@ The plan names three checks that can fail for `plan.compiler` ([the plan](../pla
 | `src/rules/checks/index.ts` | new | `CHECKS`, `CheckRef`, `checkTemplate` |
 | `src/rules/checks/<name>.ts` | new | `quote_in_source`, `key_in_registry`, `record_exists`, `unique_by`, each with its vectors |
 | `src/rules/cli.ts` | changed | `rules:check` also awaits `auditLibrary` with `tree: 'unknown'` |
-| `src/compiler/index.ts` | new | `compileStage`, `auditLibrary`, the public types, the instructions, the manifest, and the hash |
+| `src/compiler/index.ts` | new | `compileStage`, `auditLibrary`, the public types, the instructions, `decode`, the manifest, and the hash |
 | `src/compiler/scope.ts` | new | `admit`, `indexTree`, `resolve`, the ledger, `weakenings` |
 | `src/compiler/shape.ts` | new | `composeShapes`, `lookup`, `printSchema`, `printShape`, `describe` |
 | `src/compiler/paths.ts` | new | `parsePath`, `targets`, `embed` |

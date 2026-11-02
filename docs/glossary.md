@@ -20,6 +20,7 @@ Each term has one definition. Docs link here at the first use of a term.
 | Code check | A check that code decides with no model. |
 | Code lock | The file `src/compiler/code.lock.json`. It maps each declared version of the compiler code to a fingerprint of its source. It only grows. |
 | Criterion | One aspect of a product that an evaluation grades. Only a domain node creates criteria. |
+| Decode gate | The one test of a stage output against the whole output schema, `plan.decode`. An output that fails it never reaches the judges or the graph. |
 | Derived rule | A rule that a stage creates as part of its output, such as the meaning of a criterion at a node. It lives in the graph store. |
 | Domain node | A top node of the rule graph, such as skincare or supplements. |
 | Editor | A session of the improvement loop that proposes changes to the stage rules of one node. A process editor owns how the stage works. A domain editor owns what a practitioner knows. |
