@@ -4,6 +4,8 @@ Status. Spec of 2026-11-02 for `plan.compiler`. Not built yet. This spec matches
 
 Source. Claude wrote this spec from the architect run of 2026-11-02 ([the record](../research/2026-11-02-compiler-architect/README.md)). The design of the Opus runner is the base. The synthesis of the run changes that base, and the synthesis wins each conflict. Each choice is a row in [decisions.tsv](../decisions.tsv), for Rohan to review.
 
+Review. Two adversaries then interrogated this spec on 2026-11-02, and the coordinator ran each repro again. The spec folds in their eight fixes. Their repros are in [the interrogate folder](../research/2026-11-02-compiler-architect/interrogate/) of the record.
+
 ## The idea `compile.idea`
 
 The compiler, `compile`, reads the rules in scope of one stage run at one node. It makes these things:
@@ -25,7 +27,7 @@ flowchart LR
   LIB["rule library<br/>rules/ in git"] --> AD["admit"]
   DER["derived rules<br/>store.derivedRules()"] --> AD
   TRI["trial candidate<br/>optional"] --> AD
-  AD --> RE["resolve<br/>anchored scope, ledger"]
+  AD --> RE["resolve<br/>anchored scope, reach, ledger"]
   TREE["node tree<br/>store.tree()"] --> RE
   RE --> WK["weaken test"]
   WK --> CS["compose shapes<br/>meet for each path"]
@@ -114,7 +116,7 @@ weakens units.allow_iu@1 units.label_unit@1 criteria[].attributes[].unit
   Change the skincare rule, or drop the value.
 ```
 
-A child rule that sets only `max_length` on the same field adds a constraint. The compiler accepts it.
+Take an inherited `number` rule with `min: 0` on `criteria[].attributes[].amount`. A child rule that sets only `max: 5000` on that field adds a constraint. The compiler accepts it.
 
 ### Call sites `compile.usage.calls`
 
@@ -137,14 +139,20 @@ async function planFor(run: { runId: string; stage: Stage; nodeId: NodeId; ruleS
 const plan = await planFor({ runId, stage: 'create_node', nodeId: 'sunscreen' })
 await store.recordStageRun({ runId, stage: plan.stage, nodeId: plan.node, ruleSetHash: plan.ruleSetHash })
 
-// draft step: plan.instructions reaches the agent through request context (mastra.table)
-const draft = await drafter.generate(prompt, { structuredOutput: { schema: plan.schema }, requestContext })
+// draft step: plan.instructions reaches the agent through request context (mastra.table).
+// errorStrategy 'warn' keeps a draft that breaks the schema: object and error are undefined, and
+// text holds the raw reply. The default 'strict' throws and loses the draft (verified, ran with
+// createMockModel on @mastra/core 1.79.0). Never use 'fallback' (mastra.not_used).
+const draft = await drafter.generate(prompt, { structuredOutput: { schema: plan.schema, errorStrategy: 'warn' }, requestContext })
+const output: unknown = draft.object !== undefined ? draft.object : parseJsonOrRaw(draft.text) // the raw string if not JSON
 
 // judge step (plan.judge_step owns the rest): code scorers first, judges only when each strict code verdict passed
 const rows: ItemVerdict[] = []
-for (const s of plan.scorers.code) rows.push(...(await s.verify(draft.object, evidence)))
+for (const s of plan.scorers.code) rows.push(...(await s.verify(output, evidence))) // a broken shape gives fail rows
 if (rows.every(r => r.binding !== 'strict' || r.verdict === 'pass')) {
-  for (const s of plan.scorers.judges(judgeModel)) rows.push(...(await s.verify(draft.object, evidence)))
+  for (const s of plan.scorers.judges(judgeModel)) rows.push(...(await s.verify(output, evidence)))
+} else {
+  rows.push(...plan.scorers.skippedJudges('A strict code check failed, so no judge ran.')) // no model
 }
 await store.writeVerdicts(rows.map(r => ({ ...r, runId })))
 
@@ -157,7 +165,7 @@ const trial = compileStage({ stage: 'create_node', node: 'sunscreen', library, d
 
 | Call site | Call | What it gets |
 |---|---|---|
-| Stage workflow (`planFor`, the context step, the judge step) | `compileStage` in each step that needs the plan | The schema, the instructions, the scorers, and the hash. A resume after a rule change gets another hash and refuses. Nothing that JSON cannot hold sits in a workflow snapshot. |
+| Stage workflow (`planFor`, the context step, the judge step) | `compileStage` in each step that needs the plan | The schema, the instructions, the scorers, and the hash. A resume after a rule change gets another hash and refuses. Nothing that JSON cannot hold sits in a workflow snapshot. A draft that breaks the schema still reaches the scorers. |
 | CI golden gate (`rules:check`) | `auditLibrary` with `tree: 'unknown'` | The problems that need no tree. The golden examples of each shape rule and each code check run through the real scorer path. |
 | Change trial (`plan.change_process`) | `compileStage` with `trial` | The live plan plus one watch scorer for the candidate. Its hash differs from the live hash. |
 
@@ -205,6 +213,8 @@ export interface StagePlan {
   readonly scorers: {
     readonly code: readonly RuleScorer[] // one for each applied shape or code_check rule
     judges(model: JudgeModel): readonly RuleScorer[] // the only door for a model
+    // No model. One cannot_verify row for each field of each judgement rule (scorers.skipped_judges).
+    skippedJudges(reason: string): readonly ItemVerdict[]
   }
   readonly ledger: readonly LedgerEntry[] // one entry for each input rule version
   readonly manifest: Manifest // exactly what the hash covers (compile.hash)
@@ -218,7 +228,8 @@ export interface RuleScorer {
   readonly decider: VerdictInput['decider']
   readonly fields: readonly string[]
   readonly scorer: MastraScorer<string, RunEvidence, unknown, any> // for runEvals and experiments
-  // Never throws, never returns []. A throw, a judge error, an unknown answer, or missing evidence gives cannot_verify.
+  // Takes the raw output, which may break the schema (scorers.decode_failure_rows). Never throws, never
+  // returns []. A throw, a judge error, an unknown answer, or missing evidence gives cannot_verify.
   verify(output: unknown, evidence: RunEvidence): Promise<readonly ItemVerdict[]>
 }
 
@@ -245,11 +256,11 @@ export interface LedgerEntry {
 export type ProblemCode =
   | 'library_invalid' | 'derived_invalid' | 'derived_hash_mismatch' | 'id_collision' // compile.admit
   | 'draft_shadows_active' | 'trial_shape_refused' // compile.admit
-  | 'owner_unknown' | 'stage_not_at_level' // compile.scope
+  | 'owner_unknown' | 'rule_inert' | 'trial_not_applied' | 'stage_not_at_level' // compile.scope
   | 'weakens' // compile.weaken
   | 'no_output_fields' | 'shape_conflict' | 'list_without_items' // compile.shape
   | 'field_unresolved' | 'check_on_wrong_kind' // compile.shape, compile.checks
-  | 'dormant' | 'golden_mismatch' // auditLibrary only
+  | 'golden_mismatch' // auditLibrary only
 
 export interface CompileProblem {
   readonly code: ProblemCode
@@ -280,7 +291,8 @@ The record changes, because today a `shape` rule cannot say its shape, and a `co
 | `scope.nodes` | `{ node, descendants }` or `{ level }` | `owner`, `subtree`, or `{ level }`, relative to the owner (`compile.scope`) |
 | `owner` | A node id | A node id, or the virtual owner `all` |
 | `examples[].input` | Any value | `RunEvidence`, so the loader checks golden inputs |
-| `ruleHash` | Covers `check` as a name | Also covers `shape` and the structured `check` |
+| `ruleHash` | Covers `check` as a name. It leaves out `owner`. | Also covers `owner`, `shape`, and the structured `check`. The owner decides where an anchored rule applies, so a move of the owner changes the hash. |
+| `FieldPath` | Any name segment | Refuses the segments `__proto__`, `constructor`, `prototype`, and each segment that starts with `__` |
 
 ```ts
 // src/rules/schema.ts (changed)
@@ -300,8 +312,14 @@ export const STAGE_LEVELS: Readonly<Record<Stage, readonly NodeLevel[]>> = {
 
 // Anchored at the owner. No node id, so a rule cannot reach a parent or a sibling.
 export const NodeSelector = z.union([z.literal('owner'), z.literal('subtree'), z.object({ level: NodeLevel }).strict()])
+// A segment that an object prototype owns would make a key that a plain object drops (record.reserved_names).
+const RESERVED = new Set(['__proto__', 'constructor', 'prototype'])
+export const SafeFieldPath = FieldPath.refine(
+  p => p.split('.').every(seg => { const name = seg.replace(/\[\]$/, ''); return !RESERVED.has(name) && !name.startsWith('__') }),
+  'Rename the field. A path segment cannot be __proto__, constructor, prototype, or start with __.',
+)
 export const RuleScope = z
-  .object({ nodes: NodeSelector, stages: z.array(Stage).min(1), fields: z.array(FieldPath).min(1) })
+  .object({ nodes: NodeSelector, stages: z.array(Stage).min(1), fields: z.array(SafeFieldPath).min(1) })
   .strict()
 
 // The shape language. Closed: no refine, no transform. Containers come from the path syntax.
@@ -317,14 +335,10 @@ export const NumberShape = z
   .object({ type: z.literal('number'), min: z.number().optional(), max: z.number().optional(), integer: z.literal(true).optional() })
   .strict()
 export const FlagShape = z.object({ type: z.literal('flag') }).strict()
-// At path `x`: the list itself. Rules on `x[]` give the shape of its items.
+// At path `x`: the list itself. Rules on `x[]` give the shape of its items. No `unique`: Zod cannot
+// print it, so uniqueness is the check template unique_by (shape.no_unique).
 export const ListShape = z
-  .object({
-    type: z.literal('list'),
-    min_items: z.number().int().min(0).optional(),
-    max_items: z.number().int().min(1).optional(),
-    unique: z.literal(true).optional(),
-  })
+  .object({ type: z.literal('list'), min_items: z.number().int().min(0).optional(), max_items: z.number().int().min(1).optional() })
   .strict()
 export const Shape = z.discriminatedUnion('type', [TextShape, NumberShape, FlagShape, ListShape])
 
@@ -372,6 +386,10 @@ The record lint (`recordLint`) gives these loader problems. Each problem names t
 
 The loader also reports an unknown check name at `check.name`, and a bad parameter at `check.params.<key>`. So `rules:check` exits 1 before any run.
 
+The rule hash (`ruleHash`) covers `owner` (`record.owner_in_hash`). With an anchored scope, the owner decides where a rule applies. So a move of the owner under a locked version fails `rules:check` with the message "The words changed under version N". The author raises the version instead (`hash.rule_hash_covers_owner`).
+
+A field path refuses a reserved segment (`record.reserved_names`). The trie and the Zod object builder also keep their keys in a `Map` or in an object with no prototype. So no key can reach the prototype of an object (`shape.reserved_names`).
+
 ## Admission `compile.admit`
 
 Admission (`admit`) is the first step of each compile. Only `admit` makes the branded value `Admitted`, so internal code cannot get a rule that nobody checked. Admission refuses these inputs:
@@ -408,7 +426,15 @@ The level of N must be in `STAGE_LEVELS[S]`, or the compile gives `stage_not_at_
 
 A scope holds no node id. So a rule at `sunscreen` cannot reach `skincare` or the sibling `moisturizer`. The store refuses a node with the id `all`.
 
-Each compile also checks the whole library for unknown owners. An `active` rule whose owner is not in the tree, and is not `all`, gives `owner_unknown` at every compile. The author keeps such a rule at `draft` until the node exists. `auditLibrary` reports it too, when it has a tree.
+Each compile also checks the reach of the whole admitted pool against the tree (`scope.inert_rule`). These problems block each compile:
+
+- An `active` rule whose owner is not in the tree, and is not `all`, gives `owner_unknown`.
+
+- An `active` rule that applies at no node and stage of the tree gives `rule_inert`. An example is a rule at a domain node with the selector `owner` and the stage `create_node`.
+
+- A trial candidate that does not apply at the compiled node and stage gives `trial_not_applied`. So a trial never compiles to the live hash in silence.
+
+The author keeps such a rule at `draft` until its node exists. With no tree, CI still finds one case. A selector `{ level }` with a stage that never runs at that level is a loader problem (`compile.record`).
 
 ## Weaken `compile.weaken`
 
@@ -445,7 +471,7 @@ One order table for each parameter drives the weaken test and the meet of `compi
 | `lower_is_stricter` | The lower number | `number.max`, `list.max_items`, `text.max_length` |
 | `subset_is_stricter` | The smaller set | `text.values` |
 | `superset_is_stricter` | The bigger set | None yet. For required keys or forbidden words. |
-| `true_is_stricter` | `true` | `number.integer`, `list.unique`, `quote_in_source.case_sensitive` |
+| `true_is_stricter` | `true` | `number.integer`, `quote_in_source.case_sensitive` |
 
 `SHAPE_ORDERS` holds the table of each shape type. Each check template holds its own table in `order`. The type of `order` has one key for each parameter, so the build fails when the parameters and the table disagree.
 
@@ -460,11 +486,19 @@ Each `shape` rule is `strict`, so each shape rule shapes the decoding schema. Th
 | `text` | `values`, `min_length`, `max_length` | `z.enum` of the sorted values, or `z.string` with its limits |
 | `number` | `min`, `max`, `integer` | `z.number` with its limits |
 | `flag` | None | `z.boolean` |
-| `list` | `min_items`, `max_items`, `unique` | `z.array` with its limits. The rules on `x[]` give the items. |
+| `list` | `min_items`, `max_items` | `z.array` with its limits. The rules on `x[]` give the items. |
 
 The path syntax makes the containers. A path `a.b` makes `a` an object. A path `a[]` makes `a` a list. The compiler puts the shape rules in scope into a tree of paths (a trie). At each path, it takes the meet of the parameters of all shape rules there. The meet is the strictest set of parameters that satisfies each rule.
 
-The compiler refuses these conflicts with `shape_conflict`, and names both rules:
+The meet is joint, not one dimension at a time (`shape.joint_meet`). The composed shape must be exactly the set of values that the printed schema decodes. A `text` shape with `values` prints as `z.enum`, which cannot carry a length limit. So these rules apply:
+
+- A `text` shape with `values` and with `min_length` or `max_length` is a conflict. One rule or two rules can cause it.
+
+- A `number` shape with `integer` is empty when no integer lies between `min` and `max`. The test is `ceil(min) > floor(max)`.
+
+- A `list` shape has no `unique` dimension (`shape.no_unique`). Zod cannot print it, and the hash cannot see a refine. The check template `unique_by` is the one way to test uniqueness.
+
+The compiler refuses these conflicts with `shape_conflict`, and names each rule:
 
 - Two leaf types on one path, such as `text` and `number`
 
@@ -472,9 +506,13 @@ The compiler refuses these conflicts with `shape_conflict`, and names both rules
 
 - An empty meet, such as `values: [mg]` and `values: [g]`, or `min` above `max`
 
+- A joint conflict of the list above
+
 A list shape at `x` with no rule on `x[]` gives `list_without_items`. A stage with no shape rule gives `no_output_fields`, because an empty schema accepts any output.
 
 The printer (`printSchema`) makes strict objects, and each object requires each of its keys. Keys and enum values sort by code unit. The printer uses only constructs that `z.toJSONSchema` shows in full. That function drops a `.refine()` in silence (verified, the Opus probe `zod-probe.mjs`), and the hash reads its output. The same trie feeds `describe`, which writes the shape line of the instruction.
+
+A test proves the meet for each composed fixture shape (`shape.joint_meet_agrees`). It takes the boundary values of each dimension. The printed schema and the rules' own scorers together must accept and reject the same values.
 
 After the meet, each field of each applied rule must resolve in the trie, or the compile gives `field_unresolved`. The extra paths of a check template must also resolve, such as `x[].name` for `unique_by` with `by: name`.
 
@@ -504,10 +542,12 @@ export type EvidenceKey = keyof RunEvidence
 // or similarity. A new member is a code change under rules.harness, so it needs Rohan's yes.
 export const FactKind = z.enum(['substring', 'membership', 'reference', 'uniqueness'])
 
-// A check cannot express a number, a grade, or a best match.
+// A check returns a verdict and text only (checks.outcome_type). The scorer runtime, not the check,
+// attaches the observed value from the output. The runtime parses each outcome with a strict Zod
+// schema, so an extra field gives cannot_verify.
 export type CheckOutcome =
-  | { readonly verdict: 'pass'; readonly observed: Json } // a pass shows what it saw
-  | { readonly verdict: 'fail'; readonly observed: Json; readonly fix: string } // a fail gives the fix
+  | { readonly verdict: 'pass' }
+  | { readonly verdict: 'fail'; readonly fix: string } // a fail gives the fix
   | { readonly verdict: 'cannot_verify'; readonly why: string }
 
 // A test vector. Vectors are tests, not hash inputs.
@@ -558,6 +598,8 @@ The rules of the registry:
 
 - Membership compares exact strings only. A fuzzy normalizer would make a check into a matcher (`compile.limits`).
 
+- An outcome has no field for a number, a score, or a chosen candidate. TypeScript refuses an extra field in an object literal that a check returns. The strict parse of the runtime refuses an extra field that a check adds in another way. The `fix` and `why` fields are free text, so the types cannot stop a check that writes a match there. Review under `rules.harness` guards that (`checks.outcome_type`).
+
 ## Instructions `compile.instructions`
 
 The instruction text lists the fields in path order, by code unit. For each field, it prints these lines:
@@ -580,14 +622,18 @@ The compiler makes one Mastra scorer for each applied rule. Its id is `rule.id@v
 
 A code scorer serves a `shape` rule or a `code_check` rule. It has function steps only, so it runs with no model. Its `preprocess` step walks the output to the targets of each field. Its `analyze` step gives one outcome for each target, under the policy below. Its `generateScore` step gives 1 when each item passes.
 
-The three-way verdict of each item lives in `analyzeStepResult`. The `verify` function reads it and returns `ItemVerdict` rows.
+The three-way verdict of each item lives in `analyzeStepResult`. The `verify` function reads it and returns `ItemVerdict` rows. For each row, the runtime writes the observed value at the target into `evidence.quote`, as canonical JSON, with `evidence.source` set to `output`. The check itself never writes it (`checks.outcome_type`).
+
+A code scorer takes the raw output as `unknown`, and never assumes that it passed the schema (`scorers.decode_failure_rows`). The decisions row of 2026-10-24 on shape fails sets the outcome. A value that breaks its shape rule gives `fail` for that rule, with the raw text kept. Mastra `structuredOutput` throws on a schema failure by default (verified, the interrogate repro `decode-bad-value.mjs`). So the stage call site sets `errorStrategy: 'warn'` and passes the parsed raw reply to the scorers (`compile.usage.calls`).
+
+Each broken shape rule then gives a `fail` row, with the raw value in `evidence.quote`. A reply that is not JSON reaches the scorers as a string, so each shape rule gives `fail`.
 
 No template can bypass this policy:
 
 | Case at a target | Shape rule | Code check |
 |---|---|---|
 | A key on the path is absent | `fail`, with the fix "Add the field" and its path | `cannot_verify`. The shape rule of the field reports the absence. |
-| A list on the path exists and is empty | `pass`, with `observed: []` | `pass`, with `observed: []` |
+| A list on the path exists and is empty | `pass`, with the observed value `[]` | `pass`, with the observed value `[]` |
 | A key of `needs` is absent from the evidence | Not applicable | `cannot_verify`. The check does not run. |
 | The check throws | Not applicable | `cannot_verify` |
 | The value is present | `pass` or `fail`, from the Zod schema of the rule's own shape | The outcome of the template |
@@ -601,6 +647,8 @@ A judge scorer serves a `judgement` rule. Only `plan.scorers.judges(model)` make
 - A run part, added in each run. It holds the targets and the full source texts from `evidence.sources`, never a summary.
 
 The answer maps to a verdict. A yes gives `pass`, and a no gives `fail`. An unknown answer gives `cannot_verify`. An absent target or a model error also gives `cannot_verify`.
+
+The judges run only when each strict code verdict passed (`enforce.deciders`). When a judge does not run, each judgement rule still needs a row (`mastra.stage_workflow`). So the plan has `plan.scorers.skippedJudges(reason)`, which needs no model (`scorers.skipped_judges`). It gives one `cannot_verify` row for each field of each judgement rule in the plan. The decider of the row is `code`, and the reason is the given text. The stage call site writes these rows when a strict code check fails.
 
 Tests make no model call. The new `vitest.config.ts` has a setup file that replaces `fetch` with a stub that throws. Judge tests use `createMockModel` from `@mastra/core/test-utils/llm-mock` (verified offline, the Opus probe `judge-probe.mjs`).
 
@@ -647,6 +695,8 @@ Code that is not data has a declared version:
 
 The runtime hash reads the declared versions, never source text. So `tsx` and a `mastra build` bundle compute the same hash.
 
+The hash reads `z.toJSONSchema(plan.schema)`, so a refine in the schema would escape it. The test `hash.schema_round_trip` guards that. It embeds each golden value in a minimal valid full output, and it adds the boundary values of `shape.joint_meet_agrees`. Then `plan.schema` and `z.fromJSONSchema(manifest.schema)` must accept and reject the same outputs. A golden value alone is not enough. A bad value fails both schemas for the same reason (verified, the interrogate repro `round-trip-vacuous.mjs`).
+
 ## The ledger `compile.ledger`
 
 The ledger has one entry for each input rule version. The inputs are the library, each version of each derived rule, and the trial candidate. The entries make a partition. The applied entries, the trial entry, and the excluded entries together equal the input, and each version occurs once (`status.ledger_partition`).
@@ -654,7 +704,7 @@ The ledger has one entry for each input rule version. The inputs are the library
 | Disposition | When |
 |---|---|
 | `applied` with its binding | The rule applies at the node and stage (`compile.scope`) |
-| `trial` | The trial candidate applies. It compiles as watch. |
+| `trial` | The trial candidate applies. It compiles as watch. A candidate that does not apply gives the problem `trial_not_applied`. |
 | `excluded`, `draft` | Status `draft`, and not the trial candidate |
 | `excluded`, `retired` | Status `retired` |
 | `excluded`, `superseded` | An older version of a derived rule |
@@ -672,16 +722,16 @@ Each hazard has a mechanism, and tests that fail when the mechanism breaks. The 
 
 | Hazard | Mechanism | Tests |
 |---|---|---|
-| `noop`. A rule applies nowhere, in silence | Each field of each applied rule resolves in the trie, with a kind that fits. The paths of `requires()` resolve too. A stage with no shape rule fails. The walk never returns an empty list. An active rule with an unknown owner blocks each compile. The ledger lists each rule. | `noop.field_typo`, `noop.requires_typo`, `noop.no_shape_rule`, `noop.owner_unknown`, `noop.dormant`, `noop.ci_field_guard` |
+| `noop`. A rule applies nowhere, in silence | Each applied field and each path of `requires()` resolves in the trie, with a kind that fits. A stage with no shape rule fails. The walk never returns an empty list. An active rule with an unknown owner or with no reach blocks each compile. A trial that does not apply fails, and the ledger lists each rule. | `noop.field_typo`, `noop.requires_typo`, `noop.no_shape_rule`, `noop.owner_unknown`, `noop.rule_inert`, `noop.trial_not_applied`, `noop.level_stage_lint`, `noop.ci_field_guard` |
 | `drift`. The instruction and the check read two copies of a parameter | Each parameter lives once, in the params object. `render`, `describe`, `check`, and the printer read it. The literal lint keeps parameters out of the statement and the reason. | `drift.values_move_both`, `drift.case_sensitive_moves_both`, `drift.literal_in_statement` |
 | `weaken`. A child rule restates an inherited rule more loosely | The weaken test of `compile.weaken`. Anchored scopes. One order table for the meet and the weaken test. | `weaken.bigger_values`, `weaken.lower_min`, `weaken.lower_binding`, `weaken.addition_accepted`, `weaken.parent_compiles`, `weaken.foreign_owner`, `weaken.trial_not_weaker`, `weaken.order_is_sound` |
-| `hash`. Other artifacts with one hash, or one set of artifacts with two hashes | The manifest of artifacts. A total order in each list. Declared code versions and the code lock. | `hash.same_inputs`, `hash.shuffled_inputs`, `hash.changes`, `hash.draft_no_change`, `hash.node_not_in_hash`, `hash.fixture_literal`, `hash.code_lock`, `hash.template_imports`, `hash.schema_round_trip` |
+| `hash`. Other artifacts with one hash, or one set of artifacts with two hashes | The manifest of artifacts. A total order in each list. Declared code versions and the code lock. The rule hash covers the owner. | `hash.same_inputs`, `hash.shuffled_inputs`, `hash.changes`, `hash.draft_no_change`, `hash.node_not_in_hash`, `hash.fixture_literal`, `hash.code_lock`, `hash.template_imports`, `hash.schema_round_trip`, `hash.rule_hash_covers_owner` |
 | `status`. A draft or retired rule applies, or an active rule drops out with no trace | The ledger partition. The trial is the only door for a rule that is not active, and it runs as watch. | `status.ledger_partition`, `status.ids_agree`, `status.never_draft_or_retired`, `status.derived_superseded`, `status.retired_drops`, `status.trial_is_watch`, `status.trial_shape_refused` |
 | `admit`. An unlocked or invalid rule reaches the compile | `admit` and the `Admitted` brand. Derived rows get a new parse and a new hash. | `admit.library_problem`, `admit.derived_hash_mismatch`, `admit.derived_invalid`, `admit.derived_columns`, `admit.derived_shape`, `admit.id_collision`, `admit.draft_shadows_active`, `admit.brand` |
-| `verify`. Code gives a grade or a match, or a pass with no evidence | `CheckOutcome` has no number and no match, and a pass needs `observed`. The closed `FactKind`. The outcome policy of the code scorer. | `verify.outcome_types`, `verify.no_pass_without_evidence`, `verify.wrong_type`, `verify.throw`, `verify.empty_list`, `verify.vectors_complete` |
+| `verify`. Code gives a grade or a match, or a pass with no evidence | `CheckOutcome` holds a verdict and text only. The runtime attaches the observed value and parses each outcome strictly. The closed `FactKind`. The outcome policy of the code scorer. | `verify.outcome_types`, `verify.outcome_strict_parse`, `verify.observed_from_runtime`, `verify.no_pass_without_evidence`, `verify.wrong_type`, `verify.throw`, `verify.empty_list`, `verify.vectors_complete` |
 | `params`. An unknown check or bad parameters reach a run | `CheckRef` inside `RuleRecord`. The fit test. No defaults. | `params.unknown_check`, `params.bad_key`, `params.derived_faults`, `params.no_defaults`, `params.check_on_wrong_kind` |
-| `shape`. Two shape rules on one field disagree, or the schema accepts a bad output | The meet over the order tables, in the trie. Shape rules are strict only. | `shape.two_leaf_types`, `shape.empty_meet`, `shape.leaf_and_container`, `shape.list_without_items`, `shape.not_strict`, `shape.schema_rejects_bad_output` |
-| `judge`. A test calls a model | Judge scorers come only from `plan.scorers.judges(model)`. The setup file stubs `fetch`. | `judge.no_network`, `judge.mock_model_verdicts` |
+| `shape`. Two shape rules disagree, the schema accepts a bad output, or a bad output leaves no fail row | The joint meet over the order tables, in the trie. Shape rules are strict only. No `unique` in a list shape. Reserved path segments fail. The scorers take raw output. | `shape.two_leaf_types`, `shape.empty_meet`, `shape.leaf_and_container`, `shape.list_without_items`, `shape.not_strict`, `shape.schema_rejects_bad_output`, `shape.joint_meet_values_and_length`, `shape.joint_meet_integer`, `shape.joint_meet_agrees`, `shape.list_unique_refused`, `shape.reserved_names`, `shape.decode_failure_rows` |
+| `judge`. A test calls a model, or a skipped judgement rule leaves no row | Judge scorers come only from `plan.scorers.judges(model)`. The setup file stubs `fetch`. Skipped judges give rows with no model. | `judge.no_network`, `judge.mock_model_verdicts`, `judge.skipped_rows` |
 
 ### What each test asserts `compile.tests`
 
@@ -695,7 +745,11 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `noop.owner_unknown`. An active rule owned by an absent node gives `owner_unknown` at each compile. The same rule as a draft gives no problem.
 
-- `noop.dormant`. With a tree, `auditLibrary` gives `dormant` for an active rule that applies at no node and stage.
+- `noop.rule_inert`. An active rule at `skincare` with the selector `owner` and the stage `create_node` gives `rule_inert` at each compile.
+
+- `noop.trial_not_applied`. A trial candidate whose scope does not name the compiled stage gives `trial_not_applied`, not a trial with the live hash.
+
+- `noop.level_stage_lint`. With no tree, a selector `{ level: domain }` with the stage `create_pack` gives a loader problem.
 
 - `noop.ci_field_guard`. With no tree, `rules:check` refuses a field that no shape rule of that stage defines.
 
@@ -711,7 +765,7 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `weaken.lower_binding`. At `sunscreen`, a child code check with binding `watch` in the slot of an inherited `strict` code check gives `weakens`.
 
-- `weaken.addition_accepted`. At `sunscreen`, a child rule that adds `max_length` compiles.
+- `weaken.addition_accepted`. At `sunscreen`, a child rule that adds `max` to an inherited `number` rule with `min` compiles.
 
 - `weaken.parent_compiles`. At `skincare`, the same library compiles, because the child rules do not apply there.
 
@@ -737,7 +791,9 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `hash.template_imports`. A template file that imports a module other than `zod` and `./define` fails the test.
 
-- `hash.schema_round_trip`. `z.fromJSONSchema(manifest.schema)` agrees with `plan.schema` on each golden example. This test finds a refine that the hash cannot see.
+- `hash.schema_round_trip`. Embed each golden value in a minimal valid full output, and add the boundary values of `shape.joint_meet_agrees`. On each of these outputs, `z.fromJSONSchema(manifest.schema)` and `plan.schema` agree. This test finds a refine that the hash cannot see.
+
+- `hash.rule_hash_covers_owner`. A move of the owner of a locked rule, with no new version, makes `rules:check` exit 1.
 
 - `status.ledger_partition`. Over a generated pool, the applied, trial, and excluded entries equal the input, and each version occurs once.
 
@@ -769,7 +825,11 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `admit.brand`. A line under `@ts-expect-error` passes raw rules to an internal step. The type check fails if that line starts to compile.
 
-- `verify.outcome_types`. Lines under `@ts-expect-error` make a template that returns a score, a pass with no `observed`, and the fact `similarity`. The type check fails if one of them starts to compile.
+- `verify.outcome_types`. Lines under `@ts-expect-error` make three bad templates. One check returns a number. One check returns an extra field, such as `observed` or `score`. One template names the fact `similarity`. The type check fails if one of them starts to compile.
+
+- `verify.outcome_strict_parse`. A check that adds an extra field to an outcome object that it built earlier gives `cannot_verify`.
+
+- `verify.observed_from_runtime`. For each row, `evidence.quote` holds the value at the target of the output, as canonical JSON.
 
 - `verify.no_pass_without_evidence`. For each template in `CHECKS`, an absent value never gives a pass. For a template with keys in `needs`, empty evidence never gives a pass.
 
@@ -777,7 +837,7 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `verify.throw`. A check that throws gives `cannot_verify`.
 
-- `verify.empty_list`. An existing empty list gives `pass` with `observed: []`.
+- `verify.empty_list`. An existing empty list gives `pass`, with `[]` as the observed value.
 
 - `verify.vectors_complete`. Each template has a pass vector and a fail vector. A template with keys in `needs` also has a `cannot_verify` vector.
 
@@ -801,11 +861,25 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `shape.not_strict`. A shape rule with binding `soft` gives a loader problem.
 
+- `shape.joint_meet_values_and_length`. A `text` shape with `values` and `max_length` gives `shape_conflict`, in one rule and across a parent and a child rule.
+
+- `shape.joint_meet_integer`. A `number` meet with `integer`, `min: 1.2`, and `max: 1.8` gives `shape_conflict`.
+
+- `shape.joint_meet_agrees`. Take each composed fixture shape and the boundary values of each dimension. The schema `plan.schema` and the rules' own scorers together accept and reject the same values.
+
+- `shape.list_unique_refused`. A `list` shape with `unique: true` gives a loader problem.
+
+- `shape.reserved_names`. A field path with the segment `__proto__`, `constructor`, `prototype`, or `__x` gives a loader problem.
+
+- `shape.decode_failure_rows`. The raw output with the unit `IU` gives a `fail` row for `units.label_unit`, with `IU` in `evidence.quote`. A raw reply that is not JSON gives a `fail` row for each shape rule.
+
 - `shape.schema_rejects_bad_output`. The compiled schema rejects three outputs. One has an extra key, one has a value outside the enum, and one has no unit.
 
 - `judge.no_network`. With `fetch` stubbed to throw, the compile and the code scorers pass.
 
 - `judge.mock_model_verdicts`. With `createMockModel`, the answers yes, no, and unknown give pass, fail, and `cannot_verify`. An absent target and a model error also give `cannot_verify`.
+
+- `judge.skipped_rows`. With `fetch` stubbed to throw, `plan.scorers.skippedJudges` gives one `cannot_verify` row for each field of each judgement rule.
 
 Two more tests guard the design. The test `boundary.internals_unreachable` fails when a file outside `src/compiler/` imports a file of `src/compiler/` other than `index.ts`. The test `checks.conformance` runs the `verify`, `params`, and `weaken.order_is_sound` tests over each entry of `CHECKS`.
 
@@ -823,8 +897,8 @@ The plan names three checks that can fail for `plan.compiler` ([the plan](../pla
 
 | File | Status | What it owns |
 |---|---|---|
-| `src/rules/schema.ts` | changed | `RuleRecord` by kind, the anchored `RuleScope`, `Shape`, `SHAPE_ORDERS`, `STAGE_LEVELS`, `OWNER_ALL`, `Example.input`, the record lint |
-| `src/rules/hash.ts` | changed | `ruleHash` also covers `shape` and the structured `check` |
+| `src/rules/schema.ts` | changed | `RuleRecord` by kind, the anchored `RuleScope`, `SafeFieldPath`, `Shape`, `SHAPE_ORDERS`, `STAGE_LEVELS`, `OWNER_ALL`, `Example.input`, the record lint |
+| `src/rules/hash.ts` | changed | `ruleHash` also covers `owner`, `shape`, and the structured `check` |
 | `src/rules/strictness.ts` | new | `DimensionOrder`, `looserDimensions`, `sameIdentity`, `meetParams`, `BINDING_STRENGTH` |
 | `src/rules/checks/define.ts` | new | `CheckTemplate`, `defineCheck`, `CheckOutcome`, `CheckVector`, `FactKind`, `RunEvidence` |
 | `src/rules/checks/index.ts` | new | `CHECKS`, `CheckRef`, `checkTemplate` |
@@ -834,7 +908,7 @@ The plan names three checks that can fail for `plan.compiler` ([the plan](../pla
 | `src/compiler/scope.ts` | new | `admit`, `indexTree`, `resolve`, the ledger, `weakenings` |
 | `src/compiler/shape.ts` | new | `composeShapes`, `lookup`, `printSchema`, `printShape`, `describe` |
 | `src/compiler/paths.ts` | new | `parsePath`, `targets`, `embed` |
-| `src/compiler/scorers.ts` | new | `codeScorer`, `judgeScorer`, `judgePrompt`, the outcome policy, `RUNTIME_VERSION` |
+| `src/compiler/scorers.ts` | new | `codeScorer`, `judgeScorer`, `judgePrompt`, `skippedJudges`, the outcome policy, the strict parse of each outcome, the observed value of each row, `RUNTIME_VERSION` |
 | `src/compiler/code.lock.json` | new | The fingerprints of the runtime version and of each template version, and the dependency pins |
 | `scripts/compiler-lock.ts` | new | `npm run compiler:lock` |
 | `package.json` | changed | The script `compiler:lock` |
@@ -860,13 +934,17 @@ Known limits that stay as risks:
 
 Tradeoffs that this design accepts:
 
-- An existing empty list gives a `pass` with `observed: []`. A list that must not be empty needs a list shape with `min_items: 1`.
+- An existing empty list gives a `pass`, with `[]` as the observed value. A list that must not be empty needs a list shape with `min_items: 1`.
 
 - Watch rules stay out of the instruction. The improvement loop cannot steer drafts with a watch rule.
 
 - A shape rule is always strict, so a shape change cannot run as a trial. It goes through a PR.
 
-- An active rule owned by a node that does not exist yet blocks each compile. The author writes it as a draft first.
+- An active rule with no reach blocks each compile. An example is a rule owned by a node that does not exist yet. Another is a rule for a level with no node yet. The author writes it as a draft first.
+
+- A `text` shape with `values` cannot also limit the length.
+
+- A list shape cannot require unique items. A `unique_by` check does that.
 
 - A Zod or Mastra upgrade changes each rule-set hash.
 
