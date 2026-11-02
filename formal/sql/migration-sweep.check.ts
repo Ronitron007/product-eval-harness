@@ -100,7 +100,8 @@ describe('the migration sweep', () => {
 
       const expected = model.get(caseKey(p, mode))
       const real = { outcome, ...modelView(f) }
-      if (!expected || Object.entries(expected).some(([k, v]) => real[k as keyof typeof real] !== v)) {
+      const keys = (o: object) => Object.keys(o).sort().join()
+      if (!expected || keys(expected) !== keys(real) || Object.entries(expected).some(([k, v]) => real[k as keyof typeof real] !== v)) {
         broken.set('ModelAgrees', `model ${JSON.stringify(expected)} but real ${JSON.stringify(real)}`)
       }
     } finally {

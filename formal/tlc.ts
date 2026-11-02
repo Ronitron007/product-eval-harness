@@ -203,7 +203,7 @@ async function main() {
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${rule.config}.${rule.rule}: ${result}, expected ${rule.expect}${finding}`)
     if (!ok && result === 'breaks') console.log('     A rule that held now breaks: a new bug or a wrong model. Read the path with /statechart.')
     if (!ok && result === 'holds') console.log('     A finding no longer breaks: if a fix landed, set it to holds in formal/expectations.ts.')
-    if (detail) console.log(detail.replace(/^/gm, '     '))
+    if (!ok && detail) console.log(detail.replace(/^/gm, '     '))
   }
   console.log(`formal:tla: ${results.length} rules, ${wrong} not as expected`)
   process.exit(wrong === 0 ? 0 : 1)

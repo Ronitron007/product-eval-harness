@@ -198,7 +198,9 @@ export async function modelEndStates(): Promise<Map<string, ModelFacts>> {
   const ends = new Map<string, ModelFacts>()
   for (const s of (await dumpStates('MigrationApply', 'MigrationApply')) as any[]) {
     if (s.phase !== 'committed' && s.phase !== 'aborted') continue
-    ends.set(caseKey(s.pre, s.mode), { outcome: s.phase, ...s.db })
+    const key = caseKey(s.pre, s.mode)
+    if (ends.has(key)) throw new Error(`MigrationApply.tla has two end states for ${key}.`)
+    ends.set(key, { outcome: s.phase, ...s.db })
   }
   return ends
 }
