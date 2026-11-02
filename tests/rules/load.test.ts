@@ -6,7 +6,7 @@ import { stringify } from 'yaml'
 import { ruleHash } from '../../src/rules/hash'
 import { LOCK_FILE, loadRuleLibrary, lockNewVersions } from '../../src/rules/load'
 import { readLock, writeLock } from '../../src/rules/lock'
-import { RuleRecord } from '../../src/rules/schema'
+import { RuleRecord, type JudgementRule } from '../../src/rules/schema'
 
 const judgementRule = {
   id: 'criteria.attribute_is_product',
@@ -14,7 +14,7 @@ const judgementRule = {
   statement: 'Each candidate attribute describes a property of the product itself.',
   reason: 'A grade must rest on the product.',
   kind: 'judgement',
-  scope: { nodes: { node: 'skincare', descendants: true }, stages: ['define_criteria', 'create_node'], fields: ['criteria[].attributes[]'] },
+  scope: { nodes: 'subtree', stages: ['define_criteria', 'create_node'], fields: ['criteria[].attributes[]'] },
   binding: 'strict',
   judge: { question: 'Does the attribute describe a property of the product itself?' },
   examples: [
@@ -26,14 +26,16 @@ const judgementRule = {
   status: 'draft',
 }
 
+const { judge: _judge, ...ruleBase } = judgementRule
+
 const codeRule = {
-  ...judgementRule,
+  ...ruleBase,
   id: 'criteria.reason_has_record',
-  statement: 'Each criterion cites at least one research record.',
+  statement: 'Each criterion cites a research record that exists.',
   kind: 'code_check',
-  judge: undefined,
-  check: 'min_items',
-  scope: { ...judgementRule.scope, fields: ['criteria[].recordIds'] },
+  check: { name: 'record_exists', params: {} },
+  scope: { ...judgementRule.scope, fields: ['criteria[].record_ids[]'] },
+  examples: [{ input: { record_ids: ['rec.spf'] }, output: 'rec.spf', expected: 'pass' }],
 }
 
 const roots: string[] = []
@@ -102,9 +104,52 @@ describe('loadRuleLibrary', () => {
     expect(messages(root)).toEqual(['judge: A judgement rule needs a judge field with its question.'])
   })
 
-  it('refuses a code check with no named check function', () => {
+  it('refuses a code check with no check field', () => {
     const root = rulesRoot({ 'skincare/criteria.reason_has_record.yaml': { ...codeRule, check: undefined } })
-    expect(messages(root)).toEqual(['check: A code_check rule needs a check field that names its check function.'])
+    expect(messages(root)).toEqual(['check: A code_check rule needs a check field: { name, params }, with a name of the check registry.'])
+  })
+
+  it('refuses a field of another kind, such as a judge field on a code check', () => {
+    const root = rulesRoot({ 'skincare/criteria.reason_has_record.yaml': { ...codeRule, judge: judgementRule.judge } })
+    expect(messages(root)).toEqual(['(file): Unrecognized key: "judge"'])
+  })
+
+  it('refuses an unknown kind with the list of kinds', () => {
+    const root = rulesRoot({ 'skincare/criteria.reason_has_record.yaml': { ...codeRule, kind: 'check' } })
+    expect(messages(root)).toEqual(['kind: Set kind to shape, code_check, or judgement.'])
+  })
+
+  it('refuses a scope that names a node, with a message that says what to write', () => {
+    const scope = { ...judgementRule.scope, nodes: { node: 'skincare', descendants: true } }
+    const root = rulesRoot({ 'skincare/criteria.attribute_is_product.yaml': { ...judgementRule, scope } })
+    expect(messages(root)).toEqual([expect.stringMatching(/^scope.nodes: Set nodes to owner, subtree, or \{ level/)])
+  })
+
+  it('refuses the owner all with the selector owner', () => {
+    const scope = { ...judgementRule.scope, nodes: 'owner' }
+    const root = rulesRoot({ 'all/criteria.attribute_is_product.yaml': { ...judgementRule, owner: 'all', scope } })
+    expect(messages(root)).toEqual([expect.stringMatching(/^scope.nodes: The owner all is no node/)])
+  })
+
+  it('refuses golden evidence that is not RunEvidence', () => {
+    const examples = [{ input: { label: 'Each capsule has 500 mg.' }, output: 'rec.spf', expected: 'pass' }]
+    const root = rulesRoot({ 'skincare/criteria.reason_has_record.yaml': { ...codeRule, examples } })
+    expect(messages(root)).toEqual([expect.stringMatching(/^examples.0.input: Unrecognized key: "label"/)])
+  })
+
+  it('refuses shape parameters that contradict each other', () => {
+    const shapeRule = { ...ruleBase, id: 'attributes.amount', kind: 'shape', scope: { ...judgementRule.scope, fields: ['criteria[].attributes[].amount'] } }
+    const root = rulesRoot({
+      'skincare/attributes.amount.yaml': { ...shapeRule, shape: { type: 'number', min: 5, max: 1 } },
+      'skincare/attributes.unit.yaml': { ...shapeRule, id: 'attributes.unit', shape: { type: 'text', values: ['ml', 'ml'], min_length: 3, max_length: 2 } },
+      'skincare/attributes.items.yaml': { ...shapeRule, id: 'attributes.items', shape: { type: 'list', min_items: 3, max_items: 2 } },
+    })
+    expect(messages(root).filter(m => m.startsWith('shape.')).sort()).toEqual([
+      expect.stringMatching(/^shape.min: min 5 is above max 1/),
+      expect.stringMatching(/^shape.min_items: min_items 3 is above max_items 2/),
+      expect.stringMatching(/^shape.min_length: min_length 3 is above max_length 2/),
+      expect.stringMatching(/^shape.values: The values ml occur more than once/),
+    ])
   })
 
   it('refuses an example verdict outside pass, fail and cannot_verify', () => {
@@ -232,7 +277,7 @@ describe('lockNewVersions', () => {
 })
 
 describe('ruleHash', () => {
-  const rule = RuleRecord.parse(judgementRule)
+  const rule = RuleRecord.parse(judgementRule) as JudgementRule
 
   it('does not change when the keys of the rule change order', () => {
     const reordered = RuleRecord.parse(Object.fromEntries(Object.entries(judgementRule).reverse()))
@@ -243,12 +288,16 @@ describe('ruleHash', () => {
     expect(ruleHash({ ...rule, status: 'active', provenance: { record_id: 'r:1' } })).toBe(ruleHash(rule))
   })
 
-  it('changes with each field that changes what the rule asks or how it is checked', () => {
+  it('changes with each field that changes what the rule asks, how it is checked, or where it applies', () => {
     const base = ruleHash(rule)
     const code = RuleRecord.parse(codeRule)
-    expect(ruleHash({ ...code, check: 'max_items' })).not.toBe(ruleHash(code))
+    if (code.kind !== 'code_check') throw new Error('codeRule is a code_check')
+    expect(ruleHash({ ...code, check: { name: 'key_in_registry', params: {} } })).not.toBe(ruleHash(code))
     expect(ruleHash({ ...rule, reason: 'Other reason.' })).not.toBe(base)
-    expect(ruleHash({ ...rule, kind: 'shape', judge: undefined })).not.toBe(ruleHash({ ...rule, judge: undefined }))
+    const { judge: _judge, ...noJudge } = rule
+    const shape = { ...noJudge, kind: 'shape' as const, binding: 'strict' as const, shape: { type: 'flag' as const } }
+    expect(ruleHash(shape)).not.toBe(ruleHash({ ...shape, shape: { type: 'text' } }))
+    expect(ruleHash({ ...rule, owner: 'all' })).not.toBe(base)
     expect(ruleHash({ ...rule, scope: { ...rule.scope, fields: ['criteria[]'] } })).not.toBe(base)
     expect(ruleHash({ ...rule, scope: { ...rule.scope, stages: ['define_criteria'] } })).not.toBe(base)
     expect(ruleHash({ ...rule, statement: 'Other words.' })).not.toBe(base)

@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto'
 import canonicalize from 'canonicalize'
 import type { RuleRecord } from './schema'
 
-// The hash covers every field that changes what the rule asks or how it is checked.
-// It leaves out id, version, owner, status, provenance and supersedes, which say
-// where the rule sits, not what it says.
+// The hash covers every field that changes what the rule asks, how it is checked, or where it
+// applies. With an anchored scope the owner decides where a rule applies, so the owner is in the
+// hash (record.owner_in_hash). It leaves out id, version, status, provenance and supersedes.
 export function ruleHash(rule: RuleRecord): string {
   const content = {
     statement: rule.statement,
@@ -12,8 +12,10 @@ export function ruleHash(rule: RuleRecord): string {
     kind: rule.kind,
     scope: rule.scope,
     binding: rule.binding,
-    judge: rule.judge ?? null,
-    check: rule.check ?? null,
+    owner: rule.owner,
+    shape: rule.kind === 'shape' ? rule.shape : null,
+    check: rule.kind === 'code_check' ? rule.check : null,
+    judge: rule.kind === 'judgement' ? rule.judge : null,
     examples: rule.examples,
   }
   const text = canonicalize(content)

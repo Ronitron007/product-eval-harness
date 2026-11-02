@@ -20,7 +20,7 @@ const rule = RuleRecord.parse({
   statement: 'Each candidate attribute describes a property of the product itself.',
   reason: 'A grade must rest on the product.',
   kind: 'judgement',
-  scope: { nodes: { node: 'skincare', descendants: true }, stages: ['define_criteria'], fields: ['criteria[].attributes[]'] },
+  scope: { nodes: 'subtree', stages: ['define_criteria'], fields: ['criteria[].attributes[]'] },
   binding: 'strict',
   judge: { question: 'Does the attribute describe a property of the product itself?' },
   examples: [{ output: { key: 'fragrance_present' }, expected: 'pass' }],
