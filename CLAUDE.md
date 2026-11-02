@@ -12,6 +12,7 @@ This file is a routing index. The rules of this repo are in `.claude/rulebooks/`
 | Install, type check, test, and Studio | `README.md` (`Develop`) |
 | Stage rules: the YAML files, the lock, and how to change a rule | `rules/README.md` |
 | The graph store: SQL migrations, the Drizzle schema, and the store functions | `docs/design/graph-store.md`, then `db/README.md` and `src/store/` |
+| Formal checks: TLA+ models, the migration sweep, and the bug-path replays | `.claude/skills/harness-invariants/SKILL.md`, then `formal/` |
 | Mastra code | `.claude/rulebooks/mastra.md`, then the `mastra` skill in `.agents/skills/mastra/` |
 
 ## Rules that this file adds

@@ -64,16 +64,18 @@ export async function check(rule: ModelRule, javaBin: string, jar: string): Prom
   try {
     copyFileSync(join(MODELS, `${rule.model}.tla`), join(dir, `${rule.model}.tla`))
     writeFileSync(join(dir, 'one.cfg'), oneRuleConfig(readFileSync(join(MODELS, `${rule.config}.cfg`), 'utf8'), rule))
-    const args = ['-XX:+UseParallelGC', '-cp', jar, 'tlc2.TLC', '-workers', '1', '-metadir', join(dir, 'states'), '-config', 'one.cfg', `${rule.model}.tla`]
-    const out = await run(javaBin, args, { cwd: dir, maxBuffer: 64 * 1024 * 1024 }).then(
-      r => r.stdout,
-      (e: { stdout?: string }) => e.stdout ?? '',
+    // Each JVM gets its own tmpdir: TLC unpacks its standard modules there, and runs in parallel race.
+    const args = ['-XX:+UseParallelGC', `-Djava.io.tmpdir=${dir}`, '-cp', jar, 'tlc2.TLC', '-workers', '1', '-metadir', join(dir, 'states'), '-config', 'one.cfg', `${rule.model}.tla`]
+    const { out, err } = await run(javaBin, args, { cwd: dir, maxBuffer: 64 * 1024 * 1024 }).then(
+      r => ({ out: r.stdout, err: r.stderr }),
+      (e: { stdout?: string; stderr?: string; message?: string }) => ({ out: e.stdout ?? '', err: e.stderr || e.message || '' }),
     )
     if (/Model checking completed\. No error has been found\./.test(out)) return { result: 'holds', detail: '' }
     if (new RegExp(`(Invariant|Action property|Temporal properties|Property) ${rule.rule} is violated|Temporal properties were violated`).test(out)) {
       return { result: 'breaks', detail: '' }
     }
-    return { result: 'error', detail: out.split('\n').filter(l => /error|Error|violated|Deadlock/.test(l)).slice(0, 6).join('\n') }
+    const tail = (s: string) => s.split('\n').filter(l => l.trim()).slice(-6)
+    return { result: 'error', detail: [...tail(out), ...tail(err)].join('\n') }
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
