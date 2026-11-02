@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import { checkTemplate } from '../rules/checks'
 import { ruleHash } from '../rules/hash'
 import type { RuleLibrary } from '../rules/load'
@@ -192,7 +193,10 @@ export function reach(admitted: Admitted, tree: Tree): CompileProblem[] {
 // One ledger entry for each input rule version, and the rules that apply (compile.ledger).
 export function resolve(admitted: Admitted, tree: Tree, node: string, stage: Stage): { applied: AdmittedRule[]; ledger: LedgerEntry[]; problems: CompileProblem[] } {
   const here = tree.node(node)
-  if (!here) throw new Error(`No node ${node} in the tree. Compile at a node that store.tree() gives.`)
+  if (!here) {
+    const problem: CompileProblem = { code: 'node_unknown', rules: [], message: `No node ${node} in the tree. Compile at a node that store.tree() gives.` }
+    return { applied: [], ledger: [], problems: [problem] }
+  }
   const problems: CompileProblem[] = []
   if (!STAGE_LEVELS[stage].includes(here.level)) {
     problems.push({ code: 'stage_not_at_level', rules: [], message: `The stage ${stage} runs at ${STAGE_LEVELS[stage].join(', ')} nodes, and ${node} is a ${here.level} node. Compile ${stage} at another node.` })
@@ -252,38 +256,68 @@ function looser(dim: string, order: DimensionOrder, child: unknown, parent: unkn
   }
 }
 
-// A child rule that restates an inherited slot more loosely (compile.weaken). The binding test
-// reads the binding that the author wrote, so the forced watch of a trial is never a weakening.
+// The parameters of a and b when both rules sit in one slot (compile.weaken), else undefined.
+function slotOf(a: RuleRecord, b: RuleRecord): { order: OrderTable<Record<string, unknown>>; a: Record<string, unknown>; b: Record<string, unknown> } | undefined {
+  if (a.kind === 'shape' && b.kind === 'shape' && a.shape.type === b.shape.type) {
+    return { order: SHAPE_ORDERS[a.shape.type] as OrderTable<Record<string, unknown>>, a: paramsOf(a.shape), b: paramsOf(b.shape) }
+  }
+  if (a.kind === 'code_check' && b.kind === 'code_check' && a.check.name === b.check.name) {
+    const order = checkTemplate(a.check.name).order as OrderTable<Record<string, unknown>>
+    const pa = a.check.params as Record<string, unknown>
+    const pb = b.check.params as Record<string, unknown>
+    return sameIdentity(pa, pb, order) ? { order, a: pa, b: pb } : undefined
+  }
+  return undefined
+}
+
+// How child is looser than parent in one slot: each looser dimension, and a lower binding.
+function loosening(parent: AdmittedRule, child: AdmittedRule, slot: NonNullable<ReturnType<typeof slotOf>>): { what: string; fix: string }[] {
+  const A = parent.rule
+  const B = child.rule
+  const name = `${A.owner} ${parent.ref}`
+  const parts = looserDimensions(slot.b, slot.a, slot.order).map(d => looser(d, slot.order[d]!, slot.b[d], slot.a[d], name))
+  if (BINDING_STRENGTH[B.binding] < BINDING_STRENGTH[A.binding]) {
+    parts.push({ what: `has the binding ${B.binding}, below the binding ${A.binding} of ${name}`, fix: 'raise the binding' })
+  }
+  return parts
+}
+
+// Two applied rules that restate one slot with other values (compile.weaken). A child that is
+// looser than an inherited rule gives weakens. Each other restatement, peers included, gives
+// slot_conflict, because the instruction would print two values for one dimension. The binding
+// test reads the binding that the author wrote, so the forced watch of a trial is never a
+// restatement. A trial version and the live version of the same id are one rule, never two.
 export function weakenings(applied: readonly AdmittedRule[], tree: Tree): CompileProblem[] {
   const problems: CompileProblem[] = []
-  for (const parent of applied) {
-    for (const child of applied) {
-      if (!tree.isStrictAncestor(parent.rule.owner, child.rule.owner)) continue
-      const A = parent.rule
-      const B = child.rule
-      let parts: { what: string; fix: string }[] = []
-      if (A.kind === 'shape' && B.kind === 'shape' && A.shape.type === B.shape.type) {
-        const order = SHAPE_ORDERS[A.shape.type] as OrderTable<Record<string, unknown>>
-        const a = paramsOf(A.shape)
-        const b = paramsOf(B.shape)
-        parts = looserDimensions(b, a, order).map(d => looser(d, order[d]!, b[d], a[d], `${A.owner} ${parent.ref}`))
-      } else if (A.kind === 'code_check' && B.kind === 'code_check' && A.check.name === B.check.name) {
-        const order = checkTemplate(A.check.name).order as OrderTable<Record<string, unknown>>
-        const a = A.check.params as Record<string, unknown>
-        const b = B.check.params as Record<string, unknown>
-        if (!sameIdentity(a, b, order)) continue
-        parts = looserDimensions(b, a, order).map(d => looser(d, order[d]!, b[d], a[d], `${A.owner} ${parent.ref}`))
-        if (BINDING_STRENGTH[B.binding] < BINDING_STRENGTH[A.binding]) {
-          parts.push({ what: `has the binding ${B.binding}, below the binding ${A.binding} of ${A.owner} ${parent.ref}`, fix: 'raise the binding' })
+  for (const [i, x] of applied.entries()) {
+    for (const y of applied.slice(i + 1)) {
+      if (x.rule.id === y.rule.id) continue
+      const fields = x.rule.scope.fields.filter(f => y.rule.scope.fields.includes(f))
+      const slot = fields.length > 0 ? slotOf(x.rule, y.rule) : undefined
+      if (!slot) continue
+      const differs = Object.keys(slot.order).filter(
+        d => slot.order[d] !== 'identity' && slot.a[d] !== undefined && slot.b[d] !== undefined && !isDeepStrictEqual(slot.a[d], slot.b[d]),
+      )
+      const bindings = x.rule.binding !== y.rule.binding
+      if (differs.length === 0 && !bindings) continue
+      const [parent, child] = tree.isStrictAncestor(x.rule.owner, y.rule.owner) ? [x, y] : tree.isStrictAncestor(y.rule.owner, x.rule.owner) ? [y, x] : [undefined, undefined]
+      const parts = parent && child ? loosening(parent, child, parent === x ? slot : { order: slot.order, a: slot.b, b: slot.a }) : []
+      for (const field of fields) {
+        if (parent && child && parts.length > 0) {
+          problems.push({
+            code: 'weakens',
+            rules: [child.ref, parent.ref],
+            field,
+            message: `${child.rule.owner} ${child.ref} ${parts.map(p => p.what).join('; ')}. Change the ${parent.rule.owner} rule, or ${[...new Set(parts.map(p => p.fix))].join(' and ')}.`,
+          })
+          continue
         }
-      } else continue
-      if (parts.length === 0) continue
-      for (const field of B.scope.fields.filter(f => A.scope.fields.includes(f))) {
+        const what = [...differs.map(d => `${d} is ${JSON.stringify(slot.a[d])} in ${x.ref} and ${JSON.stringify(slot.b[d])} in ${y.ref}`), ...(bindings ? [`the binding is ${x.rule.binding} in ${x.ref} and ${y.rule.binding} in ${y.ref}`] : [])]
         problems.push({
-          code: 'weakens',
-          rules: [child.ref, parent.ref],
+          code: 'slot_conflict',
+          rules: [x.ref, y.ref],
           field,
-          message: `${B.owner} ${child.ref} ${parts.map(p => p.what).join('; ')}. Change the ${A.owner} rule, or ${[...new Set(parts.map(p => p.fix))].join(' and ')}.`,
+          message: `${x.rule.owner} ${x.ref} and ${y.rule.owner} ${y.ref} restate one slot on ${field} with other values: ${what.join('; ')}. Keep one rule, or make the values agree.`,
         })
       }
     }

@@ -121,4 +121,9 @@ describe('noop', () => {
     expect(loaderProblems(root)).toEqual(['scope.stages.0: The stage create_pack never runs at level domain. It runs at leaf. Change the stage or the level.'])
     expect(rulesCheck(root).status).toBe(1)
   })
+
+  // Review of #19, repro probe.test.ts P1.
+  it('noop.node_unknown: a compile at a node that is not in the tree gives node_unknown, not a throw', () => {
+    expect(problemsOf({ node: 'nonexistent' })).toEqual([expect.objectContaining({ code: 'node_unknown', message: 'No node nonexistent in the tree. Compile at a node that store.tree() gives.' })])
+  })
 })

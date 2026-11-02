@@ -225,6 +225,16 @@ function recordLint(rule: AnyRule, ctx: z.RefinementCtx): void {
     }
   }
 
+  // The numeral lint: a number of a shape rule or a code check lives in its params only (drift).
+  // A judgement rule has no params, so its words may hold a number.
+  if (rule.kind !== 'judgement') {
+    for (const field of ['statement', 'reason'] as const) {
+      if (/[0-9]/.test(rule[field])) {
+        add([field], `Remove the number from the ${field}. Write each number of the rule in its ${rule.kind === 'shape' ? 'shape' : 'check.params'}, so that the compiler prints one copy.`)
+      }
+    }
+  }
+
   // The literal lint: one copy of each parameter, in the params object (drift).
   const from = rule.kind === 'shape' ? 'shape.values' : 'check.params'
   for (const literal of ruleLiterals(rule)) {

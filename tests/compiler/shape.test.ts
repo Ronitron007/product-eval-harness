@@ -60,8 +60,12 @@ describe('shape, at compile time', () => {
   it('shape.empty_meet: the values [mg] and [g] on one path give shape_conflict', () => {
     const grams = shapeRule('units.grams', 'criteria[].attributes[].unit', { type: 'text', values: ['g'] }, [{ output: 'g', expected: 'pass' }])
     const r = problemsOf({ rules: withRules({ ...labelUnit, shape: { type: 'text', values: ['mg'] } }, grams) })
-    expect(r).toEqual([expect.objectContaining({ code: 'shape_conflict', rules: ['units.grams@1', 'units.label_unit@1'] })])
-    expect(r[0]!.message).toMatch(/share no value, so no value fits/)
+    // Two peers on one slot also restate it with other values (slot_conflict).
+    expect(r).toEqual([
+      expect.objectContaining({ code: 'slot_conflict', rules: ['units.grams@1', 'units.label_unit@1'] }),
+      expect.objectContaining({ code: 'shape_conflict', rules: ['units.grams@1', 'units.label_unit@1'] }),
+    ])
+    expect(r[1]!.message).toMatch(/share no value, so no value fits/)
   })
 
   it('shape.empty_meet: a min above the max of another rule gives shape_conflict', () => {

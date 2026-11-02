@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compile, planOf, problemsOf } from './library'
-import { attributeAmount, FIXTURE, keyKnown, labelUnit, type RuleInput } from './rules'
+import { RuleRecord } from '../../src/rules/schema'
+import { attributeAmount, FIXTURE, keyKnown, labelUnit, quotesFromLabel, type RuleInput } from './rules'
 
 // Hazard `weaken`: a child rule restates an inherited rule more loosely. The plan check
 // "a weakening child is refused" (compile.plan_checks).
@@ -78,5 +79,26 @@ describe('weaken', () => {
     expect(problemsOf({ rules: [...PARENT, ofAll] })).toEqual([
       expect.objectContaining({ code: 'weakens', rules: ['units.label_unit@1', 'units.mass_unit@1'], message: expect.stringMatching(/^skincare units.label_unit@1 allows mcg, which all units.mass_unit@1 forbids/) }),
     ])
+  })
+
+  // Review of #19, repro probe2.test.ts L1: a peer restates a slot more loosely, and both lines print.
+  it('weaken.peer_restatement: two applied rules on one slot with other values or another binding give slot_conflict, at any owner relation', () => {
+    const anyCase = both({ ...quotesFromLabel, id: 'quotes.any_case', binding: 'soft', check: { name: 'quote_in_source', params: { source: 'label', case_sensitive: false } } })
+    expect(problemsOf({ rules: [...PARENT, anyCase] })).toEqual([
+      expect.objectContaining({
+        code: 'slot_conflict',
+        rules: ['quotes.any_case@1', 'quotes.from_label@1'],
+        field: 'criteria[].attributes[].quote',
+        message: 'skincare quotes.any_case@1 and skincare quotes.from_label@1 restate one slot on criteria[].attributes[].quote with other values: case_sensitive is false in quotes.any_case@1 and true in quotes.from_label@1; the binding is soft in quotes.any_case@1 and strict in quotes.from_label@1. Keep one rule, or make the values agree.',
+      }),
+    ])
+    // A looser child keeps the code weakens.
+    expect(problemsOf({ rules: [...PARENT, { ...anyCase, owner: 'sunscreen' }] }).map(p => p.code)).toEqual(['weakens'])
+    // A stricter child that restates a dimension also gives slot_conflict.
+    const narrow = child(labelUnit, { id: 'units.mass_only', shape: { type: 'text', values: ['mg'] } })
+    expect(problemsOf({ rules: [...PARENT, narrow] }).map(p => p.code)).toEqual(['slot_conflict'])
+    // Equal values on one slot, and a trial version of the same id, are no restatement.
+    expect(compile({ rules: [...PARENT, both({ ...keyKnown, id: 'attributes.key_again' })] }).ok).toBe(true)
+    expect(compile({ rules: PARENT, trial: RuleRecord.parse({ ...keyKnown, version: 2, supersedes: 1, binding: 'soft' }) }).ok).toBe(true)
   })
 })

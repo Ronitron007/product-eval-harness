@@ -98,8 +98,8 @@ export interface LedgerEntry {
 export type ProblemCode =
   | 'library_invalid' | 'derived_invalid' | 'derived_hash_mismatch' | 'id_collision' // compile.admit
   | 'draft_shadows_active' | 'trial_shape_refused' // compile.admit
-  | 'owner_unknown' | 'rule_inert' | 'trial_not_applied' | 'stage_not_at_level' // compile.scope
-  | 'weakens' // compile.weaken
+  | 'owner_unknown' | 'rule_inert' | 'trial_not_applied' | 'stage_not_at_level' | 'node_unknown' // compile.scope
+  | 'weakens' | 'slot_conflict' // compile.weaken
   | 'no_output_fields' | 'shape_conflict' | 'list_without_items' // compile.shape
   | 'field_unresolved' | 'check_on_wrong_kind' // compile.shape, compile.checks
   | 'golden_mismatch' // auditLibrary only
@@ -173,23 +173,26 @@ function fit(applied: readonly AdmittedRule[], trie: ShapeTrie): CompileProblem[
   return problems
 }
 
-// The instruction text (compile.instructions): the fields in path order, each with its shape
-// line, its strict rules, then its soft rules. Watch rules, trial rules and judge questions never print.
+// The instruction text (compile.instructions): each field that a printed rule names, in path
+// order, with its own composed shape line. Under each field, its strict rules, then its soft
+// rules. A rule on more than one field prints in full under its first field, and as a pointer
+// under each other field. Watch rules, trial rules and judge questions never print.
 function renderInstructions(stage: Stage, trie: ShapeTrie, applied: readonly AdmittedRule[]): string {
   const printed = applied.filter(r => r.origin !== 'trial' && r.binding !== 'watch')
   const byField = new Map<string, AdmittedRule[]>()
-  for (const r of printed) {
-    const first = [...r.rule.scope.fields].sort(byCodeUnit)[0]!
-    byField.set(first, [...(byField.get(first) ?? []), r])
-  }
+  for (const r of printed) for (const f of r.rule.scope.fields) byField.set(f, [...(byField.get(f) ?? []), r])
   const lines = [`Stage ${stage}. Write one output that fits the output schema. These rules apply to its fields.`]
   for (const field of [...byField.keys()].sort(byCodeUnit)) {
     lines.push('', field, `  Shape: ${describe(lookup(trie, field)!)}`)
     const rules = byField.get(field)!.sort((a, b) => BINDING_ORDER[a.binding] - BINDING_ORDER[b.binding] || byCodeUnit(a.ref, b.ref))
     for (const r of rules) {
+      const fields = [...r.rule.scope.fields].sort(byCodeUnit)
+      if (fields[0] !== field) {
+        lines.push(`  ${r.binding} \`${r.ref}\`, as under ${fields[0]}.`)
+        continue
+      }
       lines.push(`  ${r.binding} \`${r.ref}\`. ${r.rule.statement} Why: ${r.rule.reason}`)
-      const others = [...r.rule.scope.fields].sort(byCodeUnit).slice(1)
-      if (others.length > 0) lines.push(`    Also on: ${others.join(', ')}`)
+      if (fields.length > 1) lines.push(`    Also on: ${fields.slice(1).join(', ')}`)
       if (r.rule.kind === 'code_check') lines.push(`    Check: ${checkTemplate(r.rule.check.name).render(r.rule.check.params as never)}`)
       for (const example of r.rule.examples) lines.push(`    Example: ${quote(example)}`)
     }
@@ -259,7 +262,7 @@ function compileAdmitted(admitted: Admitted, nodes: readonly TreeNode[], node: N
   const tree = indexTree(nodes)
   const scoped = resolve(admitted, tree, node, stage)
   const problems = [...reach(admitted, tree), ...scoped.problems]
-  if (problems.some(p => p.code === 'stage_not_at_level')) return { ok: false, problems }
+  if (problems.some(p => p.code === 'stage_not_at_level' || p.code === 'node_unknown')) return { ok: false, problems }
   problems.push(...weakenings(scoped.applied, tree))
 
   const entries = scoped.applied.flatMap(r => (r.rule.kind === 'shape' ? r.rule.scope.fields.map(field => ({ ref: r.ref, field, shape: (r.rule as { shape: Shape }).shape })) : []))

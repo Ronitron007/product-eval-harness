@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { problemsOf, rulesRoot } from './files'
 import { planOf, withRules } from './library'
-import { GOOD_EVIDENCE, GOOD_OUTPUT, labelUnit, quotesFromLabel } from './rules'
+import { RuleRecord } from '../../src/rules/schema'
+import { attributeIsProduct, attributeQuote, GOOD_EVIDENCE, GOOD_OUTPUT, labelUnit, quotesFromLabel } from './rules'
 
 // Hazard `drift`: the instruction and the check read two copies of a parameter. The plan check
 // "a shared parameter change moves both the instruction and the check" (compile.plan_checks).
@@ -49,5 +50,32 @@ describe('drift', () => {
       expect.stringMatching(/^statement: Remove "mg" from the statement/),
       expect.stringMatching(/^reason: Remove "mcg" from the reason/),
     ])
+  })
+
+  // Review of #19, repro probe3.test.ts: a rule on two fields printed one shape line only.
+  it('drift.shape_line_each_field: each field of a rule on two fields gets its own composed shape line', () => {
+    const both = { ...labelUnit, scope: { ...(labelUnit.scope as object), fields: ['criteria[].attributes[].unit', 'criteria[].attributes[].unit_alt'] } }
+    const plan = planOf({ rules: withRules(both) })
+    const lines = plan.instructions.split('\n')
+    const at = lines.indexOf('criteria[].attributes[].unit_alt')
+    expect(lines.slice(at, at + 3)).toEqual([
+      'criteria[].attributes[].unit_alt',
+      '  Shape: text, one of: g, mcg, mg',
+      '  strict `units.label_unit@1`, as under criteria[].attributes[].unit.',
+    ])
+    // The shape line and the schema agree on the second field.
+    const output = { criteria: [{ name: 'spf', attributes: [{ amount: 1, key: 'spf', quote: 'q', unit: 'mg', unit_alt: 'mcg' }] }] }
+    expect(plan.schema.safeParse(output).success).toBe(true)
+    expect(plan.schema.safeParse({ criteria: [{ ...output.criteria[0]!, attributes: [{ ...output.criteria[0]!.attributes[0]!, unit_alt: 'IU' }] }] }).success).toBe(false)
+  })
+
+  // Review of #19, repro probe2.test.ts D1: a number in the words drifts from the number in the shape.
+  it('drift.numeral_in_statement: a shape rule or a code check with a numeral in its statement or reason gives a loader problem, and a judgement rule does not', () => {
+    const quote = { ...attributeQuote, shape: { type: 'text', min_length: 1, max_length: 12 }, statement: 'Keep each quote to 12 characters or fewer.' }
+    const issues = RuleRecord.safeParse(quote).error?.issues.map(i => `${i.path.join('.')}: ${i.message}`)
+    expect(issues).toEqual(['statement: Remove the number from the statement. Write each number of the rule in its shape, so that the compiler prints one copy.'])
+    const check = { ...quotesFromLabel, reason: 'A reader must find the 3 words.' }
+    expect(RuleRecord.safeParse(check).error?.issues.map(i => i.message)).toEqual([expect.stringMatching(/^Remove the number from the reason. Write each number of the rule in its check.params/)])
+    expect(RuleRecord.safeParse({ ...attributeIsProduct, statement: 'Keep the 3 key attributes about the product.' }).success).toBe(true)
   })
 })
