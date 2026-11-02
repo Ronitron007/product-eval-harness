@@ -22,6 +22,8 @@ Each term has one definition. Docs link here at the first use of a term.
 | Criterion | One aspect of a product that an evaluation grades. Only a domain node creates criteria. |
 | Decode gate | The one test of a stage output against the whole output schema, `plan.decode`. An output that fails it never reaches the judges or the graph. |
 | Derived rule | A rule that a stage creates as part of its output, such as the meaning of a criterion at a node. It lives in the graph store. |
+| Finding | A rule that a formal check shows to break in the code today. It keeps its name until Rohan rules on its fix. |
+| Formal check | A check that covers each case in a stated scope: each order of steps in a model, or each pre-state of a sweep. |
 | Domain node | A top node of the rule graph, such as skincare or supplements. |
 | Editor | A session of the improvement loop that proposes changes to the stage rules of one node. A process editor owns how the stage works. A domain editor owns what a practitioner knows. |
 | Evaluation pack | The rules that grade one product at a leaf node: the kept criteria and attributes, the levels, the adjustments, and the scoring. |
@@ -57,6 +59,7 @@ Each term has one definition. Docs link here at the first use of a term.
 | Ruleset | The rules in scope of one stage run at one node. |
 | Ruleset judge | The part of a stage that runs each rule in scope on the output, with code checks and LLM judges. |
 | Scope | The nodes, the stages, and the output fields where a rule applies. |
+| Pre-state | The state of a database before a migration runs, such as a role or a schema that already exists. |
 | Slot | What two rules check together. Two shape rules share a slot when they have one type on one field. Two code checks share a slot when they have one template and equal identity parameters on one field. |
 | Stage | One kind of work at one node: `define_criteria`, `create_node`, `create_pack`, or `create_layout`. |
 | Stage rule | A rule that governs how a stage works and the shape of its output. Rohan approves it. It lives in git. |

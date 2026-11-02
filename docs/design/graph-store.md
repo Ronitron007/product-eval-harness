@@ -75,6 +75,8 @@ The `ltree` path of each node gives the three walks of `graph.traversal`. Verifi
 
 Tests run on Postgres, with no network. The unit uses an in-process Postgres if one supports `ltree`, or else a local Postgres in CI. Each test uses a schema of its own and drops it after.
 
+The formal checks cover the migrations and the store too ([formal-checks.md](formal-checks.md)).
+
 ## What is open `store.open`
 
 - Whether Mastra's own writes can join our transactions. Not verified.
