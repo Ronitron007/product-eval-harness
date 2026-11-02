@@ -51,7 +51,9 @@
 		{"id":"dchat","type":"text","text":"## chat\nReads the published knowledge.\nreads: a pinned bundle, or imported attributes","x":1260,"y":2560,"width":320,"height":200,"color":"4"},
 		{"id":"dkdb","type":"text","text":"## Kyaloon database\nHolds the product evaluations.\nholds: `product_evals`","x":1660,"y":2560,"width":320,"height":200,"color":"5"},
 		{"id":"dopen","type":"text","text":"## open\nStores, bundle format, public reads.\nstatus: Rohan decides later","x":2060,"y":2560,"width":320,"height":200,"color":"1"},
-		{"id":"f6","type":"file","x":-340,"y":2900,"width":400,"height":120,"file":"design/data-layers.md"}
+		{"id":"f6","type":"file","x":-340,"y":2900,"width":400,"height":120,"file":"design/data-layers.md"},
+		{"id":"fchk","type":"text","x":2465,"y":1100,"width":300,"height":200,"text":"## formal checks\nTLA+ models, a migration sweep, bug-path replays.\nchecks: `harness.*` tables, the rule lock, `db/migrations/`\nrun: `npm run formal` in CI"},
+		{"id":"f7","type":"file","x":2140,"y":2240,"width":400,"height":120,"file":"design/formal-checks.md"}
 	],
 	"edges":[
 		{"id":"eA1","fromNode":"dom","fromSide":"right","toNode":"inn","toSide":"left","label":"criteria"},
@@ -92,6 +94,9 @@
 		{"id":"eG4","fromNode":"dpub","fromSide":"right","toNode":"deval","toSide":"left","label":"pinned bundle"},
 		{"id":"eG5","fromNode":"deval","fromSide":"right","toNode":"dchat","toSide":"left","label":"same bundle"},
 		{"id":"eG6","fromNode":"deval","fromSide":"bottom","toNode":"dkdb","toSide":"bottom","label":"evaluations"},
-		{"id":"eG7","fromNode":"gF","fromSide":"left","toNode":"f6","toSide":"left"}
+		{"id":"eG7","fromNode":"gF","fromSide":"left","toNode":"f6","toSide":"left"},
+		{"id":"eF1","fromNode":"fchk","fromSide":"left","toNode":"mdb","toSide":"right","label":"checks"},
+		{"id":"eF2","fromNode":"fchk","fromSide":"right","toNode":"mrules","toSide":"left","label":"checks"},
+		{"id":"eF3","fromNode":"fchk","fromSide":"bottom","toNode":"f7","toSide":"top"}
 	]
 }

@@ -9,6 +9,7 @@ Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but 
 | [self-improvement.md](self-improvement.md) | `improve` | The self-improvement loop, its boundaries, and its parts |
 | [mastra-mapping.md](mastra-mapping.md) | `mastra` | Each part on Mastra 1.79.0, what we do not use, and what we build |
 | [graph-store.md](graph-store.md) | `store` | Where the graph store lives, its safety on the live database, its tables, the tree walk, and its tests |
+| [formal-checks.md](formal-checks.md) | `formal` | What the formal checks cover, their parts, the models, and their bounds |
 | [data-layers.md](data-layers.md) | `data` | What each layer of data holds, where it lives, and how the isolated steps hand off work |
 | [compiler.md](compiler.md) | `compile` | The rule compiler of `plan.compiler`. Spec of 2026-11-02, not built yet. |
 
@@ -40,6 +41,11 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `data` | The data layers | [data-layers.md](data-layers.md) |
 | `data.authoring_graph`, `data.run_state`, `data.artifacts`, `data.bundles`, `data.evaluations` | The five data layers | `data.layers` |
 | `publish` | The step that writes one hashed bundle for each leaf after the pack gate | `data.layers` |
+| `formal` | The formal checks of the code | [formal-checks.md](formal-checks.md) |
+| `formal.models`, `formal.sweep`, `formal.oracle`, `formal.replays`, `formal.expectations` | The parts of the formal checks | `formal.parts` |
+| `NodeTree`, `VerdictLog`, `RuleVersions`, `MigrationApply` | The TLA+ models in `formal/models/` | `formal.model_list` |
+| `formal_check` | The formal check of 2026-11-02 and its findings | [../research/2026-11-02-formal-check.md](../research/2026-11-02-formal-check.md) |
+| `nodes.owner_update`, `verdicts.stage_level`, `verdicts.hash_per_version`, `verdicts.accept_without_pass`, `verdicts.no_round`, `verdicts.outputs_per_run`, `rules.watch_first`, `rules.lock_hand_entry`, `derived_rules.skip_version`, `derived_rules.two_owners`, `derived_rules.two_active`, `derived_rules.id_collision`, `migration.guard_gaps`, `migration.per_file_stop` | The findings of 2026-11-02 | `formal_check.findings` |
 | `plan.<unit>` | One unit of the plan, such as `plan.scaffold` | [../plans/2026-10-24-harness-plan.md](../plans/2026-10-24-harness-plan.md) |
 | `compile` | The rule compiler | [compiler.md](compiler.md) |
 | `compileStage`, `auditLibrary`, `StagePlan` | The two public calls of the compiler, and the plan of one stage run | `compile.api` |
