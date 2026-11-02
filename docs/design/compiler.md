@@ -1,6 +1,6 @@
 # The rule compiler `compile`
 
-Status. Spec of 2026-11-02 for `plan.compiler`. Not built yet. This spec matches the code of `main` at `803301a`, in `src/rules/`, `src/store/store.ts`, and `package.json`. Terms are in [glossary.md](../glossary.md).
+Status. Spec of 2026-11-02 for `plan.compiler`. Built by [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19), and the section `compile.reconciliation` lists where the code differs. This spec matches the code of `main` at `803301a`, in `src/rules/`, `src/store/store.ts`, and `package.json`. Terms are in [glossary.md](../glossary.md).
 
 Source. Claude wrote this spec from the architect run of 2026-11-02 ([the record](../research/2026-11-02-compiler-architect/README.md)). The design of the Opus runner is the base. The synthesis of the run changes that base, and the synthesis wins each conflict. Each choice is a row in [decisions.tsv](../decisions.tsv), for Rohan to review.
 
@@ -1006,6 +1006,43 @@ Tradeoffs that this design accepts:
 - A hash over a list of inputs. Each new input would need a manual edit of that list. A hash of the artifacts covers each input by construction.
 
 - Scopes that name a node, as today, plus an ancestry test. That keeps an illegal state that a test must catch. Anchored scopes remove it.
+
+## Implementation reconciliation `compile.reconciliation`
+
+The code of [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19) builds this spec. This section lists each place where the code differs from the text above, and why. Mastra APIs are those of `@mastra/core` 1.79.0, from its embedded doc `reference-evals-create-scorer.md` and its type definitions.
+
+### Changes that the spec text did not foresee `compile.reconciliation.changes`
+
+| Spec text | Code | Why |
+|---|---|---|
+| "TypeScript refuses an extra field in an object literal that a check returns" (`compile.checks`) | `CheckTemplate` has a fourth type parameter, `R`, the return type of `check`. `defineCheck` adds the constraint `NoExtraOutcomeField<R>`. | TypeScript 6.0.3 does no check of extra fields in an object that an arrow function returns. A spike with the plain union compiled a check that returns `{ verdict: 'pass', score: 0.9 }`. With the constraint, the three bad templates of `verify.outcome_types` fail the type check. |
+| `boundary.internals_unreachable` reads each file outside `src/compiler/` | The test reads `src/` and `scripts/`. It does not read `tests/`. | The test `admit.brand` must pass raw rules to an internal step. So `tests/compiler/admit.test.ts` imports `src/compiler/scope.ts`. All other tests use `src/compiler/index.ts`. |
+| `compileStage` never throws on rule data | `compileStage` throws an `Error` for a node that is not in the tree. | The node is input of the call site, not rule data. No problem code fits it. |
+| Each step adds its problems to one list | An admission problem stops `compileStage` after `admit`. `auditLibrary` goes on with the rules that passed admission. | Later steps would report noise about rules that admission refused. The audit still runs the golden examples of a rule that is not locked yet. |
+| The problem codes of a trial | A trial candidate that is not a valid record, or that has no canonical form, gives `library_invalid`. A trial with the id and version of an existing rule gives `id_collision`. | The candidate comes from the rule library of a PR branch. Two entries with one version would break the ledger partition. |
+| `CheckRef` problems name the fix | The loader gives its own message for a missing `shape`, `check`, or `judge` field. It also does so for an unknown `kind` or check, a bad `scope.nodes`, and `unique` in a list shape. | Zod gives "Invalid input" for a bad union member (`compile.limits`). |
+| `targets` gives `present`, `absent`, or `empty_list` | An `absent` target also has `why`. It has `found` when a value on the path is not the container that the path needs. | A reply that is not JSON reaches the shape scorers as a string. The fail row then keeps that string in `evidence.quote`. A key that is missing gives no evidence. |
+| The policy table covers shape rules and code checks | A judgement rule on an existing empty list gives `pass`, decided by code. An absent target gives `cannot_verify`, decided by code. Only the rows that the model answered have the decider `judge`. | This follows the empty list tradeoff of `compile.limits`. Code never answers a judge question. |
+| The judge returns a quote for each item | The row of a judge keeps the observed value at the target in `evidence.quote`, with `source: output`. The quote of the judge goes into the reason. | Each row then holds the same kind of evidence, so `verify.observed_from_runtime` holds for all rows. |
+| `literals(params)` of each template | `quote_in_source` gives `[source]`. `unique_by` gives `[by]`. The other two templates give `[]`. | The spec does not name them. A statement that names the source or the key would hold a second copy of a parameter. |
+
+### Parts that the spec left open `compile.reconciliation.open_parts`
+
+- The code lock is `{ lock_version, deps, runtime, checks }`. A fingerprint is the sha256 of the source after `typescript.transpileModule` with `removeComments`. TypeScript is an exact devDependency pin, so each machine gives the same fingerprint. A TypeScript upgrade can move each fingerprint. Then raise each version.
+
+- `CODE_DEPS` in `src/compiler/index.ts` holds the pins of `zod` and `@mastra/core` for the manifest. The runtime never reads `package.json`. The test `hash.code_lock` compares `CODE_DEPS`, `package.json`, and the lock.
+
+- `src/compiler/index.ts` also exports `CODE_DEPS` and `RUNTIME_VERSION`, for `scripts/compiler-lock.ts`.
+
+- The audit with no tree compares the fields of each rule with the shape rules of the same stage. A path counts when a shape rule names it or names a path below it. An active rule reads active shape rules. A draft reads draft shape rules too. The audit with no tree does no shape or weaken test, because it does not know which owners share a node.
+
+- The golden gate skips retired rules. It puts each example at the first field of the rule, in code-unit order. Then it reads the rows at that target.
+
+- `plan.decode` gives one issue for each extra key, with the key in its path, such as `criteria[0].attributes[0].grade`.
+
+- The tests use `fast-check` 4.10.2, an exact devDependency pin. It makes the pool of `status.ledger_partition` and the seeded shuffles of `hash.shuffled_inputs`.
+
+- The docs commit of this PR has no `[skip ci]`, because it is the head commit of a code PR.
 
 ## Open items `compile.open`
 

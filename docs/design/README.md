@@ -10,7 +10,7 @@ Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but 
 | [mastra-mapping.md](mastra-mapping.md) | `mastra` | Each part on Mastra 1.79.0, what we do not use, and what we build |
 | [graph-store.md](graph-store.md) | `store` | Where the graph store lives, its safety on the live database, its tables, the tree walk, and its tests |
 | [data-layers.md](data-layers.md) | `data` | What each layer of data holds, where it lives, and how the isolated steps hand off work |
-| [compiler.md](compiler.md) | `compile` | The rule compiler of `plan.compiler`. Spec of 2026-11-02, not built yet. |
+| [compiler.md](compiler.md) | `compile` | The rule compiler of `plan.compiler`. Spec of 2026-11-02, built by [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). |
 
 ## Name map `harness.names`
 
@@ -42,6 +42,7 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `publish` | The step that writes one hashed bundle for each leaf after the pack gate | `data.layers` |
 | `plan.<unit>` | One unit of the plan, such as `plan.scaffold` | [../plans/2026-10-24-harness-plan.md](../plans/2026-10-24-harness-plan.md) |
 | `compile` | The rule compiler | [compiler.md](compiler.md) |
+| `compile.reconciliation` | Where the code of the compiler differs from its spec | `compile.reconciliation` |
 | `compileStage`, `auditLibrary`, `StagePlan` | The two public calls of the compiler, and the plan of one stage run | `compile.api` |
 | `admit`, `Admitted` | Admission, and the value that only admission makes | `compile.admit` |
 | `owner`, `subtree`, `{ level }` | The three selectors of an anchored scope | `compile.scope` |
