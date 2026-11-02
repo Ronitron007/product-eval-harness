@@ -36,6 +36,9 @@ export function lock(root: string): void {
 
 export const problemsOf = (root: string) => loadRuleLibrary(root).problems.map(p => `${p.field}: ${p.message}`)
 
+// A test that runs the CLI starts tsx and loads the compiler, so it takes some seconds on a CI runner.
+export const CLI = { timeout: 60_000 } as const
+
 // Runs `npm run rules:check` on a rules folder: the CLI, as CI runs it.
 export function rulesCheck(root: string): { status: number | null; out: string } {
   const r = spawnSync(join(REPO, 'node_modules', '.bin', 'tsx'), ['src/rules/cli.ts', 'check', root], { cwd: REPO, encoding: 'utf8' })

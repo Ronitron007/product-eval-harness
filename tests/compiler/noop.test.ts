@@ -2,7 +2,7 @@ import { Agent } from '@mastra/core/agent'
 import { createMockModel } from '@mastra/core/test-utils/llm-mock'
 import { describe, expect, it } from 'vitest'
 import type { ItemVerdict } from '../../src/compiler'
-import { lock, problemsOf as loaderProblems, rulesCheck, rulesRoot } from './files'
+import { CLI, lock, problemsOf as loaderProblems, rulesCheck, rulesRoot } from './files'
 import { codes, compile, planOf, problemsOf, withRules } from './library'
 import { attributeIsProduct, FIXTURE, GOOD_EVIDENCE, GOOD_OUTPUT, judgementRule, keyKnown, uniqueTitle } from './rules'
 
@@ -60,7 +60,7 @@ describe('noop', () => {
     expect(problemsOf({ trial: candidate as never })).toEqual([expect.objectContaining({ code: 'trial_not_applied', rules: ['attributes.key_known@2'] })])
   })
 
-  it('noop.ci_field_guard: with no tree, rules:check refuses a field that no shape rule of that stage defines', () => {
+  it('noop.ci_field_guard: with no tree, rules:check refuses a field that no shape rule of that stage defines', CLI, () => {
     const root = rulesRoot([...FIXTURE, { ...keyKnown, id: 'attributes.typo_known', scope: { nodes: 'subtree', stages: ['create_node'], fields: ['criteria[].atributes[].key'] } }])
     lock(root)
     const run = rulesCheck(root)
@@ -70,7 +70,7 @@ describe('noop', () => {
     )
   })
 
-  it('noop.ci_field_guard: no false positive, a field that a shape rule of another owner defines passes', () => {
+  it('noop.ci_field_guard: no false positive, a field that a shape rule of another owner defines passes', CLI, () => {
     const root = rulesRoot([...FIXTURE, { ...keyKnown, id: 'attributes.key_known_here', owner: 'sunscreen' }])
     lock(root)
     expect(rulesCheck(root)).toMatchObject({ status: 0 })
@@ -113,7 +113,7 @@ describe('noop', () => {
     expect(plan.scorers.skippedJudges('No judge ran.').length).toBeGreaterThan(0)
   })
 
-  it('noop.level_stage_lint: with no tree, a selector { level: domain } with the stage create_pack gives a loader problem', () => {
+  it('noop.level_stage_lint: with no tree, a selector { level: domain } with the stage create_pack gives a loader problem', CLI, () => {
     const rule = judgementRule('pack.domain_only', 'criteria[]', 'Is it a product property?', [{ output: {}, expected: 'pass' }], {
       scope: { nodes: { level: 'domain' }, stages: ['create_pack'], fields: ['criteria[]'] },
     })

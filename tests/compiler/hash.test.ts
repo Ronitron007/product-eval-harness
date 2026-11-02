@@ -8,7 +8,7 @@ import { CHECKS } from '../../src/rules/checks'
 import { ruleHash } from '../../src/rules/hash'
 import { RuleRecord } from '../../src/rules/schema'
 import { currentCode, lockProblems, packagePins, readCodeLock, updateLock } from '../../scripts/compiler-lock'
-import { lock, problemsOf, REPO, rulesCheck, rulesRoot, writeRule } from './files'
+import { CLI, lock, problemsOf, REPO, rulesCheck, rulesRoot, writeRule } from './files'
 import { importsOf, importsOfFile } from './imports'
 import { derivedRow, input, library, planOf, setAt, tree, withRules } from './library'
 import { attributeIsProduct, BOUNDARIES, COMPOSED, COMPOSED_OUTPUT, FIXTURE, keyKnown, labelUnit, quotesFromLabel, type RuleInput } from './rules'
@@ -17,7 +17,7 @@ import { attributeIsProduct, BOUNDARIES, COMPOSED, COMPOSED_OUTPUT, FIXTURE, key
 
 describe('hash', () => {
   // Repros interrogate/opus/owner-not-in-hash.ts, sonnet/p3_owner.mts, p3b_owner_spec_shape.mts.
-  it('hash.rule_hash_covers_owner: a move of the owner of a locked rule, with no new version, makes rules:check exit 1', () => {
+  it('hash.rule_hash_covers_owner: a move of the owner of a locked rule, with no new version, makes rules:check exit 1', CLI, () => {
     const root = rulesRoot([{ ...labelUnit, owner: 'skincare' }])
     lock(root)
     expect(rulesCheck(root).status).toBe(0)

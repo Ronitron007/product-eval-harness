@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { RuleRecord } from '../../src/rules/schema'
-import { problemsOf as loaderProblems, rulesCheck, rulesRoot } from './files'
+import { CLI, problemsOf as loaderProblems, rulesCheck, rulesRoot } from './files'
 import { derivedRow, problemsOf, withRules } from './library'
 import { keyKnown, uniqueTitle } from './rules'
 
 // Hazard `params`: an unknown check or bad parameters reach a run.
 
 describe('params', () => {
-  it('params.unknown_check: the check name min_itemz gives a loader problem at check.name, so rules:check exits 1', () => {
+  it('params.unknown_check: the check name min_itemz gives a loader problem at check.name, so rules:check exits 1', CLI, () => {
     const root = rulesRoot([{ ...uniqueTitle, check: { name: 'min_itemz', params: {} } }])
     expect(loaderProblems(root)).toEqual(['check.name: Name a check of the registry: key_in_registry, quote_in_source, record_exists, unique_by.'])
     const run = rulesCheck(root)
@@ -15,7 +15,7 @@ describe('params', () => {
     expect(run.out).toMatch(/check.name: Name a check of the registry/)
   })
 
-  it('params.bad_key: a bad by gives a loader problem at check.params.by', () => {
+  it('params.bad_key: a bad by gives a loader problem at check.params.by', CLI, () => {
     const root = rulesRoot([
       { ...uniqueTitle, check: { name: 'unique_by', params: { by: 'Not ok!' } } },
       { ...uniqueTitle, id: 'criteria.unique_other', check: { name: 'unique_by', params: { by: 'name', extra: 1 } } },
