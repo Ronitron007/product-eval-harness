@@ -403,7 +403,7 @@ The record lint (`recordLint`) gives these loader problems. Each problem names t
 
 - A shape rule has a binding other than `strict`. The message says that the decoder enforces each shape rule.
 
-- The statement or the reason of a shape rule or a code check holds a numeral, a digit character. Each number of the rule lives in its `shape` or `check.params`, so that the compiler prints one copy. A judgement rule has no parameters, so its words may hold a number (`record.no_numerals`).
+- The statement or the reason of a shape rule or a code check holds a standalone number, such as `12` or `0.5`. Each number of the rule lives in its `shape` or `check.params`, so that the compiler prints one copy. Digits joined to a letter or by a hyphen belong to a name, such as `B12`, `D3`, `omega-3`, or `CoQ10`, and pass. A judgement rule has no parameters, so its words may hold a number (`record.no_numerals`).
 
 The loader also reports an unknown check name at `check.name`, and a bad parameter at `check.params.<key>`. So `rules:check` exits 1 before any run.
 
@@ -483,7 +483,7 @@ Child rule B weakens inherited rule A when each of these holds:
 
 A dimension that only B sets is an addition, and the compiler accepts it. A dimension that only A sets stays in force. The binding test applies to `code_check` rules only, because each shape rule is `strict`. The test reads the binding that the author wrote. The forced watch of a trial is never a weakening. Judgement rules share no slot, so they can only add.
 
-Two applied rules can also restate one slot as peers, or a child can restate it more strictly. Then the instruction would print two values for one dimension. So two applied rules in one slot, at any owner relation, must not set a shared dimension to other values, and a code check must not have another binding (`weaken.slot_conflict`). The compiler refuses each such pair with `slot_conflict`. A pair where the child is looser than an inherited rule gives `weakens` instead. A trial version and the live version of the same id are one rule, so they never conflict.
+Two peers, rules with the same owner, can also restate one slot. Then the instruction would print two values for one dimension. So two peers in one slot must not set a shared dimension to other values, and a code check must not have another binding (`weaken.slot_conflict`). The compiler refuses each such pair with `slot_conflict`. A child that is stricter than an inherited rule is allowed, and the meet composes both (`compile.shape`). A trial version and the live version of the same id are one rule, so they never conflict.
 
 One order table for each parameter drives the weaken test and the meet of `compile.shape`. The order of a parameter is one of these:
 
@@ -759,7 +759,7 @@ Each hazard has a mechanism, and tests that fail when the mechanism breaks. The 
 |---|---|---|
 | `noop`. A rule or the schema applies nowhere, in silence | Each applied field and each path of `requires()` resolves in the trie, with a kind that fits. A stage with no shape rule fails. The walk never returns an empty list. An active rule with an unknown owner or with no reach blocks each compile. A trial that does not apply fails, and the ledger lists each rule. The decode gate refuses an output that breaks the schema. | `noop.field_typo`, `noop.requires_typo`, `noop.no_shape_rule`, `noop.owner_unknown`, `noop.rule_inert`, `noop.trial_not_applied`, `noop.level_stage_lint`, `noop.ci_field_guard`, `noop.closed_output_refused`, `noop.node_unknown` |
 | `drift`. The instruction and the check read two copies of a parameter | Each parameter lives once, in the params object. `render`, `describe`, `check`, and the printer read it. The literal lint keeps parameters out of the statement and the reason. | `drift.values_move_both`, `drift.case_sensitive_moves_both`, `drift.literal_in_statement`, `drift.numeral_in_statement`, `drift.shape_line_each_field` |
-| `weaken`. A child rule restates an inherited rule more loosely | The weaken test of `compile.weaken`. Anchored scopes. One order table for the meet and the weaken test. | `weaken.bigger_values`, `weaken.lower_min`, `weaken.lower_binding`, `weaken.addition_accepted`, `weaken.parent_compiles`, `weaken.foreign_owner`, `weaken.trial_not_weaker`, `weaken.order_is_sound`, `weaken.peer_restatement` |
+| `weaken`. A child rule restates an inherited rule more loosely | The weaken test of `compile.weaken`. Anchored scopes. One order table for the meet and the weaken test. | `weaken.bigger_values`, `weaken.lower_min`, `weaken.lower_binding`, `weaken.addition_accepted`, `weaken.parent_compiles`, `weaken.foreign_owner`, `weaken.trial_not_weaker`, `weaken.order_is_sound`, `weaken.peer_restatement`, `weaken.stricter_child_narrows` |
 | `hash`. Other artifacts with one hash, or one set of artifacts with two hashes | The manifest of artifacts. A total order in each list. Declared code versions and the code lock. The rule hash covers the owner. | `hash.same_inputs`, `hash.shuffled_inputs`, `hash.changes`, `hash.draft_no_change`, `hash.node_not_in_hash`, `hash.fixture_literal`, `hash.code_lock`, `hash.template_imports`, `hash.schema_round_trip`, `hash.rule_hash_covers_owner` |
 | `status`. A draft or retired rule applies, or an active rule drops out with no trace | The ledger partition. The trial is the only door for a rule that is not active, and it runs as watch. | `status.ledger_partition`, `status.ids_agree`, `status.never_draft_or_retired`, `status.derived_superseded`, `status.retired_drops`, `status.trial_is_watch`, `status.trial_shape_refused` |
 | `admit`. An unlocked or invalid rule reaches the compile | `admit` and the `Admitted` brand. Derived rows get a new parse and a new hash. | `admit.library_problem`, `admit.derived_hash_mismatch`, `admit.derived_invalid`, `admit.derived_columns`, `admit.derived_shape`, `admit.id_collision`, `admit.draft_shadows_active`, `admit.brand` |
@@ -798,7 +798,7 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `drift.literal_in_statement`. A statement that holds `mg`, with `values: [mg]`, gives a loader problem.
 
-- `drift.numeral_in_statement`. A shape rule whose statement holds `12`, and a code check whose reason holds `3`, give loader problems. A judgement rule with a numeral passes.
+- `drift.numeral_in_statement`. A shape rule whose statement holds `12`, and a code check whose reason holds `3`, give loader problems. A judgement rule with a number passes. The names `B12`, `D3`, `omega-3`, and `CoQ10` pass.
 
 - `drift.shape_line_each_field`. A rule on `unit` and `unit_alt` prints a shape line under each field.
 
@@ -816,7 +816,9 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `weaken.trial_not_weaker`. A strict child candidate in a trial compiles as watch and gives no `weakens`.
 
-- `weaken.peer_restatement`. Two rules of one owner on the slot of `quote_in_source`, with another `case_sensitive` and another binding, give `slot_conflict`. A stricter child gives `slot_conflict` too. A looser child gives `weakens`.
+- `weaken.peer_restatement`. Two rules of one owner on the slot of `quote_in_source`, with another `case_sensitive` and another binding, give `slot_conflict`. A looser child gives `weakens`.
+
+- `weaken.stricter_child_narrows`. At `sunscreen`, a child with `values: [mg]` compiles, and the schema refuses `mcg`. A strict child code check under a soft parent compiles.
 
 - `weaken.order_is_sound`. Take two vector parameters a and b of one template, where a is at least as strict as b. Each item that passes under a passes under b.
 
@@ -1043,9 +1045,9 @@ The review of 2026-11-02 found four faults. The text above now holds each fix, a
 
 - Each field of a rule on two fields gets its own shape line (`compile.instructions`).
 
-- The words of a shape rule or a code check hold no numeral (`compile.record`).
+- The words of a shape rule or a code check hold no standalone number (`compile.record`). The first fix refused each digit, and the verify of the fixes narrowed it.
 
-- Two applied rules that restate one slot with other values give `slot_conflict`, peers included (`compile.weaken`).
+- Two peers that restate one slot with other values give `slot_conflict` (`compile.weaken`). The first fix also refused a stricter child, which broke the meet, and the verify of the fixes narrowed it to peers.
 
 - A node that is not in the tree gives `node_unknown`, and the compile never throws for it (`compile.scope`).
 
