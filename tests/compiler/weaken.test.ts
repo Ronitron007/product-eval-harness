@@ -82,7 +82,7 @@ describe('weaken', () => {
   })
 
   // Review of #19, repro probe2.test.ts L1: a peer restates a slot more loosely, and both lines print.
-  it('weaken.peer_restatement: two applied rules on one slot with other values or another binding give slot_conflict, at any owner relation', () => {
+  it('weaken.peer_restatement: two rules of one owner on one slot with other values or another binding give slot_conflict', () => {
     const anyCase = both({ ...quotesFromLabel, id: 'quotes.any_case', binding: 'soft', check: { name: 'quote_in_source', params: { source: 'label', case_sensitive: false } } })
     expect(problemsOf({ rules: [...PARENT, anyCase] })).toEqual([
       expect.objectContaining({
@@ -94,11 +94,22 @@ describe('weaken', () => {
     ])
     // A looser child keeps the code weakens.
     expect(problemsOf({ rules: [...PARENT, { ...anyCase, owner: 'sunscreen' }] }).map(p => p.code)).toEqual(['weakens'])
-    // A stricter child that restates a dimension also gives slot_conflict.
-    const narrow = child(labelUnit, { id: 'units.mass_only', shape: { type: 'text', values: ['mg'] } })
-    expect(problemsOf({ rules: [...PARENT, narrow] }).map(p => p.code)).toEqual(['slot_conflict'])
     // Equal values on one slot, and a trial version of the same id, are no restatement.
     expect(compile({ rules: [...PARENT, both({ ...keyKnown, id: 'attributes.key_again' })] }).ok).toBe(true)
     expect(compile({ rules: PARENT, trial: RuleRecord.parse({ ...keyKnown, version: 2, supersedes: 1, binding: 'soft' }) }).ok).toBe(true)
+  })
+
+  // Verify of the review fixes: slot_conflict must not block a stricter child (compile.shape, decisions row 98).
+  it('weaken.stricter_child_narrows: a child that narrows values to [mg], or a strict child under a soft parent, compiles and meets', () => {
+    const narrow = child(labelUnit, { id: 'units.mass_only', shape: { type: 'text', values: ['mg'] } })
+    const plan = planOf({ rules: [...PARENT, narrow] })
+    expect(plan.instructions).toContain('criteria[].attributes[].unit\n  Shape: text, one of: mg')
+    expect(plan.schema.safeParse({ criteria: [{ name: 'spf', attributes: [{ amount: 1, key: 'spf', quote: 'q', unit: 'mcg' }] }] }).success).toBe(false)
+
+    const softParent = PARENT.map(r => (r.id === 'attributes.key_known' ? { ...r, binding: 'soft' } : r))
+    const strictChild = child(keyKnown, { id: 'attributes.key_known_here', binding: 'strict' })
+    expect(compile({ rules: [...softParent, strictChild] }).ok).toBe(true)
+    // The reverse, a soft child under a strict parent, stays refused.
+    expect(problemsOf({ rules: [...PARENT, { ...strictChild, binding: 'soft' }] }).map(p => p.code)).toEqual(['weakens'])
   })
 })

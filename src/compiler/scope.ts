@@ -282,9 +282,10 @@ function loosening(parent: AdmittedRule, child: AdmittedRule, slot: NonNullable<
   return parts
 }
 
-// Two applied rules that restate one slot with other values (compile.weaken). A child that is
-// looser than an inherited rule gives weakens. Each other restatement, peers included, gives
-// slot_conflict, because the instruction would print two values for one dimension. The binding
+// Two applied rules that restate one slot (compile.weaken). A child that is looser than an
+// inherited rule gives weakens. A stricter child meets with it. Two peers, rules of one owner,
+// that set a shared dimension to other values or have another binding give slot_conflict,
+// because the instruction would print two values for one dimension. The binding
 // test reads the binding that the author wrote, so the forced watch of a trial is never a
 // restatement. A trial version and the live version of the same id are one rule, never two.
 export function weakenings(applied: readonly AdmittedRule[], tree: Tree): CompileProblem[] {
@@ -301,9 +302,13 @@ export function weakenings(applied: readonly AdmittedRule[], tree: Tree): Compil
       const bindings = x.rule.binding !== y.rule.binding
       if (differs.length === 0 && !bindings) continue
       const [parent, child] = tree.isStrictAncestor(x.rule.owner, y.rule.owner) ? [x, y] : tree.isStrictAncestor(y.rule.owner, x.rule.owner) ? [y, x] : [undefined, undefined]
+      const peers = x.rule.owner === y.rule.owner
+      if (!peers && !(parent && child)) continue
       const parts = parent && child ? loosening(parent, child, parent === x ? slot : { order: slot.order, a: slot.b, b: slot.a }) : []
+      // A stricter child meets with its parent (compile.shape). Only a looser child is refused.
+      if (!peers && parts.length === 0) continue
       for (const field of fields) {
-        if (parent && child && parts.length > 0) {
+        if (parent && child) {
           problems.push({
             code: 'weakens',
             rules: [child.ref, parent.ref],

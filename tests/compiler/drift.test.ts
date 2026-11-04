@@ -78,4 +78,11 @@ describe('drift', () => {
     expect(RuleRecord.safeParse(check).error?.issues.map(i => i.message)).toEqual([expect.stringMatching(/^Remove the number from the reason. Write each number of the rule in its check.params/)])
     expect(RuleRecord.safeParse({ ...attributeIsProduct, statement: 'Keep the 3 key attributes about the product.' }).success).toBe(true)
   })
+
+  it('drift.numeral_in_statement: a standalone number is refused, and a name with digits is not', () => {
+    const words = (statement: string) => RuleRecord.safeParse({ ...attributeQuote, statement }).success
+    for (const refused of ['Keep 12 characters or fewer.', 'Use 0.5 or more.', 'Each 500 mg dose.']) expect({ refused, ok: words(refused) }).toEqual({ refused, ok: false })
+    for (const allowed of ['Name vitamin B12 as the label does.', 'Name D3 as the label does.', 'Name the omega-3 source.', 'Name CoQ10 as the label does.'])
+      expect({ allowed, ok: words(allowed) }).toEqual({ allowed, ok: true })
+  })
 })
