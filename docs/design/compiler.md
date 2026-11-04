@@ -1,6 +1,6 @@
 # The rule compiler `compile`
 
-Status. Spec of 2026-11-02 for `plan.compiler`. Built by [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19), and the section `compile.reconciliation` lists where the code differs. This spec matches the code of `main` at `803301a`, in `src/rules/`, `src/store/store.ts`, and `package.json`. Terms are in [glossary.md](../glossary.md).
+Status. Spec of 2026-11-02 for `plan.compiler`, shipped 2026-11-04 in [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). Verified against `main` at `0703520` on 2026-11-04. Code paths: `src/compiler/`, `src/rules/`, `src/store/store.ts`, `scripts/compiler-lock.ts`. The section `compile.reconciliation` lists where the code differs from the text. Terms are in [glossary.md](../glossary.md).
 
 Source. Claude wrote this spec from the architect run of 2026-11-02 ([the record](../research/2026-11-02-compiler-architect/README.md)). The design of the Opus runner is the base. The synthesis of the run changes that base, and the synthesis wins each conflict. Each choice is a row in [decisions.tsv](../decisions.tsv), for Rohan to review.
 

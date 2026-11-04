@@ -33,7 +33,7 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [design/mastra-mapping.md](design/mastra-mapping.md) | `mastra`: the parts on Mastra |
 | [design/data-layers.md](design/data-layers.md) | `data`: the data layers and their stores |
 | [design/graph-store.md](design/graph-store.md) | `store`: the graph store in the Kyaloon Supabase database |
-| [design/compiler.md](design/compiler.md) | `compile`: the rule compiler of `plan.compiler`. Spec, built by [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). |
+| [design/compiler.md](design/compiler.md) | `compile`: the rule compiler of `plan.compiler`. Shipped 2026-11-04 in [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). |
 | [design/formal-checks.md](design/formal-checks.md) | `formal`: the TLA+ models, the migration sweep, and the replays that check the code |
 
 ## Plan `docs.plan`

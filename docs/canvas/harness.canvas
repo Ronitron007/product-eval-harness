@@ -53,7 +53,15 @@
 		{"id":"dopen","type":"text","text":"## open\nStores, bundle format, public reads.\nstatus: Rohan decides later","x":2060,"y":2560,"width":320,"height":200,"color":"1"},
 		{"id":"f6","type":"file","x":-340,"y":2900,"width":400,"height":120,"file":"design/data-layers.md"},
 		{"id":"fchk","type":"text","x":2465,"y":1100,"width":300,"height":200,"text":"## formal checks\nTLA+ models, a migration sweep, bug-path replays.\nchecks: `harness.*` tables, the rule lock, `db/migrations/`\nrun: `npm run formal` in CI"},
-		{"id":"f7","type":"file","x":2140,"y":2240,"width":400,"height":120,"file":"design/formal-checks.md"}
+		{"id":"f7","type":"file","x":2140,"y":2240,"width":400,"height":120,"file":"design/formal-checks.md"},
+		{"id":"gH","type":"group","x":3400,"y":-80,"width":1000,"height":1260,"color":"3","label":"How does the compiler make a stage plan?"},
+		{"id":"cadm","type":"text","text":"## `admit`\nRefuses an invalid or unlocked rule.\nreads: rule library, derived rules, trial\nwrites: the `Admitted` rules","x":3440,"y":-20,"width":440,"height":200},
+		{"id":"cscp","type":"text","text":"## scope and weaken\nAnchored scope, one ledger entry for each rule version.\nrefuses: `weakens`, `slot_conflict`, `rule_inert`","x":3920,"y":-20,"width":440,"height":200},
+		{"id":"cshp","type":"text","text":"## shape meet\nThe joint meet of shape rules in a trie.\nwrites: the output schema, the shape lines","x":3440,"y":240,"width":440,"height":200},
+		{"id":"cscr","type":"text","text":"## scorers and `decode`\nCode scorers, judge scorers, one decode gate.\nwrites: one verdict row for each target","x":3920,"y":240,"width":440,"height":200},
+		{"id":"chsh","type":"text","text":"## rule-set hash\nsha256 of the manifest of the compiled artifacts.\nreads: `code.lock.json`, `RUNTIME_VERSION`\nwrites: `stage_runs.rule_set_hash`","x":3440,"y":500,"width":920,"height":200},
+		{"id":"cstamp","type":"text","text":"## stamp\ncode: `main` at `0703520`, 2026-11-04\ndescribes: design/compiler.md, `src/compiler/`","x":3440,"y":760,"width":920,"height":160},
+		{"id":"f8","type":"file","file":"design/compiler.md","x":3700,"y":1000,"width":400,"height":120}
 	],
 	"edges":[
 		{"id":"eA1","fromNode":"dom","fromSide":"right","toNode":"inn","toSide":"left","label":"criteria"},
@@ -97,6 +105,12 @@
 		{"id":"eG7","fromNode":"gF","fromSide":"left","toNode":"f6","toSide":"left"},
 		{"id":"eF1","fromNode":"fchk","fromSide":"left","toNode":"mdb","toSide":"right","label":"checks"},
 		{"id":"eF2","fromNode":"fchk","fromSide":"right","toNode":"mrules","toSide":"left","label":"checks"},
-		{"id":"eF3","fromNode":"fchk","fromSide":"bottom","toNode":"f7","toSide":"top"}
+		{"id":"eF3","fromNode":"fchk","fromSide":"bottom","toNode":"f7","toSide":"top"},
+		{"id":"eH1","fromNode":"cadm","fromSide":"right","toNode":"cscp","toSide":"left","label":"admitted rules"},
+		{"id":"eH2","fromNode":"cscp","fromSide":"bottom","toNode":"cscr","toSide":"top","label":"applied rules"},
+		{"id":"eH3","fromNode":"cadm","fromSide":"bottom","toNode":"cshp","toSide":"top","label":"shape rules"},
+		{"id":"eH4","fromNode":"cshp","fromSide":"bottom","toNode":"chsh","toSide":"top","label":"schema"},
+		{"id":"eH5","fromNode":"cstamp","fromSide":"bottom","toNode":"f8","toSide":"top"},
+		{"id":"eH6","fromNode":"cmp","fromSide":"top","toNode":"gH","toSide":"left","label":"details"}
 	]
 }
