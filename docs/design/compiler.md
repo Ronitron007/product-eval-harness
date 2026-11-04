@@ -403,7 +403,7 @@ The record lint (`recordLint`) gives these loader problems. Each problem names t
 
 - A shape rule has a binding other than `strict`. The message says that the decoder enforces each shape rule.
 
-- The statement or the reason of a shape rule or a code check holds a standalone number, such as `12` or `0.5`. Each number of the rule lives in its `shape` or `check.params`, so that the compiler prints one copy. Digits joined to a letter or by a hyphen belong to a name, such as `B12`, `D3`, `omega-3`, or `CoQ10`, and pass. A judgement rule has no parameters, so its words may hold a number (`record.no_numerals`).
+- The statement or the reason of a shape rule or a code check holds a number token. The lint splits the text on whitespace and on each punctuation mark other than `-`, `+`, `.`, and `,`. A token that starts with a digit, or with `-`, `+`, or `.` and then a digit, is a number. Examples are `12`, `0.5`, `1,000`, `5000mg`, `-5`, and `.5`. Each number of the rule lives in its `shape` or `check.params`, so that the compiler prints one copy. Digits after a letter inside a token belong to a name, such as `B12`, `CoQ10`, `omega-3`, or `vitamin-B12`, and pass. A judgement rule has no parameters, so its words may hold a number (`record.no_numerals`).
 
 The loader also reports an unknown check name at `check.name`, and a bad parameter at `check.params.<key>`. So `rules:check` exits 1 before any run.
 
@@ -798,7 +798,7 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `drift.literal_in_statement`. A statement that holds `mg`, with `values: [mg]`, gives a loader problem.
 
-- `drift.numeral_in_statement`. A shape rule whose statement holds `12`, and a code check whose reason holds `3`, give loader problems. A judgement rule with a number passes. The names `B12`, `D3`, `omega-3`, and `CoQ10` pass.
+- `drift.numeral_in_statement`. A shape rule whose statement holds `12`, and a code check whose reason holds `3`, give loader problems. A judgement rule with a number passes. The tokens `12`, `0.5`, `1,000`, `5000mg`, `12chars`, `-5`, `+3`, and `.5` give loader problems. The names `B12`, `D3`, `omega-3`, `CoQ10`, and `vitamin-B12` pass.
 
 - `drift.shape_line_each_field`. A rule on `unit` and `unit_alt` prints a shape line under each field.
 
@@ -1045,7 +1045,7 @@ The review of 2026-11-02 found four faults. The text above now holds each fix, a
 
 - Each field of a rule on two fields gets its own shape line (`compile.instructions`).
 
-- The words of a shape rule or a code check hold no standalone number (`compile.record`). The first fix refused each digit, and the verify of the fixes narrowed it.
+- The words of a shape rule or a code check hold no standalone number (`compile.record`). The first fix refused each digit. The verify of the fixes narrowed it to number tokens.
 
 - Two peers that restate one slot with other values give `slot_conflict` (`compile.weaken`). The first fix also refused a stricter child, which broke the meet, and the verify of the fixes narrowed it to peers.
 
