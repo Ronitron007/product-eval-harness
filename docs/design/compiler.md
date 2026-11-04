@@ -403,7 +403,7 @@ The record lint (`recordLint`) gives these loader problems. Each problem names t
 
 - A shape rule has a binding other than `strict`. The message says that the decoder enforces each shape rule.
 
-- The statement or the reason of a shape rule or a code check holds a number token. The lint splits the text on whitespace and on each punctuation mark other than `-`, `+`, `.`, and `,`. A token that starts with a digit, or with `-`, `+`, or `.` and then a digit, is a number. Examples are `12`, `0.5`, `1,000`, `5000mg`, `-5`, and `.5`. Each number of the rule lives in its `shape` or `check.params`, so that the compiler prints one copy. Digits after a letter inside a token belong to a name, such as `B12`, `CoQ10`, `omega-3`, or `vitamin-B12`, and pass. A judgement rule has no parameters, so its words may hold a number (`record.no_numerals`).
+- The statement or the reason of a shape rule or a code check holds a number token. The lint splits the text on whitespace, on `_`, and on each punctuation mark other than `-`, `+`, `.`, and `,`. A token that starts with a number character, or with `-`, `+`, or `.` and then a number character, is a number. A number character is any Unicode number, such as `１２`, `٥`, `½`, or `⁵`. Examples are `12`, `0.5`, `1,000`, `5000mg`, `-5`, and `.5`. Each number of the rule lives in its `shape` or `check.params`, so that the compiler prints one copy. Digits after a letter inside a token belong to a name, such as `B12`, `CoQ10`, `omega-3`, or `vitamin-B12`, and pass. A judgement rule has no parameters, so its words may hold a number (`record.no_numerals`).
 
 The loader also reports an unknown check name at `check.name`, and a bad parameter at `check.params.<key>`. So `rules:check` exits 1 before any run.
 
@@ -798,7 +798,7 @@ The fixture tree is `skincare` (domain), `sunscreen` and `moisturizer` (inner, c
 
 - `drift.literal_in_statement`. A statement that holds `mg`, with `values: [mg]`, gives a loader problem.
 
-- `drift.numeral_in_statement`. A shape rule whose statement holds `12`, and a code check whose reason holds `3`, give loader problems. A judgement rule with a number passes. The tokens `12`, `0.5`, `1,000`, `5000mg`, `12chars`, `-5`, `+3`, and `.5` give loader problems. The names `B12`, `D3`, `omega-3`, `CoQ10`, and `vitamin-B12` pass.
+- `drift.numeral_in_statement`. A shape rule whose statement holds `12`, and a code check whose reason holds `3`, give loader problems. A judgement rule with a number passes. The tokens `12`, `0.5`, `1,000`, `5000mg`, `12chars`, `-5`, `+3`, `.5`, `１２`, `٥`, `½`, `⁵`, and `_12` give loader problems. The names `B12`, `D3`, `omega-3`, `CoQ10`, `vitamin-B12`, and `max12` pass.
 
 - `drift.shape_line_each_field`. A rule on `unit` and `unit_alt` prints a shape line under each field.
 
@@ -1002,6 +1002,8 @@ Tradeoffs that this design accepts:
 - The plan holds a Zod schema and functions, so a workflow snapshot cannot hold it. Each step compiles again and compares the hash.
 
 - The word lint can refuse an innocent statement.
+
+- A spelled-out number, such as "five hundred", passes the numeral lint. A rule on words cannot catch it. The review of each rule PR is the guard.
 
 - The shape language has no optional field yet.
 
