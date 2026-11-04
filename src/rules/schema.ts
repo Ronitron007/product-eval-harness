@@ -180,10 +180,12 @@ export function holdsWord(text: string, word: string): boolean {
   return false
 }
 
-// Does text hold a standalone number, such as 12 or 0.5? Digits next to a letter, a digit, or a
-// hyphen belong to a name, such as B12, omega-3 or CoQ10.
+// Does text hold a number token? The text splits on whitespace and on each punctuation mark
+// other than - + . and ,. A token that starts with a digit, or with - + or . and then a digit, is
+// a number, such as 12, 0.5, 1,000, 5000mg, -5 or .5. Digits after a letter inside a token belong
+// to a name, such as B12, CoQ10, omega-3 or vitamin-B12.
 export function holdsNumber(text: string): boolean {
-  return /(?<![A-Za-z0-9_\-.])[0-9]+(?:\.[0-9]+)?(?![A-Za-z0-9_\-]|\.[0-9])/.test(text)
+  return text.split(/[^\p{L}\p{N}_+\-.,]+/u).some(token => /^[-+.]?[0-9]/.test(token))
 }
 
 // The parameter literals of a rule: the words that only its params object may hold (compile.record).
@@ -232,8 +234,7 @@ function recordLint(rule: AnyRule, ctx: z.RefinementCtx): void {
   }
 
   // The numeral lint: a number of a shape rule or a code check lives in its params only (drift).
-  // A number is a standalone token of digits, with an optional decimal point. A token joined to a
-  // letter or by a hyphen is a name, such as B12, D3, omega-3 or CoQ10. A judgement rule has no
+  // See holdsNumber for what counts as a number. A judgement rule has no
   // params, so its words may hold a number.
   if (rule.kind !== 'judgement') {
     for (const field of ['statement', 'reason'] as const) {

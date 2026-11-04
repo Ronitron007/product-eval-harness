@@ -81,8 +81,9 @@ describe('drift', () => {
 
   it('drift.numeral_in_statement: a standalone number is refused, and a name with digits is not', () => {
     const words = (statement: string) => RuleRecord.safeParse({ ...attributeQuote, statement }).success
-    for (const refused of ['Keep 12 characters or fewer.', 'Use 0.5 or more.', 'Each 500 mg dose.']) expect({ refused, ok: words(refused) }).toEqual({ refused, ok: false })
-    for (const allowed of ['Name vitamin B12 as the label does.', 'Name D3 as the label does.', 'Name the omega-3 source.', 'Name CoQ10 as the label does.'])
-      expect({ allowed, ok: words(allowed) }).toEqual({ allowed, ok: true })
+    const refused = ['12', '0.5', '1,000', '5000mg', '12chars', '-5', '+3', '.5', 'at most 5000mg.', 'above -5', '(12)']
+    const allowed = ['B12', 'D3', 'omega-3', 'CoQ10', 'vitamin-B12']
+    for (const token of refused) expect({ token, ok: words(`Name the value ${token} here.`) }).toEqual({ token, ok: false })
+    for (const token of allowed) expect({ token, ok: words(`Name ${token} as the label does.`) }).toEqual({ token, ok: true })
   })
 })
