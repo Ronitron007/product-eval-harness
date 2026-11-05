@@ -1,0 +1,31 @@
+{
+	"nodes":[
+		{"id":"in","type":"text","text":"## draft reply\nThe raw reply of the drafter.\nfrom: draft step, `errorStrategy: 'warn'`","x":0,"y":0,"width":260,"height":140,"color":"5"},
+		{"id":"dec","type":"text","text":"## `plan.decode`\nRuns `plan.schema.safeParse`.\nNot ok: extra key, missing field, bad value\n(`scorers.closed_output`)","x":340,"y":0,"width":280,"height":160,"color":"4"},
+		{"id":"code","type":"text","text":"## code scorers\nOne for each shape rule and code check.\nFree, no model.\nNo evidence or a throw: cannot verify","x":700,"y":0,"width":280,"height":160,"color":"4"},
+		{"id":"gate","type":"text","text":"## all strict code checks pass?","x":1060,"y":20,"width":220,"height":110,"color":"2"},
+		{"id":"skip","type":"text","text":"## `skippedJudges`\nEach judgement rule gets cannot verify.\nNo model call.","x":1060,"y":220,"width":260,"height":140,"color":"4"},
+		{"id":"judge","type":"text","text":"## judge scorers\n`plan.scorers.judges(model)`\nOne call answers one rule, for many items.\nyes / no / unknown\nModel from another provider than the drafter","x":1360,"y":0,"width":320,"height":190,"color":"4"},
+		{"id":"rows","type":"text","text":"## `VerdictRow`s\nOne for each item and each rule.\nrule id, version, hash, binding,\nverdict, decider, reason, evidence","x":1760,"y":0,"width":300,"height":170,"color":"3"},
+		{"id":"bind","type":"text","text":"## bindings\n`strict` fail: repair\n`strict` cannot verify: person\n`soft`: keep output, add a warning\n`watch`: log only","x":2140,"y":0,"width":280,"height":180,"color":"2"},
+		{"id":"rep","type":"text","text":"## repair round\nAll errors in one round, with the fix.\nBudget: 3 rounds (`.dountil`).","x":2500,"y":-160,"width":280,"height":140,"color":"1"},
+		{"id":"per","type":"text","text":"## person step\nBudget spent, or a strict rule cannot be verified.\nWorkflow suspends.","x":2500,"y":40,"width":280,"height":150,"color":"1"},
+		{"id":"acc","type":"text","text":"## assimilate\n`acceptOutput` + `writeVerdicts`\nOnly when each strict rule passes.","x":2500,"y":240,"width":280,"height":140,"color":"3"},
+		{"id":"note","type":"text","text":"Spec: [rule-enforcement.md](../design/rule-enforcement.md) (`enforce.binding`, `enforce.deciders`)\n[compiler.md](../design/compiler.md) (`compile.scorers`)\nUnit: `plan.judge_step`, not built yet.","x":0,"y":260,"width":420,"height":130,"color":"6"}
+	],
+	"edges":[
+		{"id":"e1","fromNode":"in","fromSide":"right","toNode":"dec","toSide":"left"},
+		{"id":"e2","fromNode":"dec","fromSide":"right","toNode":"code","toSide":"left","label":"ok, or raw value for fail rows"},
+		{"id":"e2b","fromNode":"dec","fromSide":"bottom","toNode":"rep","toSide":"left","label":"not ok: strict failure"},
+		{"id":"e3","fromNode":"code","fromSide":"right","toNode":"gate","toSide":"left"},
+		{"id":"e4","fromNode":"gate","fromSide":"right","toNode":"judge","toSide":"left","label":"yes"},
+		{"id":"e5","fromNode":"gate","fromSide":"bottom","toNode":"skip","toSide":"top","label":"no"},
+		{"id":"e6","fromNode":"judge","fromSide":"right","toNode":"rows","toSide":"left"},
+		{"id":"e7","fromNode":"skip","fromSide":"right","toNode":"rows","toSide":"bottom"},
+		{"id":"e8","fromNode":"rows","fromSide":"right","toNode":"bind","toSide":"left"},
+		{"id":"e9","fromNode":"bind","fromSide":"right","toNode":"rep","toSide":"left","label":"strict fail"},
+		{"id":"e10","fromNode":"bind","fromSide":"right","toNode":"per","toSide":"left","label":"strict cannot verify"},
+		{"id":"e11","fromNode":"bind","fromSide":"right","toNode":"acc","toSide":"left","label":"all strict pass"},
+		{"id":"e12","fromNode":"rep","fromSide":"top","toNode":"in","toSide":"top","label":"next draft"}
+	]
+}
