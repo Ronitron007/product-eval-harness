@@ -80,7 +80,7 @@ In this repo, the code makes one Mastra scorer for each rule. Its name is the ru
 
 Where does the state live? In this repo, Mastra storage runs on Postgres, in its own part of the database, named mastra. The harness stops Mastra from making tables at run time. The Mastra tables come from a migration that a person reviews.
 
-The tables of the harness sit beside them, in a part named harness, on the same connection pool. Each write to these tables adds a row. The database refuses each update and each delete.
+The tables of the harness sit beside them, in a part named harness, on the same connection pool. Each write to these tables adds a row. The harness role cannot update or delete a row. For five of the six tables, a trigger also refuses each update and each delete, for every role.
 
 Mastra can also keep a golden set and run each scorer over it, with a gate that must pass. The design uses this in CI, for the golden examples of each rule. That part is a design. Today, a repo command runs the golden examples of each rule that code can decide. It uses the real scorers, and no model.
 
@@ -112,7 +112,7 @@ Think of one station on a production line. Each station runs the same cycle. Onl
 
 The design has four stages. Define criteria runs at a domain node. Create node runs at an inner node and at a leaf node. At a leaf, two more stages write the grading rules and the display rules.
 
-The code already holds this table of stages and levels. It refuses a stage at a level where that stage never runs. The stages themselves are a design.
+The code already holds this table of stages and levels. It also lists evaluate product at a leaf. That entry is the product evaluation, which the design keeps outside the stages. It refuses a stage at a level where that stage never runs. The stages themselves are a design.
 
 ## tree_stage_cycle
 
@@ -154,7 +154,7 @@ A rule record has one of three kinds. The kind tells the harness what to make fr
 
 A shape rule gives the type of one output field. Examples are text from a closed list, a number with limits, a flag, or a list. Units label unit is a shape rule.
 
-A code check names a check function from a small registry, and gives its parameters. The registry has four checks today. One check tests that a quote stands word for word in a source text. The other checks test that a key exists, that a record exists, and that no two items share a name.
+A code check names a check function from a small registry, and gives its parameters. The registry has four checks today. One check tests that a quote stands word for word in a source text. The other checks test that a key exists, and that a record exists. The last check tests that no two list items share the value of one key, such as a name.
 
 A judgement rule asks a judge model one question. An example is, does this attribute describe the product itself?
 
@@ -164,7 +164,7 @@ A code check decides facts only, never a grade and never a match. That is a proj
 
 Where does a rule apply? Its scope says so. A scope has three parts. They are the nodes, the stages, and the output fields.
 
-The nodes part counts from the owner. It selects the owner only, the owner and each node below it, or one level below the owner. A scope never names another node. So a sunscreen rule cannot reach skincare, and it cannot reach the sibling node moisturizer.
+The nodes part counts from the owner. It selects the owner only, or the owner and each node below it. It can also select each node of one level, such as each leaf, at or below the owner. A scope never names another node. So a sunscreen rule cannot reach skincare, and it cannot reach the sibling node moisturizer.
 
 For units label unit, the scope is skincare and each node below it, the stage create node, and one field. That field is the unit of each attribute.
 
@@ -200,7 +200,7 @@ Git names each version of a file in the same way. The name comes from the conten
 
 The harness first writes the rule as JSON with sorted keys. So the order of keys and the spacing do not matter. Then it takes the hash.
 
-The hash covers the statement, the reason, the kind, the scope, the binding, and the owner. It also covers the shape, the check, the judge question, and the golden examples. It leaves out the id, the version, and the status.
+The hash covers the statement, the reason, the kind, the scope, the binding, and the owner. It also covers the shape, the check, the judge question, and the golden examples. It leaves out the id, the version, the status, the provenance, and the version that the rule replaces.
 
 In the worked example, each rule shows its own hash on the screen. Two people can write the same rule with keys in another order, and they get the same hash. The rule hash exists in code.
 
@@ -224,7 +224,7 @@ Think of a printed rulebook and an inspection checklist. One office makes both f
 
 The compiler takes all the rule files, the rules that stages wrote, the tree, one node, and one stage. It gives four things. They are an output schema, the instruction text, one scorer for each rule, and a rule-set hash.
 
-The compiler is plain code. It calls no model, and it never throws on bad rule data. It returns every problem in one round.
+The compiler is plain code. It calls no model, and it never throws on bad rule data. It returns each problem of one check phase together. Admission problems come first, then the problems of scope, shape, and checks.
 
 The compiler exists in code today. It shipped on the fourth of November.
 
@@ -234,7 +234,7 @@ Why make the prompt and the checks from one source? Two copies drift apart. A pe
 
 So each value of a rule lives in one place, its parameters. The prompt line and the check both read that place. A test proves it. Change the allowed units, and the instruction and the result of the check both change.
 
-The loader also refuses a statement that repeats a parameter. Units label unit may not say milligrams in its statement. Its statement may not hold a number either. The compiler prints each value once, from the parameters.
+The loader also refuses a statement that repeats a parameter. Units label unit may not hold the unit code m g in its statement, or any other allowed value. Its statement may not hold a number either. The compiler prints each value once, from the parameters.
 
 These guards exist in code.
 
@@ -250,7 +250,7 @@ The compile at moisturizer also gives a different hash from the compile at sunsc
 
 ## compiler_narrow
 
-What happens when two shape rules cover one field? The compiler takes the strictest values that satisfy both rules.
+What happens when a child rule and an inherited rule cover one field? The compiler takes the strictest values that satisfy both rules. Two rules of one owner that give other values for one field are a conflict, and the compiler refuses them.
 
 At sunscreen, units label unit allows milligrams, micrograms, and grams. Units mass only allows milligrams. Both rules apply, so the result is milligrams only.
 
@@ -314,7 +314,7 @@ Here is draft A. Its unit is micrograms. Its quote is zinc oxide two hundred mil
 
 The real gate result says no. The unit must be milligrams. No rule defines the key grade, so remove it.
 
-A draft that fails the gate never reaches the judges or the graph store. It counts as a strict failure of the run. The decode gate exists in code.
+The decode gate exists in code. In the design, a draft that fails the gate never reaches the judges or the graph store. It counts as a strict failure of the run.
 
 ## run_code_rows
 
@@ -376,7 +376,7 @@ A run starts at context, then goes to research and to draft. After the draft, th
 
 A reviewer turns a suspended run into an accepted run or a rejected run.
 
-Mastra keeps its own status for each run. A Mastra run ends as success or failed, or it waits as suspended. A suspended stage run is a suspended Mastra run.
+Mastra keeps its own status for each run. A Mastra run has a status, such as success, failed, or suspended. Mastra has more statuses, such as canceled and paused, but the stage run uses these three. A suspended stage run is a suspended Mastra run.
 
 Rules have states too. A rule is draft, active, or retired. Only an active rule applies in a normal run. The part on rule changes shows how a rule moves between these states.
 
@@ -462,7 +462,9 @@ What exists today? Four units of the plan exist in code on main. They are the st
 
 Everything else is a design. That includes the judge step, the stage workflow, the repair loop, and the person step. It also includes the tool server, the research tools, and the four stages. It also includes the golden set sync, the change process, and the improvement loop.
 
-Two more facts matter. The rules folder holds no rule yet. The harness docs say that nobody applied its migration to the live Kyaloon database. The Kyaloon PR of that migration has merged since then. This script did not check the live database.
+Two more facts matter. The rules folder holds no rule yet.
+
+The harness docs still say that nobody applied its migration. That is out of date. The migration is on the live Kyaloon database, with forty-five tables in the parts harness and mastra. Each table has row level security. A read-only check confirmed this on the second of November.
 
 ## limits_compiler
 

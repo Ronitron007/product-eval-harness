@@ -4,7 +4,7 @@ Scene list of the video. Each scene has a snake_case name, a target length, the 
 
 Labels in the visuals: BUILT means code on `main` at `cacc262`. DESIGN means a design doc only. ILLUSTRATIVE means output of a mock model. OPEN means not decided or not checked.
 
-Totals: 47 scenes, 6140 words, about 44 minutes.
+Totals: 47 scenes, 6294 words, about 45 minutes.
 
 ## Part `part.goal`: the goal and the outline
 
@@ -171,13 +171,13 @@ Visuals:
 
 ### `mastra_storage`
 
-Target length: about 59 s (137 words).
+Target length: about 67 s (156 words).
 
 Narration:
 
 > Where does the state live? In this repo, Mastra storage runs on Postgres, in its own part of the database, named mastra. The harness stops Mastra from making tables at run time. The Mastra tables come from a migration that a person reviews.
 >
-> The tables of the harness sit beside them, in a part named harness, on the same connection pool. Each write to these tables adds a row. The database refuses each update and each delete.
+> The tables of the harness sit beside them, in a part named harness, on the same connection pool. Each write to these tables adds a row. The harness role cannot update or delete a row. For five of the six tables, a trigger also refuses each update and each delete, for every role.
 >
 > Mastra can also keep a golden set and run each scorer over it, with a gate that must pass. The design uses this in CI, for the golden examples of each rule. That part is a design. Today, a repo command runs the golden examples of each rule that code can decide. It uses the real scorers, and no model.
 
@@ -236,7 +236,7 @@ Visuals:
 
 ### `tree_stages`
 
-Target length: about 43 s (101 words).
+Target length: about 52 s (122 words).
 
 Narration:
 
@@ -246,12 +246,12 @@ Narration:
 >
 > The design has four stages. Define criteria runs at a domain node. Create node runs at an inner node and at a leaf node. At a leaf, two more stages write the grading rules and the display rules.
 >
-> The code already holds this table of stages and levels. It refuses a stage at a level where that stage never runs. The stages themselves are a design.
+> The code already holds this table of stages and levels. It also lists evaluate product at a leaf. That entry is the product evaluation, which the design keeps outside the stages. It refuses a stage at a level where that stage never runs. The stages themselves are a design.
 
 Visuals:
 
 - A production line with four stations: `define_criteria` (domain), `create_node` (inner, leaf), `create_pack` (leaf), `create_layout` (leaf).
-- Real code card (src/rules/schema.ts): `STAGE_LEVELS = { define_criteria: ['domain'], create_node: ['inner','leaf'], create_pack: ['leaf'], create_layout: ['leaf'] }`.
+- Real code card (src/rules/schema.ts): `STAGE_LEVELS = { define_criteria: ['domain'], create_node: ['inner','leaf'], create_pack: ['leaf'], create_layout: ['leaf'], evaluate_product: ['leaf'] /* inferred */ }`, with the `evaluate_product` line greyed: "the product evaluation, outside the stages".
 - Chips: table BUILT, stages DESIGN.
 
 ### `tree_stage_cycle`
@@ -329,7 +329,7 @@ Visuals:
 
 ### `rules_kinds`
 
-Target length: about 71 s (166 words).
+Target length: about 76 s (178 words).
 
 Narration:
 
@@ -337,7 +337,7 @@ Narration:
 >
 > A shape rule gives the type of one output field. Examples are text from a closed list, a number with limits, a flag, or a list. Units label unit is a shape rule.
 >
-> A code check names a check function from a small registry, and gives its parameters. The registry has four checks today. One check tests that a quote stands word for word in a source text. The other checks test that a key exists, that a record exists, and that no two items share a name.
+> A code check names a check function from a small registry, and gives its parameters. The registry has four checks today. One check tests that a quote stands word for word in a source text. The other checks test that a key exists, and that a record exists. The last check tests that no two list items share the value of one key, such as a name.
 >
 > A judgement rule asks a judge model one question. An example is, does this attribute describe the product itself?
 >
@@ -352,13 +352,13 @@ Visuals:
 
 ### `rules_scope`
 
-Target length: about 57 s (132 words).
+Target length: about 62 s (145 words).
 
 Narration:
 
 > Where does a rule apply? Its scope says so. A scope has three parts. They are the nodes, the stages, and the output fields.
 >
-> The nodes part counts from the owner. It selects the owner only, the owner and each node below it, or one level below the owner. A scope never names another node. So a sunscreen rule cannot reach skincare, and it cannot reach the sibling node moisturizer.
+> The nodes part counts from the owner. It selects the owner only, or the owner and each node below it. It can also select each node of one level, such as each leaf, at or below the owner. A scope never names another node. So a sunscreen rule cannot reach skincare, and it cannot reach the sibling node moisturizer.
 >
 > For units label unit, the scope is skincare and each node below it, the stage create node, and one field. That field is the unit of each attribute.
 >
@@ -415,7 +415,7 @@ Visuals:
 
 ### `rules_hash`
 
-Target length: about 69 s (160 words).
+Target length: about 72 s (168 words).
 
 Narration:
 
@@ -425,7 +425,7 @@ Narration:
 >
 > The harness first writes the rule as JSON with sorted keys. So the order of keys and the spacing do not matter. Then it takes the hash.
 >
-> The hash covers the statement, the reason, the kind, the scope, the binding, and the owner. It also covers the shape, the check, the judge question, and the golden examples. It leaves out the id, the version, and the status.
+> The hash covers the statement, the reason, the kind, the scope, the binding, and the owner. It also covers the shape, the check, the judge question, and the golden examples. It leaves out the id, the version, the status, the provenance, and the version that the rule replaces.
 >
 > In the worked example, each rule shows its own hash on the screen. Two people can write the same rule with keys in another order, and they get the same hash. The rule hash exists in code.
 
@@ -462,7 +462,7 @@ Visuals:
 
 ### `compiler_what`
 
-Target length: about 56 s (131 words).
+Target length: about 62 s (145 words).
 
 Narration:
 
@@ -472,7 +472,7 @@ Narration:
 >
 > The compiler takes all the rule files, the rules that stages wrote, the tree, one node, and one stage. It gives four things. They are an output schema, the instruction text, one scorer for each rule, and a rule-set hash.
 >
-> The compiler is plain code. It calls no model, and it never throws on bad rule data. It returns every problem in one round.
+> The compiler is plain code. It calls no model, and it never throws on bad rule data. It returns each problem of one check phase together. Admission problems come first, then the problems of scope, shape, and checks.
 >
 > The compiler exists in code today. It shipped on the fourth of November.
 
@@ -485,7 +485,7 @@ Visuals:
 
 ### `compiler_one_source`
 
-Target length: about 45 s (106 words).
+Target length: about 49 s (115 words).
 
 Narration:
 
@@ -493,7 +493,7 @@ Narration:
 >
 > So each value of a rule lives in one place, its parameters. The prompt line and the check both read that place. A test proves it. Change the allowed units, and the instruction and the result of the check both change.
 >
-> The loader also refuses a statement that repeats a parameter. Units label unit may not say milligrams in its statement. Its statement may not hold a number either. The compiler prints each value once, from the parameters.
+> The loader also refuses a statement that repeats a parameter. Units label unit may not hold the unit code m g in its statement, or any other allowed value. Its statement may not hold a number either. The compiler prints each value once, from the parameters.
 >
 > These guards exist in code.
 
@@ -519,6 +519,7 @@ Narration:
 
 Visuals:
 
+- Phases in order, each returning its problems together: admit, scope, weaken, shape, fit.
 - `admit` gate: library with zero loader problems passes; a lock problem gives `library_invalid`.
 - Real ledger at sunscreen: eight lines, each `applied strict`.
 - Real ledger line at moisturizer: `units.mass_only@1 {"kind":"excluded","reason":"owner_not_on_path"}` and shape line `text, one of: g, mcg, mg`.
@@ -526,11 +527,11 @@ Visuals:
 
 ### `compiler_narrow`
 
-Target length: about 42 s (97 words).
+Target length: about 52 s (121 words).
 
 Narration:
 
-> What happens when two shape rules cover one field? The compiler takes the strictest values that satisfy both rules.
+> What happens when a child rule and an inherited rule cover one field? The compiler takes the strictest values that satisfy both rules. Two rules of one owner that give other values for one field are a conflict, and the compiler refuses them.
 >
 > At sunscreen, units label unit allows milligrams, micrograms, and grams. Units mass only allows milligrams. Both rules apply, so the result is milligrams only.
 >
@@ -540,7 +541,7 @@ Narration:
 
 Visuals:
 
-- Two strips on the unit field: parent `[mg, mcg, g]`, child `[mg]` -> meet `[mg]`.
+- Two strips on the unit field: parent (skincare) `[mg, mcg, g]`, child (sunscreen) `[mg]` -> meet `[mg]`. Side chip: two rules of one owner with other values -> `slot_conflict`.
 - Real schema excerpt: `"unit": { "type": "string", "enum": ["mg"] }`.
 - Real instruction excerpt: `attributes[].unit / Shape: text, one of: mg`, then both rules printed.
 
@@ -644,7 +645,7 @@ Visuals:
 
 ### `run_decode_gate`
 
-Target length: about 67 s (156 words).
+Target length: about 68 s (159 words).
 
 Narration:
 
@@ -656,7 +657,7 @@ Narration:
 >
 > The real gate result says no. The unit must be milligrams. No rule defines the key grade, so remove it.
 >
-> A draft that fails the gate never reaches the judges or the graph store. It counts as a strict failure of the run. The decode gate exists in code.
+> The decode gate exists in code. In the design, a draft that fails the gate never reaches the judges or the graph store. It counts as a strict failure of the run.
 
 Visuals:
 
@@ -771,7 +772,7 @@ Visuals:
 
 ### `run_states`
 
-Target length: about 61 s (143 words).
+Target length: about 68 s (158 words).
 
 Narration:
 
@@ -781,7 +782,7 @@ Narration:
 >
 > A reviewer turns a suspended run into an accepted run or a rejected run.
 >
-> Mastra keeps its own status for each run. A Mastra run ends as success or failed, or it waits as suspended. A suspended stage run is a suspended Mastra run.
+> Mastra keeps its own status for each run. A Mastra run has a status, such as success, failed, or suspended. Mastra has more statuses, such as canceled and paused, but the stage run uses these three. A suspended stage run is a suspended Mastra run.
 >
 > Rules have states too. A rule is draft, active, or retired. Only an active rule applies in a normal run. The part on rule changes shows how a rule moves between these states.
 
@@ -960,7 +961,7 @@ Visuals:
 
 ### `built_status`
 
-Target length: about 50 s (117 words).
+Target length: about 57 s (133 words).
 
 Narration:
 
@@ -968,12 +969,14 @@ Narration:
 >
 > Everything else is a design. That includes the judge step, the stage workflow, the repair loop, and the person step. It also includes the tool server, the research tools, and the four stages. It also includes the golden set sync, the change process, and the improvement loop.
 >
-> Two more facts matter. The rules folder holds no rule yet. The harness docs say that nobody applied its migration to the live Kyaloon database. The Kyaloon PR of that migration has merged since then. This script did not check the live database.
+> Two more facts matter. The rules folder holds no rule yet.
+>
+> The harness docs still say that nobody applied its migration. That is out of date. The migration is on the live Kyaloon database, with forty-five tables in the parts harness and mastra. Each table has row level security. A read-only check confirmed this on the second of November.
 
 Visuals:
 
 - The outline again, now coloured: green (BUILT on main `cacc262`): `plan.scaffold`, `plan.rule_record`, `plan.graph_store`, `plan.compiler`. Grey (DESIGN): judge step, stage workflow, repair, person, tool server, research tools, four stages, golden sync, change process, improvement loop.
-- Two flags: "rules/: 0 rule files"; "live migration: harness docs say not applied; Kyaloon PR merged; live state not checked (OPEN)".
+- Two flags: "rules/: 0 rule files"; "live migration applied: 45 tables, RLS on each, harness_app logs in (verified 2026-11-02, read-only SQL)"; small note "harness docs still say not applied (stale)".
 
 ### `limits_compiler`
 

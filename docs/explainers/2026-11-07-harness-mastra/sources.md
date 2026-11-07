@@ -8,7 +8,7 @@ Labels:
 - **verified (ran)**: `run.ts` printed it, at the cited line of `WE`.
 - **inferred**: it follows from the cited lines, but no line says it in these words.
 
-The fact-check of `stage.factcheck` has not run yet.
+The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 partly wrong). Its corrections are in, each checked against the code cited below.
 
 ## `goal_problem`
 
@@ -80,7 +80,8 @@ The fact-check of `stage.factcheck` has not run yet.
 |---|---|---|
 | Mastra tables in schema `mastra`, init disabled, tables from a reviewed migration | `src/mastra/harness.ts:16-21`, `docs/design/graph-store.md:21` | verified (read) |
 | Harness tables in schema `harness`, same pool | `docs/design/graph-store.md:12-13` | verified (read) |
-| The database refuses update and delete | `db/migrations/0001_harness_tables.sql:166-175` | verified (read) |
+| The harness role has select and insert only on `harness` tables | `db/migrations/0003_harness_role.sql:37-38` | verified (read) |
+| Five of the six tables have an append-only trigger; `nodes` has none | `db/migrations/0001_harness_tables.sql:171-189` (no trigger for `harness.nodes` except `nodes_check_path` at `:75`) | verified (read) |
 | Golden examples into Mastra datasets with a `runEvals` gate: design | `docs/design/mastra-mapping.md:178-180`, `docs/plans/2026-10-24-harness-plan.md:48` | verified (read) |
 | `rules:check` runs golden examples of shape and code-check rules through the real scorers, no model | `src/rules/cli.ts:39`, `src/compiler/index.ts:343-365` | verified (read) |
 
@@ -108,6 +109,7 @@ The fact-check of `stage.factcheck` has not run yet.
 | Claim | Source | Label |
 |---|---|---|
 | Four stages and their levels | `docs/design/rule-graph.md:147-152`, `src/rules/schema.ts:34-40` | verified (read) |
+| The code also lists `evaluate_product` at a leaf; the design keeps the product evaluation outside the stages | `src/rules/schema.ts:39`, `docs/design/rule-graph.md:154` | verified (read) |
 | The code refuses a stage at a level where it never runs | `src/rules/schema.ts:211-216`, `src/compiler/scope.ts:201-203` | verified (read) |
 
 ## `tree_stage_cycle`
@@ -144,6 +146,7 @@ The fact-check of `stage.factcheck` has not run yet.
 | Three kinds | `src/rules/schema.ts:10` | verified (read) |
 | Shape types text, number, flag, list | `src/rules/schema.ts:72-95` | verified (read) |
 | Four check templates | `src/rules/checks/index.ts:9` | verified (read) |
+| `unique_by` takes any key of the list items | `src/rules/checks/unique_by.ts:14-24` | verified (read) |
 | Facts only; outcome has no score field | `src/rules/checks/define.ts:20-30`, `docs/design/rule-enforcement.md:138` | verified (read) |
 
 ## `rules_scope`
@@ -151,6 +154,7 @@ The fact-check of `stage.factcheck` has not run yet.
 | Claim | Source | Label |
 |---|---|---|
 | Scope = nodes, stages, fields; selectors owner, subtree, level | `src/rules/schema.ts:57-69` | verified (read) |
+| A level selector selects each node of that level at or below the owner | `src/compiler/scope.ts:169-173` | verified (read) |
 | A scope names no node, so it cannot reach a parent or sibling | `docs/design/compiler.md:448`, `docs/decisions.tsv:73` | verified (read) |
 
 ## `rules_inheritance`
@@ -176,7 +180,7 @@ The fact-check of `stage.factcheck` has not run yet.
 | Claim | Source | Label |
 |---|---|---|
 | sha256 of canonical JSON (RFC 8785) | `src/rules/hash.ts:21-23` | verified (read) |
-| Covered and left-out fields | `src/rules/hash.ts:5-20` | verified (read) |
+| Covered and left-out fields (id, version, status, provenance, supersedes) | `src/rules/hash.ts:5-20` | verified (read) |
 | Key order does not change the hash | `canonicalize` sorts keys (RFC 8785) | inferred |
 | Git names objects by content | teaching ladder `ladder-rules-as-data.md` (git book) | inferred |
 
@@ -194,7 +198,7 @@ The fact-check of `stage.factcheck` has not run yet.
 | Claim | Source | Label |
 |---|---|---|
 | Inputs and four outputs | `src/compiler/index.ts:28-55` | verified (read) |
-| Pure, no model, never throws on rule data, all problems in one round | `src/compiler/index.ts:254-259`, `docs/design/compiler.md:44` | verified (read) |
+| Pure, no model, never throws on rule data; problems come back by phase: admission first, then scope, weaken, shape, fit | `src/compiler/index.ts:254-272`, `docs/design/compiler.md:1036` | verified (read) |
 | Shipped 2026-11-04 | `docs/design/compiler.md:3` | verified (read) |
 
 ## `compiler_one_source`
@@ -202,7 +206,7 @@ The fact-check of `stage.factcheck` has not run yet.
 | Claim | Source | Label |
 |---|---|---|
 | One copy of each parameter; the drift test | `docs/design/compiler.md:761`, `docs/design/compiler.md:795` | verified (read) |
-| Literal lint and numeral lint | `src/rules/schema.ts:236-255` | verified (read) |
+| Literal lint and numeral lint: whole-word allowed values (such as `mg`) and number tokens; the word milligrams passes | `src/rules/schema.ts:169-189`, `src/rules/schema.ts:236-255` | verified (read) |
 
 ## `compiler_admit_scope`
 
@@ -218,6 +222,7 @@ The fact-check of `stage.factcheck` has not run yet.
 | Claim | Source | Label |
 |---|---|---|
 | Meet = strictest values that satisfy both | `src/rules/strictness.ts:73-119`, `src/compiler/shape.ts:75-88` | verified (read) |
+| Two rules of one owner with other values on one slot give `slot_conflict` | `src/compiler/scope.ts:299-327`, `docs/decisions.tsv:119` | verified (read) |
 | Schema enum `mg` only; instruction line `text, one of: mg`; both rules print | `WE:85-91`, `WE:112-121` | verified (ran) |
 | No shared value gives `shape_conflict` naming both rules | `src/compiler/shape.ts:79-82` | verified (read) |
 
@@ -320,7 +325,7 @@ The fact-check of `stage.factcheck` has not run yet.
 | Claim | Source | Label |
 |---|---|---|
 | Stage run states | `docs/design/rule-graph.md:117-127`, `docs/canvas/judge.canvas` | inferred (the docs draw the flow; no state list exists) |
-| Mastra run statuses | `docs/research/2026-10-24-mastra-primitives.md:158` | verified (read) |
+| Mastra run statuses include success, failed, suspended, canceled, paused, and more | `docs/research/2026-10-24-mastra-primitives.md:158`; `@mastra/core` 1.79.0 `dist/workflows/types.d.ts` (status literals) | verified (read) |
 | Rule statuses draft, active, retired | `src/rules/schema.ts:12` | verified (read) |
 
 ## `verdict_three_way`
@@ -397,7 +402,7 @@ The fact-check of `stage.factcheck` has not run yet.
 | The rest is design | `docs/plans/2026-10-24-harness-plan.md:39-55`, `src/mastra/index.ts:7-9` | verified (read) |
 | Harness docs: migration not applied to the Kyaloon database | `docs/design/graph-store.md:5` | verified (read) |
 | The Kyaloon PR of the migration merged | RealDose `git log`: merge commit `4e866d6d`, "Merge pull request #470" | verified (ran `git log` in the RealDose clone) |
-| Live database state | not checked | open |
+| Migration applied live: 45 tables in `harness` and `mastra`, row level security on each, `harness_app` logs in | fact-check `factcheck.md` (orchestrator, read-only SQL, 2026-11-02); 45 = 6 tables in `db/migrations/0001` + 39 in `0002`; `docs/decisions.tsv:69` (Rohan's yes) | verified by the orchestrator, not re-run here |
 
 ## `limits_compiler`
 
