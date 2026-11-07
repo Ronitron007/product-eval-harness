@@ -1,0 +1,14 @@
+id: units.mass_only
+version: 1
+kind: shape
+shape: { type: text, values: [mg] }
+statement: Write each sunscreen active in one unit of mass.
+reason: One unit lets two sunscreens be compared with no conversion.
+scope: { nodes: subtree, stages: [create_node], fields: ['attributes[].unit'] }
+binding: strict
+examples:
+  - { output: mg, expected: pass }
+  - { output: g, expected: fail }
+provenance: { decision_row: explainer fixture 2026-11-07 }
+owner: sunscreen
+status: active

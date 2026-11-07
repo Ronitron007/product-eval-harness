@@ -1,0 +1,13 @@
+id: attributes.quote
+version: 1
+kind: shape
+shape: { type: text, min_length: 1 }
+statement: Give the words that each attribute rests on.
+reason: A reader must see where each value comes from.
+scope: { nodes: subtree, stages: [create_node], fields: ['attributes[].quote'] }
+binding: strict
+examples:
+  - { output: Zinc oxide 200 mg, expected: pass }
+provenance: { decision_row: explainer fixture 2026-11-07 }
+owner: skincare
+status: active

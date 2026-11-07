@@ -1,0 +1,14 @@
+id: attributes.list
+version: 1
+kind: shape
+shape: { type: list, min_items: 1 }
+statement: List the measured attributes of the product.
+reason: An evaluation needs at least one measured property.
+scope: { nodes: subtree, stages: [create_node], fields: ['attributes'] }
+binding: strict
+examples:
+  - { output: [{}], expected: pass }
+  - { output: [], expected: fail, note: A node needs at least one attribute. }
+provenance: { decision_row: explainer fixture 2026-11-07 }
+owner: skincare
+status: active

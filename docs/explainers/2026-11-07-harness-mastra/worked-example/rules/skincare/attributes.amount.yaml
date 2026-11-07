@@ -1,0 +1,14 @@
+id: attributes.amount
+version: 1
+kind: shape
+shape: { type: number, min: 0 }
+statement: Write the amount that the label prints, as a number.
+reason: A grade compares amounts, so each amount must be a number.
+scope: { nodes: subtree, stages: [create_node], fields: ['attributes[].amount'] }
+binding: strict
+examples:
+  - { output: 200, expected: pass }
+  - { output: -1, expected: fail }
+provenance: { decision_row: explainer fixture 2026-11-07 }
+owner: skincare
+status: active

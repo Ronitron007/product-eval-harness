@@ -1,0 +1,15 @@
+id: quotes.from_label
+version: 1
+kind: code_check
+check: { name: quote_in_source, params: { source: label, case_sensitive: true } }
+statement: Back each attribute value with a quote from the source text.
+reason: A judge and a reader must find the words that the value rests on.
+scope: { nodes: subtree, stages: [create_node], fields: ['attributes[].quote'] }
+binding: strict
+examples:
+  - { input: { sources: { label: Zinc oxide 200 mg in each gram. } }, output: Zinc oxide 200 mg, expected: pass }
+  - { input: { sources: { label: Zinc oxide 200 mg in each gram. } }, output: zinc oxide 200mg, expected: fail }
+  - { output: Zinc oxide 200 mg, expected: cannot_verify, note: The run has no source text. }
+provenance: { decision_row: explainer fixture 2026-11-07 }
+owner: skincare
+status: active

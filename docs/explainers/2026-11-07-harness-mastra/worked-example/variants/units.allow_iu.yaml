@@ -1,0 +1,13 @@
+id: units.allow_iu
+version: 1
+kind: shape
+shape: { type: text, values: [mg, IU] }
+statement: Write each sunscreen active in the unit that the label prints.
+reason: Some labels state an active in international units.
+scope: { nodes: subtree, stages: [create_node], fields: ['attributes[].unit'] }
+binding: strict
+examples:
+  - { output: mg, expected: pass }
+provenance: { decision_row: explainer fixture 2026-11-07 }
+owner: sunscreen
+status: active

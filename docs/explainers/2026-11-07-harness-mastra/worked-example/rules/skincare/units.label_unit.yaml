@@ -1,0 +1,14 @@
+id: units.label_unit
+version: 1
+kind: shape
+shape: { type: text, values: [mg, mcg, g] }
+statement: Write the amount in the unit that the label prints.
+reason: A grade must rest on what the label states.
+scope: { nodes: subtree, stages: [create_node], fields: ['attributes[].unit'] }
+binding: strict
+examples:
+  - { output: mg, expected: pass }
+  - { output: IU, expected: fail, note: IU is not a unit of mass. }
+provenance: { decision_row: explainer fixture 2026-11-07 }
+owner: skincare
+status: active

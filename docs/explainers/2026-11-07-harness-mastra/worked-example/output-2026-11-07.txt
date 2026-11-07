@@ -1,0 +1,564 @@
+
+===== library: rule files and loader problems =====
+skincare/attributes.amount.yaml  shape  strict  hash 6dc24c99349adb80ebadaed30a16600b0edf0da8766f842756bad96e8d852a78
+skincare/attributes.is_product.yaml  judgement  strict  hash 2e30c1a7b617418acf8948ad66bba9adc3d85df9967e737a8bc17922126b8497
+skincare/attributes.key.yaml  shape  strict  hash ec2e38ea7923a559cc8f0f5a3a6208dc74a5f97ccd27e6aaa99cfc44246b6fed
+skincare/attributes.list.yaml  shape  strict  hash c80a655218d112aadb1d5a479b0678e4ad3325f701b313f952b0983100a3d4e2
+skincare/attributes.quote.yaml  shape  strict  hash 7731b4827099c2d95dd78a1de5dcba44bb8d16446ad777194adb9897fd87b41b
+skincare/quotes.from_label.yaml  code_check  strict  hash 3c17454523fb5f18d974a70f93fab7f69e5d409348a632fe43bd7f80b5fdc874
+skincare/units.label_unit.yaml  shape  strict  hash 68be9c64347c851404759004bacabb785a59cebd9781be39c9d940e3a2a74cae
+sunscreen/units.mass_only.yaml  shape  strict  hash e0718bf38f70b84f74bc053e4c3f4f5ec157a80372dc90cb30fa117dc9be4a15
+loader problems: 0
+
+===== rules.lock.json (as npm run rules:lock writes it) =====
+{
+  "lock_version": 1,
+  "rules": {
+    "attributes.amount": {
+      "1": "6dc24c99349adb80ebadaed30a16600b0edf0da8766f842756bad96e8d852a78"
+    },
+    "attributes.is_product": {
+      "1": "2e30c1a7b617418acf8948ad66bba9adc3d85df9967e737a8bc17922126b8497"
+    },
+    "attributes.key": {
+      "1": "ec2e38ea7923a559cc8f0f5a3a6208dc74a5f97ccd27e6aaa99cfc44246b6fed"
+    },
+    "attributes.list": {
+      "1": "c80a655218d112aadb1d5a479b0678e4ad3325f701b313f952b0983100a3d4e2"
+    },
+    "attributes.quote": {
+      "1": "7731b4827099c2d95dd78a1de5dcba44bb8d16446ad777194adb9897fd87b41b"
+    },
+    "quotes.from_label": {
+      "1": "3c17454523fb5f18d974a70f93fab7f69e5d409348a632fe43bd7f80b5fdc874"
+    },
+    "units.label_unit": {
+      "1": "68be9c64347c851404759004bacabb785a59cebd9781be39c9d940e3a2a74cae"
+    },
+    "units.mass_only": {
+      "1": "e0718bf38f70b84f74bc053e4c3f4f5ec157a80372dc90cb30fa117dc9be4a15"
+    }
+  }
+}
+
+===== compileStage at sunscreen, create_node: ruleSetHash =====
+f8d76e16201616281414918b85528655fa9cced4c14bac055b8c9f8a415eaf9a
+
+===== instructions =====
+Stage create_node. Write one output that fits the output schema. These rules apply to its fields.
+
+attributes
+  Shape: list of at least 1 item
+  strict `attributes.list@1`. List the measured attributes of the product. Why: An evaluation needs at least one measured property.
+    Example: {"expected":"pass","output":[{}]}
+    Example: {"expected":"fail","note":"A node needs at least one attribute.","output":[]}
+
+attributes[]
+  Shape: object with the keys amount, key, quote, unit
+  strict `attributes.is_product@1`. Keep each attribute about the product itself. Why: A grade must rest on the product. A promotion or the market can change while the product stays the same.
+    Example: {"expected":"pass","output":{"key":"zinc_oxide"}}
+    Example: {"expected":"fail","note":"A gift with an order is a promotion, not the product.","output":{"key":"gift_sachet"}}
+
+attributes[].amount
+  Shape: number, at least 0
+  strict `attributes.amount@1`. Write the amount that the label prints, as a number. Why: A grade compares amounts, so each amount must be a number.
+    Example: {"expected":"pass","output":200}
+    Example: {"expected":"fail","output":-1}
+
+attributes[].key
+  Shape: text of at least 1 character
+  strict `attributes.key@1`. Name each attribute with a short snake_case key. Why: Logs and later stages refer to an attribute by its key.
+    Example: {"expected":"pass","output":"zinc_oxide"}
+    Example: {"expected":"fail","output":""}
+
+attributes[].quote
+  Shape: text of at least 1 character
+  strict `attributes.quote@1`. Give the words that each attribute rests on. Why: A reader must see where each value comes from.
+    Example: {"expected":"pass","output":"Zinc oxide 200 mg"}
+  strict `quotes.from_label@1`. Back each attribute value with a quote from the source text. Why: A judge and a reader must find the words that the value rests on.
+    Check: Copy each quote word for word from the label text, with the same letter case.
+    Example: {"expected":"pass","input":{"sources":{"label":"Zinc oxide 200 mg in each gram."}},"output":"Zinc oxide 200 mg"}
+    Example: {"expected":"fail","input":{"sources":{"label":"Zinc oxide 200 mg in each gram."}},"output":"zinc oxide 200mg"}
+    Example: {"expected":"cannot_verify","note":"The run has no source text.","output":"Zinc oxide 200 mg"}
+
+attributes[].unit
+  Shape: text, one of: mg
+  strict `units.label_unit@1`. Write the amount in the unit that the label prints. Why: A grade must rest on what the label states.
+    Example: {"expected":"pass","output":"mg"}
+    Example: {"expected":"fail","note":"IU is not a unit of mass.","output":"IU"}
+  strict `units.mass_only@1`. Write each sunscreen active in one unit of mass. Why: One unit lets two sunscreens be compared with no conversion.
+    Example: {"expected":"pass","output":"mg"}
+    Example: {"expected":"fail","output":"g"}
+
+===== schema (z.toJSONSchema of plan.schema) =====
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "attributes": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "mg"
+            ]
+          }
+        },
+        "required": [
+          "amount",
+          "key",
+          "quote",
+          "unit"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "attributes"
+  ],
+  "additionalProperties": false
+}
+
+===== ledger =====
+attributes.amount@1  git  {"kind":"applied","binding":"strict"}
+attributes.is_product@1  git  {"kind":"applied","binding":"strict"}
+attributes.key@1  git  {"kind":"applied","binding":"strict"}
+attributes.list@1  git  {"kind":"applied","binding":"strict"}
+attributes.quote@1  git  {"kind":"applied","binding":"strict"}
+quotes.from_label@1  git  {"kind":"applied","binding":"strict"}
+units.label_unit@1  git  {"kind":"applied","binding":"strict"}
+units.mass_only@1  git  {"kind":"applied","binding":"strict"}
+
+===== scorers =====
+code: attributes.amount@1, attributes.key@1, attributes.list@1, attributes.quote@1, quotes.from_label@1, units.label_unit@1, units.mass_only@1
+judge: attributes.is_product@1 promptHash d0a12d812e3e5118c54825b6c41ab2a7d16c99d3768136c7f61d45c32d52fc94
+
+===== manifest.rules (what the hash covers, with schema, instructions, scorers, code versions) =====
+[
+  {
+    "id": "attributes.amount",
+    "version": 1,
+    "hash": "6dc24c99349adb80ebadaed30a16600b0edf0da8766f842756bad96e8d852a78",
+    "binding": "strict",
+    "origin": "git"
+  },
+  {
+    "id": "attributes.is_product",
+    "version": 1,
+    "hash": "2e30c1a7b617418acf8948ad66bba9adc3d85df9967e737a8bc17922126b8497",
+    "binding": "strict",
+    "origin": "git"
+  },
+  {
+    "id": "attributes.key",
+    "version": 1,
+    "hash": "ec2e38ea7923a559cc8f0f5a3a6208dc74a5f97ccd27e6aaa99cfc44246b6fed",
+    "binding": "strict",
+    "origin": "git"
+  },
+  {
+    "id": "attributes.list",
+    "version": 1,
+    "hash": "c80a655218d112aadb1d5a479b0678e4ad3325f701b313f952b0983100a3d4e2",
+    "binding": "strict",
+    "origin": "git"
+  },
+  {
+    "id": "attributes.quote",
+    "version": 1,
+    "hash": "7731b4827099c2d95dd78a1de5dcba44bb8d16446ad777194adb9897fd87b41b",
+    "binding": "strict",
+    "origin": "git"
+  },
+  {
+    "id": "quotes.from_label",
+    "version": 1,
+    "hash": "3c17454523fb5f18d974a70f93fab7f69e5d409348a632fe43bd7f80b5fdc874",
+    "binding": "strict",
+    "origin": "git"
+  },
+  {
+    "id": "units.label_unit",
+    "version": 1,
+    "hash": "68be9c64347c851404759004bacabb785a59cebd9781be39c9d940e3a2a74cae",
+    "binding": "strict",
+    "origin": "git"
+  },
+  {
+    "id": "units.mass_only",
+    "version": 1,
+    "hash": "e0718bf38f70b84f74bc053e4c3f4f5ec157a80372dc90cb30fa117dc9be4a15",
+    "binding": "strict",
+    "origin": "git"
+  }
+]
+{"runtime":1,"checks":{"quote_in_source":1},"deps":{"zod":"4.6.7","@mastra/core":"1.79.0"}}
+
+===== compile again, tree in another order =====
+f8d76e16201616281414918b85528655fa9cced4c14bac055b8c9f8a415eaf9a  same: true
+
+===== compile at moisturizer, create_node =====
+ec713b82d73c78dd52b70bd7218228d89ecc6319c10c9a77ff81044f63feb999  same as sunscreen: false
+units.mass_only@1  {"kind":"excluded","reason":"owner_not_on_path"}
+  Shape: text, one of: g, mcg, mg
+
+===== draft A: the raw reply =====
+{"attributes":[{"key":"zinc_oxide","amount":200,"unit":"mcg","quote":"zinc oxide 200mg","grade":"A"}]}
+
+===== draft A: plan.decode =====
+{
+  "ok": false,
+  "issues": [
+    {
+      "path": "attributes[0].unit",
+      "message": "Invalid input: expected \"mg\""
+    },
+    {
+      "path": "attributes[0].grade",
+      "message": "No rule defines the key grade. Remove it."
+    }
+  ]
+}
+
+===== draft A: code scorer rows (real, no model) =====
+[
+  {
+    "rule": "attributes.amount@1",
+    "target": "attributes[0].amount",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: number, at least 0.",
+    "evidence": {
+      "quote": "200",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "attributes.key@1",
+    "target": "attributes[0].key",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: text of at least 1 character.",
+    "evidence": {
+      "quote": "\"zinc_oxide\"",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "attributes.list@1",
+    "target": "attributes",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: list of at least 1 item.",
+    "evidence": {
+      "quote": "[{\"amount\":200,\"grade\":\"A\",\"key\":\"zinc_oxide\",\"quote\":\"zinc oxide 200mg\",\"unit\":\"mcg\"}]",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "attributes.quote@1",
+    "target": "attributes[0].quote",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: text of at least 1 character.",
+    "evidence": {
+      "quote": "\"zinc oxide 200mg\"",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "quotes.from_label@1",
+    "target": "attributes[0].quote",
+    "verdict": "fail",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "Copy the quote word for word from the label text, with the same letter case, or drop the claim.",
+    "evidence": {
+      "quote": "\"zinc oxide 200mg\"",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "units.label_unit@1",
+    "target": "attributes[0].unit",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: text, one of: g, mcg, mg.",
+    "evidence": {
+      "quote": "\"mcg\"",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "units.mass_only@1",
+    "target": "attributes[0].unit",
+    "verdict": "fail",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value breaks the shape (Invalid input: expected \"mg\"). Write text, one of: mg.",
+    "evidence": {
+      "quote": "\"mcg\"",
+      "source": "output"
+    }
+  }
+]
+
+===== draft A: do the judges run? =====
+decode ok: false, each strict code verdict pass: false
+[
+  {
+    "rule": "attributes.is_product@1",
+    "target": "attributes[]",
+    "verdict": "cannot_verify",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The output broke the schema or a strict code check, so no judge ran."
+  }
+]
+
+===== draft C: plan.decode, and the code scorer verdicts (real) =====
+decode ok: true
+attributes.amount@1  attributes[0].amount  pass
+attributes.amount@1  attributes[1].amount  pass
+attributes.key@1  attributes[0].key  pass
+attributes.key@1  attributes[1].key  pass
+attributes.list@1  attributes  pass
+attributes.quote@1  attributes[0].quote  pass
+attributes.quote@1  attributes[1].quote  pass
+quotes.from_label@1  attributes[0].quote  pass
+quotes.from_label@1  attributes[1].quote  pass
+units.label_unit@1  attributes[0].unit  pass
+units.label_unit@1  attributes[1].unit  pass
+units.mass_only@1  attributes[0].unit  pass
+units.mass_only@1  attributes[1].unit  pass
+
+===== draft C: judge rows (ILLUSTRATIVE: a mock model gives the answers) =====
+[
+  {
+    "rule": "attributes.is_product@1",
+    "target": "attributes[0]",
+    "verdict": "pass",
+    "decider": {
+      "by": "judge",
+      "model": "mock/judge",
+      "promptHash": "d0a12d812e3e5118c54825b6c41ab2a7d16c99d3768136c7f61d45c32d52fc94"
+    },
+    "reason": "Zinc oxide is an active ingredient of the product. Quote: \"Zinc oxide 200 mg in each gram.\"",
+    "evidence": {
+      "quote": "{\"amount\":200,\"key\":\"zinc_oxide\",\"quote\":\"Zinc oxide 200 mg\",\"unit\":\"mg\"}",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "attributes.is_product@1",
+    "target": "attributes[1]",
+    "verdict": "fail",
+    "decider": {
+      "by": "judge",
+      "model": "mock/judge",
+      "promptHash": "d0a12d812e3e5118c54825b6c41ab2a7d16c99d3768136c7f61d45c32d52fc94"
+    },
+    "reason": "A gift with an order is a promotion, not a property of the product. Quote: \"Free gift sachet 500 mg with each order.\"",
+    "evidence": {
+      "quote": "{\"amount\":500,\"key\":\"gift_sachet\",\"quote\":\"Free gift sachet 500 mg\",\"unit\":\"mg\"}",
+      "source": "output"
+    }
+  }
+]
+
+===== draft B: plan.decode, and the code scorer rows (real) =====
+decode ok: true
+[
+  {
+    "rule": "attributes.amount@1",
+    "target": "attributes[0].amount",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: number, at least 0.",
+    "evidence": {
+      "quote": "200",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "attributes.key@1",
+    "target": "attributes[0].key",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: text of at least 1 character.",
+    "evidence": {
+      "quote": "\"zinc_oxide\"",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "attributes.list@1",
+    "target": "attributes",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: list of at least 1 item.",
+    "evidence": {
+      "quote": "[{\"amount\":200,\"key\":\"zinc_oxide\",\"quote\":\"Zinc oxide 200 mg\",\"unit\":\"mg\"}]",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "attributes.quote@1",
+    "target": "attributes[0].quote",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: text of at least 1 character.",
+    "evidence": {
+      "quote": "\"Zinc oxide 200 mg\"",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "quotes.from_label@1",
+    "target": "attributes[0].quote",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "quote_in_source passed.",
+    "evidence": {
+      "quote": "\"Zinc oxide 200 mg\"",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "units.label_unit@1",
+    "target": "attributes[0].unit",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: text, one of: g, mcg, mg.",
+    "evidence": {
+      "quote": "\"mg\"",
+      "source": "output"
+    }
+  },
+  {
+    "rule": "units.mass_only@1",
+    "target": "attributes[0].unit",
+    "verdict": "pass",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The value fits the shape: text, one of: mg.",
+    "evidence": {
+      "quote": "\"mg\"",
+      "source": "output"
+    }
+  }
+]
+
+===== draft B: judge rows (ILLUSTRATIVE: a mock model gives the answer) =====
+[
+  {
+    "rule": "attributes.is_product@1",
+    "target": "attributes[0]",
+    "verdict": "pass",
+    "decider": {
+      "by": "judge",
+      "model": "mock/judge",
+      "promptHash": "d0a12d812e3e5118c54825b6c41ab2a7d16c99d3768136c7f61d45c32d52fc94"
+    },
+    "reason": "Zinc oxide is an active ingredient of the product. Quote: \"Zinc oxide 200 mg in each gram.\"",
+    "evidence": {
+      "quote": "{\"amount\":200,\"key\":\"zinc_oxide\",\"quote\":\"Zinc oxide 200 mg\",\"unit\":\"mg\"}",
+      "source": "output"
+    }
+  }
+]
+
+===== draft B with no label text in the evidence: the quote check (real) =====
+[
+  {
+    "rule": "quotes.from_label@1",
+    "target": "attributes[0].quote",
+    "verdict": "cannot_verify",
+    "decider": {
+      "by": "code"
+    },
+    "reason": "The run gave no sources, so quote_in_source did not run.",
+    "evidence": {
+      "quote": "\"Zinc oxide 200 mg\"",
+      "source": "output"
+    }
+  }
+]
+
+===== a sunscreen child rule that widens to [mg, IU]: compileStage at sunscreen =====
+{
+  "ok": false,
+  "problems": [
+    {
+      "code": "weakens",
+      "rules": [
+        "units.allow_iu@1",
+        "units.label_unit@1"
+      ],
+      "field": "attributes[].unit",
+      "message": "sunscreen units.allow_iu@1 allows IU, which skincare units.label_unit@1 forbids. Change the skincare rule, or drop the value."
+    }
+  ]
+}
+
+===== auditLibrary with tree unknown (the CI view): the fixture library, then the widening library =====
+[]
+[]
+
+===== auditLibrary with the tree: the widening library =====
+["no_output_fields ","weakens units.allow_iu@1 units.label_unit@1"]
+
+===== rule change: new words under version 1 (no version raise) =====
+skincare/units.label_unit.yaml version: The words changed under version 1. Raise the version, set supersedes to 1, and run npm run rules:lock.
+
+===== rule change: version 2 with supersedes 1, then rules:lock =====
+added: units.label_unit@2
+loader problems: 0
+{
+  "1": "68be9c64347c851404759004bacabb785a59cebd9781be39c9d940e3a2a74cae",
+  "2": "c6b4737a26f780cc0947eaf2c482835a50675375c4dc55ab02af7d411ef0edc1"
+}
+new ruleSetHash 32b78174f8d55796d864bf6e082820aae72efac73862a32c7e14b5d60333f820  same as before: false

@@ -1,0 +1,14 @@
+id: attributes.is_product
+version: 1
+kind: judgement
+judge: { question: 'Does the attribute describe a property of the product itself? Answer yes, no, or unknown.' }
+statement: Keep each attribute about the product itself.
+reason: A grade must rest on the product. A promotion or the market can change while the product stays the same.
+scope: { nodes: subtree, stages: [create_node], fields: ['attributes[]'] }
+binding: strict
+examples:
+  - { output: { key: zinc_oxide }, expected: pass }
+  - { output: { key: gift_sachet }, expected: fail, note: 'A gift with an order is a promotion, not the product.' }
+provenance: { decision_row: explainer fixture 2026-11-07 }
+owner: skincare
+status: active
