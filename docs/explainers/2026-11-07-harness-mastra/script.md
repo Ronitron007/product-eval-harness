@@ -472,7 +472,7 @@ Narration:
 >
 > The compiler takes all the rule files, the rules that stages wrote, the tree, one node, and one stage. It gives four things. They are an output schema, the instruction text, one scorer for each rule, and a rule-set hash.
 >
-> The compiler is plain code. It calls no model, and it never throws on bad rule data. It returns each problem of one check phase together. Admission problems come first, then the problems of scope, shape, and checks.
+> The compiler is plain code. It calls no model, and it never throws on bad rule data. It returns admission problems alone. After admission passes, it returns the problems of scope, weaken, and shape together, in one list.
 >
 > The compiler exists in code today. It shipped on the fourth of November.
 
@@ -480,7 +480,7 @@ Visuals:
 
 - Outline, the `compiler` box highlighted.
 - Inputs on the left: rule files, derived rules, tree, node, stage. Box `compileStage`. Four outputs fanning right: schema, instructions, scorers, rule-set hash. Bracket: "one source".
-- Stamps: "pure, sync, no model", "never throws on rule data", "all problems in one round".
+- Stamps: "pure, sync, no model", "never throws on rule data", "admission problems alone, then scope + weaken + shape problems in one list".
 - Chip: BUILT, shipped 2026-11-04 in Ronitron007/product-eval-harness#19.
 
 ### `compiler_one_source`
@@ -519,7 +519,7 @@ Narration:
 
 Visuals:
 
-- Phases in order, each returning its problems together: admit, scope, weaken, shape, fit.
+- Problem groups: admission problems come back alone. After admission, scope, weaken and shape problems come back in one list (probe: `rule_inert slot_conflict shape_conflict`). Fit problems join only when the shapes compose; a node or level problem stops early.
 - `admit` gate: library with zero loader problems passes; a lock problem gives `library_invalid`.
 - Real ledger at sunscreen: eight lines, each `applied strict`.
 - Real ledger line at moisturizer: `units.mass_only@1 {"kind":"excluded","reason":"owner_not_on_path"}` and shape line `text, one of: g, mcg, mg`.

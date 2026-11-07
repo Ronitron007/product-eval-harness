@@ -198,7 +198,7 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 | Claim | Source | Label |
 |---|---|---|
 | Inputs and four outputs | `src/compiler/index.ts:28-55` | verified (read) |
-| Pure, no model, never throws on rule data; problems come back by phase: admission first, then scope, weaken, shape, fit | `src/compiler/index.ts:254-272`, `docs/design/compiler.md:1036` | verified (read) |
+| Pure, no model, never throws on rule data; admission problems come back alone, then scope, weaken and shape problems in one list | `src/compiler/index.ts:256-272`, `docs/design/compiler.md:1036`, `recheck.md` probe | verified (read) |
 | Shipped 2026-11-04 | `docs/design/compiler.md:3` | verified (read) |
 
 ## `compiler_one_source`

@@ -224,7 +224,7 @@ Think of a printed rulebook and an inspection checklist. One office makes both f
 
 The compiler takes all the rule files, the rules that stages wrote, the tree, one node, and one stage. It gives four things. They are an output schema, the instruction text, one scorer for each rule, and a rule-set hash.
 
-The compiler is plain code. It calls no model, and it never throws on bad rule data. It returns each problem of one check phase together. Admission problems come first, then the problems of scope, shape, and checks.
+The compiler is plain code. It calls no model, and it never throws on bad rule data. It returns admission problems alone. After admission passes, it returns the problems of scope, weaken, and shape together, in one list.
 
 The compiler exists in code today. It shipped on the fourth of November.
 
