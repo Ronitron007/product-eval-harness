@@ -1320,3 +1320,17 @@ The code of `plan.stage_workflow` differs from this spec in the items below. Eac
 | The crash tests | Separate tests | `double_write.restart_after_end_commit` and `double_write.boot_sweep_after_end_commit` are one test, on two databases. | Each case waits for the Mastra lease. The lease is the constant `WORKFLOW_RUN_LEASE_TTL_MS` (15 seconds) of `@mastra/core` 1.79.0, and no option changes it. |
 | `double_write.concurrent_resume_one_end` | Two resumes at the same time | The test makes both run objects first, then starts the two resumes. | With `createRun` inside the race, the second resume sometimes came after the first claim, and it got `WORKFLOW_RUN_NOT_SUSPENDED`. |
 | Drafters in the tests | `agentDrafter` with `createMockModel` | Most tests use it. `lost_draft` also uses a drafter with no model. | A mock model cannot give a reply with a NUL character or a plain text reply. |
+
+### The fixes of the review of `885eb99` `stage.reconciliation.review`
+
+A fresh reviewer read PR [Ronitron007/product-eval-harness#29](https://github.com/Ronitron007/product-eval-harness/pull/29) at `885eb99`. The code changed as follows:
+
+| Item | Spec | Code | Why |
+|---|---|---|---|
+| Two starts of a new run id at the same time | `stage.rerun_reuses` | `recordStageRun` inserts with `on conflict do nothing`, then compares the stage, the node, and the hash. The draft step takes the draft lock of the round before it calls the drafter, and the holder writes the draft. A caller that waited reads that draft. | One start gave `failed` on the primary key of `stage_runs` or `drafts`, and the drafter got 2 calls. The test `double_write.concurrent_start_one_draft` checks it. |
+| The draft lock | `stage.judge_claim` takes a claim row with a lease. | `withDraftLock` takes a session advisory lock on one connection. It waits up to `claimLeaseMs`, and then it throws. | A crash ends the connection, so the lock ends with it, and no lease is necessary. The judge claim stays as the spec says. |
+| The closed-run triggers | `stage.round_closed`, `stage.decision_closed` | `check_verdict_open`, `check_decision_open`, and `check_run_end` take `pg_advisory_xact_lock(hashtext(run_id))`. `endRun` takes the same lock. | Two open transactions passed each other's checks. The test `late_row.open_transactions_serialized` checks it. |
+| The precondition of 0004 | Not in the spec | 0004 stops with a clear message when `harness.verdicts` or `harness.outputs` has rows and no `round` column. | The new column is not null and has no default. A second run, after the column exists, skips the check, so a second run changes nothing. |
+| The transaction of 0004 | Not in the spec | `begin` and `commit` wrap the file. | A stop never leaves a new table with no row level security. |
+| The drop of a test database | Not in the spec | `drop()` of `tests/db.ts` waits until no other backend uses the database. The stage test pools no longer ignore the error 57P01. | `end()` of pg-pool 3.14 resolves before each client ends. The drop then ended an open client. |
+| The default drafter | `ClaudeSDKAgent` through `agentDrafter` | The model-router `Agent` of `stageDepsFromEnv` | The unit `plan.define_criteria` must bring back the `ClaudeSDKAgent` default when it pins `@mastra/claude`. |
