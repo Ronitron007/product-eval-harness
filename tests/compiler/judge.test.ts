@@ -1,6 +1,7 @@
 import { createMockModel } from '@mastra/core/test-utils/llm-mock'
 import { describe, expect, it } from 'vitest'
 import type { JudgeModel } from '../../src/compiler'
+import { takeFetchCalls } from '../setup/no-network'
 import { planOf } from './library'
 import { GOOD_EVIDENCE, GOOD_OUTPUT } from './rules'
 
@@ -17,6 +18,7 @@ function mockJudge(items: unknown[], onCall?: () => void): JudgeModel {
 describe('judge', () => {
   it('judge.no_network: with fetch stubbed to throw, the compile and the code scorers pass', async () => {
     expect(() => fetch('https://example.com')).toThrow(/A test called fetch/)
+    expect(takeFetchCalls()).toBe(1)
     const plan = planOf()
     for (const s of plan.scorers.code) expect((await s.verify(GOOD_OUTPUT, GOOD_EVIDENCE)).map(r => r.verdict)).toEqual(['pass'])
   })
