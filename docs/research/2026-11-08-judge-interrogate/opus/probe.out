@@ -1,0 +1,4 @@
+{"name":"dot","quote":".","gate":true,"verdict":"pass","evidence":{"quote":".","source":"sources.label"}}
+{"name":"one letter","quote":"a","gate":true,"verdict":"pass","evidence":{"quote":"a","source":"sources.label"}}
+{"name":"draft own quote field","quote":"500 mg","gate":true,"verdict":"pass","evidence":{"quote":"500 mg","source":"sources.label"}}
+{"name":"zero-width space","quote":"​","gate":true,"verdict":"pass","evidence":{"quote":"​","source":"sources.label"}}

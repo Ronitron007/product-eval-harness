@@ -1,0 +1,2 @@
+{"name":"honest no, quotes the draft key","gate":true,"verdict":"cannot_verify","outcome":"person"}
+{"name":"gamed no, quotes a dot","gate":true,"verdict":"fail","outcome":"repair"}

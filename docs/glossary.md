@@ -67,5 +67,5 @@ Each term has one definition. Docs link here at the first use of a term.
 | Test vector | A test case of a check template. It holds parameters, a value, evidence, and the expected verdict. Vectors are tests, not hash inputs. |
 | Trial | A compile of one candidate rule version as watch, beside the active rules. The candidate gets a scorer only, so it does not change the drafts. Its hash differs from the live hash. |
 | Verdict | The result of one check: pass, fail, or cannot verify. |
-| Verified quote | A quote of a judge that code found word for word in a source text of the run. A judge pass or fail with no verified quote becomes cannot verify. |
+| Verified quote | A quote of a judge that code found in a permitted text, after the normalize step. A pass may quote a source text only. A fail may also quote the judged item. A judge pass or fail with no verified quote becomes cannot verify. |
 | Weaken | To restate an inherited slot more loosely. A child rule weakens when a dimension that both rules set is looser. A code check also weakens with a lower binding. The compiler refuses it. |

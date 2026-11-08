@@ -1,0 +1,57 @@
+// PROTOTYPE of docs/design/judge-step.md at a8f71fb, written literally from judge.order and judge.bindings.
+import type { DecodeResult, JudgeModel, StagePlan, ItemVerdict } from '../compiler'
+import type { Json, RunEvidence } from '../rules/checks/define'
+import type { VerdictInput } from '../store/store'
+export type RuleRef = `${string}@${number}`
+export interface RepairError { from: RuleRef | 'decode'; target: string; fix: string }
+export interface Warning { rule: RuleRef; target: string; kind: 'warning' | 'note'; text: string }
+interface Judged { rows: readonly VerdictInput[]; warnings: readonly Warning[] }
+export type JudgeOutcome =
+  | (Judged & { kind: 'accept'; output: Json })
+  | (Judged & { kind: 'repair'; errors: readonly RepairError[] })
+  | (Judged & { kind: 'person'; open: readonly VerdictInput[] })
+export class RowsIncomplete extends Error {
+  constructor(readonly missing: string[], readonly extra: string[]) { super(`missing ${missing} extra ${extra}`) }
+}
+const ref = (r: { ruleId: string; ruleVersion: number }) => `${r.ruleId}@${r.ruleVersion}` as RuleRef
+
+export function decideOutcome(input: { decoded: DecodeResult; rows: readonly VerdictInput[] }): JudgeOutcome {
+  const { decoded, rows } = input
+  const strict = rows.filter(r => r.binding === 'strict')
+  const soft = rows.filter(r => r.binding === 'soft')
+  const warnings: Warning[] = soft.filter(r => r.verdict !== 'pass').map(r => ({ rule: ref(r), target: r.target, kind: r.verdict === 'fail' ? 'warning' : 'note', text: r.reason }))
+  const fails = strict.filter(r => r.verdict === 'fail')
+  if (!decoded.ok || fails.length > 0) {
+    const failTargets = new Set(fails.map(f => f.target))
+    const errors: RepairError[] = []
+    if (!decoded.ok) for (const i of [...decoded.issues].sort((a, b) => (a.path < b.path ? -1 : 1))) if (!failTargets.has(i.path)) errors.push({ from: 'decode', target: i.path, fix: i.message })
+    for (const f of [...fails].sort((a, b) => (ref(a) < ref(b) ? -1 : ref(a) > ref(b) ? 1 : a.target < b.target ? -1 : 1))) errors.push({ from: ref(f), target: f.target, fix: f.reason })
+    return { kind: 'repair', errors, rows, warnings }
+  }
+  const cv = strict.filter(r => r.verdict === 'cannot_verify')
+  if (cv.length > 0) return { kind: 'person', open: cv, rows, warnings }
+  return { kind: 'accept', output: decoded.output, rows, warnings }
+}
+
+export async function judgeDraft(input: { runId: string; plan: StagePlan; reply: unknown; evidence: RunEvidence; judgeModel: JudgeModel }): Promise<JudgeOutcome> {
+  const { runId, plan, reply, evidence, judgeModel } = input
+  const decoded = plan.decode(reply)
+  const subject = decoded.ok ? decoded.output : decoded.raw
+  const rows: ItemVerdict[] = []
+  const run = async (s: { verify(o: unknown, e: RunEvidence): Promise<readonly ItemVerdict[]>; rule: { id: string; version: number; binding: any }; fields: readonly string[]; decider: any }) => {
+    try { return await s.verify(subject, evidence) } catch (e) {
+      return s.fields.map(f => ({ ruleId: s.rule.id, ruleVersion: s.rule.version, ruleHash: (s.rule as any).hash, binding: s.rule.binding, target: f, verdict: 'cannot_verify' as const, decider: s.decider, reason: 'The scorer threw' }))
+    }
+  }
+  const codeRows: ItemVerdict[] = []
+  for (const s of plan.scorers.code) codeRows.push(...(await run(s)))
+  rows.push(...codeRows)
+  const gate = decoded.ok && codeRows.filter(r => r.binding === 'strict').every(r => r.verdict === 'pass')
+  if (gate) { for (const j of plan.scorers.judges(judgeModel)) rows.push(...(await run(j))) }
+  else rows.push(...plan.scorers.skippedJudges(decoded.ok ? 'A strict code check did not pass.' : 'The output broke the schema, so no judge ran.'))
+  const full: VerdictInput[] = rows.map(r => ({ ...r, runId }))
+  const have = new Set(full.map(ref)); const want = new Set(plan.manifest.rules.map(r => `${r.id}@${r.version}`))
+  const missing = [...want].filter(x => !have.has(x as RuleRef)); const extra = [...have].filter(x => !want.has(x))
+  if (missing.length || extra.length) throw new RowsIncomplete(missing, extra)
+  return decideOutcome({ decoded, rows: full })
+}

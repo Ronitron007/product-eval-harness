@@ -63,7 +63,8 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `ledger`, `trial` | The record of what a compile did with each rule, and the compile of one candidate as watch | `compile.ledger` |
 | `noop`, `drift`, `weaken`, `hash`, `status`, `admit`, `verify`, `params`, `shape`, `judge` | The hazards of the compiler. Each test name starts with one of them. | `compile.hazards` |
 | `judge.*` | The sections of the judge step spec. The doc name is the stage part `judge`. | [judge-step.md](judge-step.md) |
+| `judge_interrogate` | The interrogate run of the judge step spec, and its repros | [../research/2026-11-08-judge-interrogate/README.md](../research/2026-11-08-judge-interrogate/README.md) |
 | `judgeDraft`, `decideOutcome`, `judgeStep`, `JudgeOutcome`, `RowsIncomplete` | The calls, the outcome type, and the row-total error of the judge step | `judge.types` |
 | `accept`, `repair`, `person` | The three kinds of a judge outcome | `judge.bindings` |
 | `RepairError`, `Warning` | One error for the next repair round, and one soft verdict that is not pass | `judge.types` |
-| `missing_row`, `watch_leak`, `error_pass`, `fake_quote`, `soft_block`, `decode_bypass`, `model_call`, `decider_lost`, `outcome_table` | The hazards of the judge step. Each test name starts with one of them. | `judge.hazards` |
+| `missing_row`, `watch_leak`, `error_pass`, `fake_quote`, `order_decides`, `soft_block`, `decode_bypass`, `model_call`, `stale_pin`, `bad_evidence`, `bare_fix`, `decider_lost`, `outcome_table` | The hazards of the judge step. Each test name starts with one of them. | `judge.hazards` |

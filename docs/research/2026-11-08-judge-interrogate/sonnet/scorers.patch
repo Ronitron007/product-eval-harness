@@ -1,0 +1,58 @@
+diff --git a/src/compiler/scorers.ts b/src/compiler/scorers.ts
+index 57bc082..db6bbbd 100644
+--- a/src/compiler/scorers.ts
++++ b/src/compiler/scorers.ts
+@@ -13,7 +13,7 @@ import { describe, printShape } from './shape'
+ // The scorers of a plan (compile.scorers): one for each applied rule, and the outcome policy
+ // that no template can bypass. Runtime code: RUNTIME_VERSION covers paths.ts, shape.ts, this
+ // file and checks/define.ts. Raise it when one of them changes, and run npm run compiler:lock.
+-export const RUNTIME_VERSION = 1
++export const RUNTIME_VERSION = 2
+ 
+ export const sha256 = (text: string) => createHash('sha256').update(text).digest('hex') as Sha256
+ 
+@@ -34,6 +34,7 @@ interface ItemOutcome {
+   readonly verdict: Verdict
+   readonly reason: string
+   readonly observed?: string // canonical JSON of the value at the target
++  readonly evidence?: { quote: string; source: string }
+   readonly by: 'code' | 'judge'
+ }
+ 
+@@ -53,6 +54,7 @@ const scorerId = (r: AdmittedRule) => r.ref
+ 
+ function row(r: AdmittedRule, o: ItemOutcome, decider: ItemVerdict['decider']): ItemVerdict {
+   const base = { ruleId: r.rule.id, ruleVersion: r.rule.version, ruleHash: r.hash, binding: r.binding, target: o.target, verdict: o.verdict, decider, reason: o.reason }
++  if (o.evidence) return { ...base, evidence: o.evidence }
+   return o.observed === undefined ? base : { ...base, evidence: { quote: o.observed, source: 'output' } }
+ }
+ 
+@@ -158,7 +160,7 @@ export function judgePrompt(rule: JudgementRule, ref: string): { readonly text:
+     ...rule.examples.map(e => `- output ${quote(e.output)} gives ${e.expected}${e.note ? ` (${e.note})` : ''}`),
+     '',
+     'Answer format: for each item, give its target exactly as written, an answer of yes, no, or unknown,',
+-    'a quote from the item or the sources that the answer rests on, and a short reason.',
++    'a quote copied word for word from one source, and a short reason. When no source supports an answer, answer unknown.',
+   ]
+   const text = lines.join('\n')
+   return { text, hash: sha256(text) }
+@@ -234,8 +236,17 @@ export function judgeScorer(r: AdmittedRule, model: JudgeModel, prompt: { readon
+           rows.push(row(r, { target: t.path, verdict: 'cannot_verify', reason: why, observed, by: 'judge' }, decider))
+         } else {
+           const a = mine[0]!
+-          const reason = `${a.reason.trim() || `The judge answered ${a.answer}.`}${a.quote.trim() ? ` Quote: "${a.quote.trim()}"` : ''}`
+-          rows.push(row(r, { target: t.path, verdict: ANSWER[a.answer], reason, observed, by: 'judge' }, decider))
++          const q = a.quote.trim()
++          const reason = `${a.reason.trim() || `The judge answered ${a.answer}.`}${q ? ` Quote: "${q}"` : ''}`
++          if (a.answer === 'unknown') {
++            rows.push(row(r, { target: t.path, verdict: 'cannot_verify', reason, observed, by: 'judge' }, decider))
++          } else {
++            // SPEC judge.quote_verified: exact, case-sensitive includes over sources in name order
++            const srcs = Object.entries(evidence.sources ?? {}).sort(([x], [y]) => (x < y ? -1 : 1))
++            const hit = q === '' ? undefined : srcs.find(([, text]) => text.includes(q))
++            if (!hit) rows.push(row(r, { target: t.path, verdict: 'cannot_verify', reason: `Quote not found in source. The judge answered ${a.answer}: ${reason}`, observed, by: 'judge' }, decider))
++            else rows.push(row(r, { target: t.path, verdict: ANSWER[a.answer], reason, evidence: { quote: q, source: `sources.${hit[0]}` }, by: 'judge' }, decider))
++          }
+         }
+       }
+       return rows

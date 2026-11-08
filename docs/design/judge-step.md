@@ -12,6 +12,8 @@ Source. This spec builds on three docs:
 
 The board is [judge.canvas](../canvas/judge.canvas). Each decision is a row in [decisions.tsv](../decisions.tsv), for Rohan to review.
 
+Review. Two adversaries interrogated this spec at `a8f71fb` on 2026-11-08, and the coordinator ran each repro again. The spec folds in their seven fixes. The repros are in [the interrogate folder](../research/2026-11-08-judge-interrogate/README.md).
+
 Version. Each Mastra claim is for `@mastra/core` 1.79.0. Claude read these embedded docs of the installed package: `reference-workflows-step.md`, `docs-workflows-suspend-and-resume.md`, `docs-workflows-human-in-the-loop.md`, and `reference-evals-run-evals.md`.
 
 ## The idea `judge.idea`
@@ -59,7 +61,7 @@ export interface JudgeInput {
   readonly runId: string
   readonly plan: StagePlan // from planFor: compiled again, same hash as the run
   readonly reply: unknown // draft.object, else draft.text
-  readonly evidence: RunEvidence // the full source texts, never a summary
+  readonly evidence: unknown // parsed with RunEvidence at the boundary (judge.evidence_parsed)
   readonly judgeModel: JudgeModel // provider/model id and the model config
 }
 // One error for the next repair round, with its fix (enforce.repair).
@@ -88,6 +90,7 @@ export declare function judgeDraft(input: JudgeInput): Promise<JudgeOutcome>
 export interface DecideInput {
   readonly decoded: DecodeResult
   readonly rows: readonly VerdictInput[]
+  readonly statements: ReadonlyMap<RuleRef, string> // from RuleScorer.rule.statement (judge.fail_fix)
 }
 // The binding table of judge.bindings. Pure and sync. No model, no store.
 export declare function decideOutcome(input: DecideInput): JudgeOutcome
@@ -122,19 +125,23 @@ The plan holds a Zod schema and functions, so a workflow snapshot cannot hold it
 
 `judgeDraft` runs these parts, in this order, each time:
 
-1. Decode. Run `plan.decode(reply)` (`scorers.closed_output`).
+1. Evidence. Parse `evidence` with `RunEvidence` (`judge.evidence_parsed`). Bad evidence becomes `{}` for the code scorers, and it shuts the gate.
 
-2. Code scorers. Run each scorer of `plan.scorers.code` on the decoded output, or on the raw value when the decode failed (`scorers.decode_failure_rows`).
+2. Decode. Run `plan.decode(reply)` (`scorers.closed_output`).
 
-3. The strict-code gate. The gate opens when the decode is `ok` and each `strict` code row is `pass`.
+3. Code scorers. Run each scorer of `plan.scorers.code` on the decoded output, or on the raw value when the decode failed (`scorers.decode_failure_rows`).
 
-4. Judges. If the gate opens, run each scorer of `plan.scorers.judges(judgeModel)`. If the gate stays shut, take the rows of `plan.scorers.skippedJudges(reason)`. These rows need no model.
+4. The strict-code gate. The gate opens when the evidence parsed, the decode is `ok`, and each `strict` code row is `pass`.
 
-5. Rows. Add `runId` to each row, as `VerdictInput`. Check the rows against the plan (`judge.outcome_total`).
+5. Judges. If the gate opens, run each scorer of `plan.scorers.judges(judgeModel)`. If the gate stays shut, take the rows of `plan.scorers.skippedJudges(reason)`. These rows need no model.
 
-6. Outcome. Call `decideOutcome` with the decode result and the rows.
+6. Rows. Add `runId` to each row, as `VerdictInput`. Check the rows against the plan (`judge.outcome_total`).
+
+7. Outcome. Call `decideOutcome` with the decode result, the rows, and the rule statements.
 
 The reason for skipped judges names the cause:
+
+- After bad evidence, the reason is "The run evidence is not valid, so no judge ran."
 
 - After a failed decode, the reason is "The output broke the schema, so no judge ran."
 
@@ -144,10 +151,12 @@ A scorer `verify` never throws by its contract. If it throws, `judgeDraft` write
 
 ```mermaid
 flowchart LR
+  E["evidence"] --> V["RunEvidence parse"]
+  V --> D
   R["reply"] --> D["plan.decode"]
   D --> C["code scorers<br/>decoded output or raw value"]
-  C --> G{"decode ok and<br/>each strict code row pass?"}
-  G -- yes --> J["judges(judgeModel)<br/>quote check"]
+  C --> G{"evidence ok, decode ok,<br/>each strict code row pass?"}
+  G -- yes --> J["judges(judgeModel)<br/>quote rules"]
   G -- no --> S["skippedJudges(reason)<br/>no model"]
   J --> T["rows + runId<br/>outcome_total"]
   S --> T
@@ -181,7 +190,9 @@ The rules of the list of errors:
 
 - A decode issue at a target that a strict fail row also names drops out. So one error does not show twice.
 
-- The fix of a strict fail row is the `reason` of the row. A code scorer writes its fix there (`compile.scorers`).
+- The fix of a strict fail row from code is the `reason` of the row. A code scorer writes its fix there (`compile.scorers`).
+
+- The fix of a strict fail row from a judge names the rule and adds the judge reason (`judge.fail_fix`).
 
 - The fix of a decode issue is the `message` of the issue, such as "No rule defines the key grade. Remove it."
 
@@ -199,37 +210,53 @@ An `accept` comes only when each strict row is `pass`. The formal finding `verdi
 
 Each decision below has a mechanism and a test that fails when the mechanism breaks. Each has a row in [decisions.tsv](../decisions.tsv):
 
-- Claude took the first five decisions for Rohan on 2026-11-07.
+- Claude took `judge.decider_recorded`, `judge.outcome_total`, `judge.watch_inert`, and `judge.cost_cap_deferred` for Rohan on 2026-11-07. It also took `judge.quote_verified` then. `judge.quote_rules` now replaces it.
 
-- Claude took `judge.outcome_precedence` on 2026-11-08, while it wrote this spec. It also took the evidence part of `judge.quote_verified` then.
+- Claude took `judge.outcome_precedence` on 2026-11-08, while it wrote this spec.
+
+- Claude took `judge.quote_rules`, `judge.one_answer`, `judge.runtime_pinned`, `judge.no_network`, `judge.evidence_parsed`, and `judge.fail_fix` on 2026-11-08, from the interrogate run. The row of `judge.quote_rules` supersedes the two rows on `judge.quote_verified`.
 
 - `judge.decode_repairs` uses the existing decisions row of 2026-11-02 on the decode gate.
 
-### Quote verified `judge.quote_verified`
+### Quote rules `judge.quote_rules`
 
-Decision. A judge `pass` or `fail` must carry a quote. The quote must be a verbatim substring of one of the source texts of the run, `evidence.sources`. If it is not, code turns the verdict into `cannot_verify`, with the reason "quote not found in source". Code only verifies the quote. It never grades.
+Decision. This decision replaces `judge.quote_verified` of 2026-11-07. A judge `pass` or `fail` must carry a quote that code finds in a permitted text. If code does not find it, the verdict becomes `cannot_verify`. Code only verifies the quote. It never grades.
+
+Why `judge.quote_verified` failed, verified (the coordinator ran the repros again):
+
+- An honest "no" that quoted the draft item went to a person. The rule searched the sources only, and the reason for a fail is often in the item itself.
+
+- A junk quote, such as "." or "a" or a zero-width space, passed the check. A "no" with the quote "." then gave a repair.
 
 What the code does today, verified (read `src/compiler/scorers.ts` at `f0bfed8`):
 
 - `JudgeAnswer` already has a `quote` string for each item.
 
-- The prompt asks for "a quote from the item or the sources". So the judge can quote the draft itself.
+- The prompt asks for "a quote from the item or the sources".
 
 - `verify` adds the quote to the reason text only. No code compares it with a source.
 
-The mechanism, all in `src/compiler/scorers.ts`:
+The rules, all in `verify` of `src/compiler/scorers.ts`:
 
-1. Change the answer-format line of `judgePrompt`. For yes or no, the judge copies a quote word for word from one source. When no source supports an answer, the judge answers unknown.
+1. Normalize the quote and each text that code searches. Apply Unicode NFKC. Remove the zero-width characters U+200B, U+200C, U+200D, U+2060, and U+FEFF. Change each run of white space to one space, and trim the ends.
 
-2. In `verify`, for each answer of yes or no, trim the ends of the quote. Then search the source texts in name order, with an exact, case-sensitive `includes`. This is the logic of `quote_in_source` with `case_sensitive: true`.
+2. Count the letters and digits of the normalized quote (`\p{L}` and `\p{N}`). If there are fewer than 2, give `cannot_verify` with the reason "Quote too short."
 
-3. If the trimmed quote is empty, or no source holds it, give `cannot_verify`. The reason starts with the words "Quote not found in source". Then it gives the answer, the reason, and the quote of the judge.
+3. For a `pass`, search the normalized source texts of `evidence.sources`, in name order. Never search the draft output.
 
-4. If a source holds it, keep the verdict. Set `evidence` to the quote, with `source` set to `sources.<name>` of the first source that holds it.
+4. For a `fail`, search the normalized value of the judged item first. The value is the canonical JSON of the item at its target. Then search the source texts.
 
-5. An answer of unknown needs no quote.
+5. Use an exact, case-sensitive substring test. No fuzzy match.
 
-The verification lives in the scorer, not in the judge step. So each caller of `verify` gets it, such as a trial or a golden run.
+6. If no permitted text holds the quote, give `cannot_verify`. The reason starts with the words "Quote not found in source". Then it gives the answer, the reason, and the quote of the judge.
+
+7. If a permitted text holds the quote, keep the verdict. Set `evidence.quote` to the quote of the judge. Set `evidence.source` to `item` for the judged item, or to `sources.<name>` for the first source that holds it.
+
+8. An answer of unknown needs no quote.
+
+The answer-format line of `judgePrompt` changes too. For yes, the judge copies a quote word for word from one source. For no, the judge copies a quote from the item or from one source. When no text supports an answer, the judge answers unknown.
+
+The rules live in the scorer, not in the judge step. So each caller of `verify` gets them, such as a trial or a golden run.
 
 Effect on versions:
 
@@ -241,9 +268,19 @@ Effect on versions:
 
 - The answers of the mock judge in `tests/compiler/judge.test.ts` must carry a quote from `GOOD_EVIDENCE`, such as `500 mg`.
 
-Effect on rows. A judged `pass` or `fail` row now keeps the source quote in `evidence`, not the observed value of the item. This changes one line of `compile.reconciliation.changes`, which said that a judge row keeps the observed value. A judge row that gives `cannot_verify` still keeps the observed value, with `source: output`. The test `verify.observed_from_runtime` reads code rows only, so it does not change.
+Effect on rows. A judged `pass` or `fail` row now keeps the quote of the judge in `evidence`, not the observed value of the item. This changes one line of `compile.reconciliation.changes`, which said that a judge row keeps the observed value. A judge row that gives `cannot_verify` still keeps the observed value, with `source: output`. The test `verify.observed_from_runtime` reads code rows only, so it does not change.
 
-Tests: `fake_quote.not_in_source`, `fake_quote.empty`, `fake_quote.from_the_draft`, `fake_quote.case_differs`, `fake_quote.no_sources`, `fake_quote.found_keeps_verdict`, `fake_quote.unknown_needs_none`.
+Tests: `fake_quote.not_in_source`, `fake_quote.too_short`, `fake_quote.normalized_match`, `fake_quote.pass_from_the_draft`, `fake_quote.fail_from_the_item`, `fake_quote.fail_from_a_source`, `fake_quote.case_differs`, `fake_quote.no_sources`, `fake_quote.unknown_needs_none`.
+
+### One answer `judge.one_answer`
+
+Decision. Two answers for one item that disagree give `cannot_verify`. They disagree when the answer or the normalized quote differs. The order of the answers never decides.
+
+Why. Today `verify` gives `cannot_verify` for two answers with two verdicts. For two answers with one verdict and two quotes, it keeps the first answer, verified (repro `sonnet/p1.repro.ts`, F2). So the order decided the evidence.
+
+Mechanism. `verify` groups the answers by target. It removes exact copies, by answer and normalized quote. More than one answer after that gives `cannot_verify`, with the reason "The judge gave two answers for this item."
+
+Tests: `order_decides.verdict_differs`, `order_decides.quote_differs`, `order_decides.reversed_same_rows`, `order_decides.copy_counts_once`.
 
 ### Decider recorded `judge.decider_recorded`
 
@@ -251,7 +288,7 @@ Decision. Each judge row carries the judge model id and the judge prompt hash in
 
 Mechanism. The store already has the columns, verified (read `store.ts` and `db/migrations/0001_harness_tables.sql`). The type `Decider` and the check on `harness.verdicts.decider` accept `{ by: 'judge', model, promptHash }`. The function `judgeScorer` already writes it on each row that the model answered. A judge row gets its verdict from an answer of the model, or from a failed judge call.
 
-A row that `judge.quote_verified` turns into `cannot_verify` keeps the judge decider, so the log shows which judge gave the quote. A row that code decides alone keeps `{ by: 'code' }`. Examples are an absent target, an empty list, and a skipped judge.
+A row that `judge.quote_rules` turns into `cannot_verify` keeps the judge decider, so the log shows which judge gave the quote. A row that code decides alone keeps `{ by: 'code' }`. Examples are an absent target, an empty list, and a skipped judge.
 
 Tests: `decider_lost.judge_rows_name_model`, `decider_lost.code_rows_say_code`.
 
@@ -297,19 +334,71 @@ Mechanism. `decideOutcome` reads `decoded.ok` first. A failed decode never gives
 
 Tests: `decode_bypass.never_accepts`, `decode_bypass.no_judge_call`, `decode_bypass.issues_in_errors`.
 
+### Runtime pinned `judge.runtime_pinned`
+
+Decision. The code lock covers the decode gate and the binding table. A change to either moves a lock fingerprint.
+
+Why. `RUNTIME_FILES` holds `paths.ts`, `shape.ts`, `scorers.ts`, and `checks/define.ts`. The decode gate lives in `src/compiler/index.ts`. A repro changed the gate and kept the same rule-set hash and the same fingerprint, verified (repro `opus/probe2.repro.ts`).
+
+Mechanism. `RUNTIME_FILES` in `scripts/compiler-lock.ts` adds `src/compiler/index.ts` and `src/judge/step.ts`. The new list applies from `RUNTIME_VERSION` 2. The transpile removes types and comments, so only runtime code of these files moves the fingerprint. A change to `decideOutcome` or to the gate then needs a new `RUNTIME_VERSION`, and so a new rule-set hash.
+
+Tests: `stale_pin.runtime_files_cover_gate`, `stale_pin.step_change_moves_fingerprint`.
+
+### No network `judge.no_network`
+
+Decision. Each judge test asserts zero calls of `fetch`. A test with a judge model that is not a mock fails. It never passes as `person`.
+
+Why. A real model id reached `judgeDraft` in a test. The `fetch` stub threw, `verify` gave `cannot_verify`, and the test saw a valid `person` outcome, verified (repro `sonnet/p7.repro.ts`).
+
+Mechanism. The stub in `tests/setup/no-network.ts` counts each call. The same setup file adds an `afterEach` hook. The hook fails the test when the count is above zero, and then sets the count to zero.
+
+A test that calls `fetch` on purpose takes the count with the helper `takeFetchCalls()`. The tests `judge.no_network` and `model_call.fetch_throws` do this. The existing compiler test `judge.no_network` has the same name as this decision, because it guards the same rule.
+
+Tests: `model_call.zero_fetch_each_test`, `model_call.unmocked_model_fails`.
+
+### Evidence parsed `judge.evidence_parsed`
+
+Decision. The judge step parses the run evidence at its boundary, with `RunEvidence`. Bad evidence gives `cannot_verify` before any judge call.
+
+Why. A source that was a number reached `verify`. The model call ran and cost money, and then the quote search threw, verified (repro `sonnet/p4.repro.ts`).
+
+Mechanism:
+
+- `judgeDraft` parses `evidence` with `RunEvidence.safeParse`. Each source must be a string.
+
+- On a parse failure, the code scorers get `{}`, so a check that needs evidence gives `cannot_verify` by the policy of `compile.scorers`. The gate stays shut, and `skippedJudges` gives the judgement rows.
+
+- `verify` of a judge scorer also parses the evidence before the model call. On a failure, it gives `cannot_verify` with no call. So `verify` never throws on evidence, and a trial gets the same guard.
+
+Tests: `bad_evidence.step_skips_judges`, `bad_evidence.verify_no_call`.
+
+### Fail fix `judge.fail_fix`
+
+Decision. A repair error for a judge `fail` carries a fix. The fix is "Change the item so that: " and the rule statement, then the reason of the judge.
+
+Why. A judge reason says what is wrong, but not what to do. `enforce.repair` asks for an error that names the fix.
+
+Mechanism. `RuleScorer.rule` in `src/compiler/index.ts` gets the field `statement`. `judgeDraft` gives `decideOutcome` a map from each rule ref to its statement. For a strict fail row with a judge decider, `decideOutcome` writes the fix from the statement and the row reason. A fail row from code keeps its own fix.
+
+Tests: `bare_fix.judge_fail_names_rule`, `bare_fix.code_fail_unchanged`.
+
 ## Hazards `judge.hazards`
 
-Each hazard has a mechanism and tests that fail when the mechanism breaks. The name of each test starts with the name of its hazard, as in `compile.hazards`. The tests live in `tests/judge/`, one file for each hazard. Each judge test uses `createMockModel`. The setup file `tests/setup/no-network.ts` makes `fetch` throw.
+Each hazard has a mechanism and tests that fail when the mechanism breaks. The name of each test starts with the name of its hazard, as in `compile.hazards`. The tests live in `tests/judge/`, one file for each hazard. Each judge test uses `createMockModel`. The setup file `tests/setup/no-network.ts` makes `fetch` throw, and each test asserts zero calls of `fetch` (`judge.no_network`).
 
 | Hazard | Mechanism | Tests |
 |---|---|---|
 | `missing_row`. A rule in the plan has no row for a draft | `judgeDraft` compares the rule refs of the rows with `plan.manifest.rules`. A difference throws `RowsIncomplete`. A scorer that throws still gives rows. | `missing_row.applied_ids_judged`, `missing_row.applied_ids_skipped`, `missing_row.applied_ids_decode_failed`, `missing_row.scorer_dropped_refused`, `missing_row.verify_throw_keeps_rows` |
 | `watch_leak`. A watch verdict changes the outcome, the errors, or the warnings | `decideOutcome` filters by binding before it reads a verdict. | `watch_leak.fail_changes_nothing`, `watch_leak.cannot_verify_changes_nothing`, `watch_leak.trial_changes_nothing` |
-| `error_pass`. A judge error counts as a pass | Each judge failure gives `cannot_verify`. A failure is a model error, no answer, two answers, or a bad answer. A strict `cannot_verify` gives `person`, never `accept`. | `error_pass.model_error`, `error_pass.no_answer`, `error_pass.two_answers`, `error_pass.bad_answer_shape` |
-| `fake_quote`. A judge passes or fails an item with a quote that no source holds | `judge.quote_verified`: an exact substring test over `evidence.sources` in `verify` | `fake_quote.not_in_source`, `fake_quote.empty`, `fake_quote.from_the_draft`, `fake_quote.case_differs`, `fake_quote.no_sources`, `fake_quote.found_keeps_verdict`, `fake_quote.unknown_needs_none` |
+| `error_pass`. A judge error counts as a pass | Each judge failure gives `cannot_verify`. A failure is a model error, no answer, two answers that disagree, or a bad answer. A strict `cannot_verify` gives `person`, never `accept`. | `error_pass.model_error`, `error_pass.no_answer`, `error_pass.two_answers`, `error_pass.bad_answer_shape` |
+| `fake_quote`. A judge backs a verdict with a junk quote, or a quote that no permitted text holds | `judge.quote_rules` in `verify` | `fake_quote.not_in_source`, `fake_quote.too_short`, `fake_quote.normalized_match`, `fake_quote.pass_from_the_draft`, `fake_quote.fail_from_the_item`, `fake_quote.fail_from_a_source`, `fake_quote.case_differs`, `fake_quote.no_sources`, `fake_quote.unknown_needs_none` |
+| `order_decides`. The order of two answers for one item decides the row | `judge.one_answer` | `order_decides.verdict_differs`, `order_decides.quote_differs`, `order_decides.reversed_same_rows`, `order_decides.copy_counts_once` |
 | `soft_block`. A soft fail blocks the output or enters the repair errors | `decideOutcome` sends `soft` rows to `warnings` only. | `soft_block.fail_accepts_with_warning`, `soft_block.cannot_verify_accepts_with_note`, `soft_block.fail_not_in_errors` |
 | `decode_bypass`. A draft that fails the decode gate reaches a judge or an accept | The gate needs `decoded.ok`. `decideOutcome` reads `decoded.ok` before any row. | `decode_bypass.never_accepts`, `decode_bypass.no_judge_call`, `decode_bypass.issues_in_errors` |
-| `model_call`. A test calls a real model | The `fetch` stub of the setup file. `judgeDraft` gets its model as input. Tests give a mock. | `model_call.fetch_throws`, `model_call.mock_only`, `model_call.one_call_per_rule` |
+| `model_call`. A test calls a real model, or passes after a failed call | The `fetch` stub counts calls. An `afterEach` hook fails a test with a call (`judge.no_network`). | `model_call.fetch_throws`, `model_call.mock_only`, `model_call.one_call_per_rule`, `model_call.zero_fetch_each_test`, `model_call.unmocked_model_fails` |
+| `stale_pin`. A change to the gate or the binding table keeps the old hash | `judge.runtime_pinned` | `stale_pin.runtime_files_cover_gate`, `stale_pin.step_change_moves_fingerprint` |
+| `bad_evidence`. Bad evidence reaches a paid call, or makes `verify` throw | `judge.evidence_parsed` | `bad_evidence.step_skips_judges`, `bad_evidence.verify_no_call` |
+| `bare_fix`. A judge fail reaches the repair with no fix | `judge.fail_fix` | `bare_fix.judge_fail_names_rule`, `bare_fix.code_fail_unchanged` |
 | `decider_lost`. A row hides who decided it | `judge.decider_recorded` | `decider_lost.judge_rows_name_model`, `decider_lost.code_rows_say_code` |
 | `outcome_table`. An outcome breaks the binding table | `decideOutcome` follows `judge.bindings`, first line wins. | `outcome_table.each_binding_each_verdict`, `outcome_table.repair_before_person`, `outcome_table.skipped_judge_rows_repair`, `outcome_table.errors_in_one_round`, `outcome_table.no_duplicate_error` |
 
@@ -337,23 +426,35 @@ The fixture is the library of `tests/compiler/rules.ts`, with `GOOD_OUTPUT` and 
 
 - `error_pass.no_answer`. A mock answer for another target gives `cannot_verify`, and the outcome `person`.
 
-- `error_pass.two_answers`. A yes and a no for one target give `cannot_verify`.
+- `error_pass.two_answers`. A yes and a no for one target give `cannot_verify`, and the outcome `person`.
 
 - `error_pass.bad_answer_shape`. A mock answer that `JudgeAnswer` refuses gives `cannot_verify`.
 
-- `fake_quote.not_in_source`. A yes with the quote `600 mg` gives `cannot_verify`. The reason starts with "Quote not found in source."
+- `fake_quote.not_in_source`. A yes with the quote `600 mg` gives `cannot_verify`. The reason starts with "Quote not found in source".
 
-- `fake_quote.empty`. A yes with an empty or a blank quote gives `cannot_verify`.
+- `fake_quote.too_short`. Take a yes or a no with one of these quotes: ".", "a", a zero-width space, or an empty quote. Each gives `cannot_verify` with "Quote too short."
 
-- `fake_quote.from_the_draft`. A yes that quotes the draft item, not a source, gives `cannot_verify`.
+- `fake_quote.normalized_match`. A source with a no-break space and a zero-width space inside "500 mg" matches the quote `500 mg`. A full-width "５００ mg" quote matches too.
+
+- `fake_quote.pass_from_the_draft`. A yes that quotes only the draft item gives `cannot_verify`.
+
+- `fake_quote.fail_from_the_item`. A no that quotes the key of the judged item gives `fail`, with `evidence.source` set to `item`. The outcome is `repair`, not `person`.
+
+- `fake_quote.fail_from_a_source`. A no with the quote `500 mg` gives `fail`, with `evidence.source` set to `sources.label`.
 
 - `fake_quote.case_differs`. A yes with the quote `500 MG` gives `cannot_verify`.
 
-- `fake_quote.no_sources`. A yes with the quote `500 mg` and evidence with no `sources` gives `cannot_verify`.
-
-- `fake_quote.found_keeps_verdict`. A yes and a no with the quote `500 mg` give `pass` and `fail`. Each row has the evidence `{ quote: '500 mg', source: 'sources.label' }`.
+- `fake_quote.no_sources`. With no `sources`, a yes with the quote `500 mg` gives `cannot_verify`. A no that quotes the item still gives `fail`.
 
 - `fake_quote.unknown_needs_none`. An unknown with an empty quote gives `cannot_verify`, and its reason does not say "Quote not found in source."
+
+- `order_decides.verdict_differs`. A yes and a no for one target give `cannot_verify`.
+
+- `order_decides.quote_differs`. Two yes answers with two valid quotes give `cannot_verify`.
+
+- `order_decides.reversed_same_rows`. Each set of answers, in order and in reverse order, gives the same rows.
+
+- `order_decides.copy_counts_once`. Two equal answers give the verdict of one answer.
 
 - `soft_block.fail_accepts_with_warning`. A soft judgement rule that fails, with each strict row `pass`, gives `accept` and one `warning`.
 
@@ -370,6 +471,22 @@ The fixture is the library of `tests/compiler/rules.ts`, with `GOOD_OUTPUT` and 
 - `model_call.fetch_throws`. With no mock, a call of `fetch` throws "A test called fetch".
 
 - `model_call.mock_only`. A full `judgeDraft` run with the mock model ends with no call of `fetch`.
+
+- `model_call.zero_fetch_each_test`. Each test of `tests/judge/` ends with a count of zero calls of `fetch`. The `afterEach` hook asserts it.
+
+- `model_call.unmocked_model_fails`. A `judgeDraft` run with the model id `openai/gpt-4o-mini` and no mock leaves one call in the count. The guard of the hook then throws.
+
+- `stale_pin.runtime_files_cover_gate`. `RUNTIME_FILES` holds `src/compiler/index.ts` and `src/judge/step.ts`.
+
+- `stale_pin.step_change_moves_fingerprint`. Make two copies of the repo. Change one line of `decideOutcome` in the first, and one line of the decode gate in the second. Each copy gives a new runtime fingerprint. The function `lockProblems` reports each change under the unchanged `RUNTIME_VERSION`.
+
+- `bad_evidence.step_skips_judges`. Evidence with the source `label: 500` gives skipped judge rows with "The run evidence is not valid". The spy of the mock model counts zero calls.
+
+- `bad_evidence.verify_no_call`. A direct call of `verify` with the same evidence gives `cannot_verify`, does not throw, and makes no model call.
+
+- `bare_fix.judge_fail_names_rule`. A strict judge fail gives an error whose fix starts with "Change the item so that: " and the statement that `criteria.attribute_is_product` holds. The fix ends with the judge reason.
+
+- `bare_fix.code_fail_unchanged`. A strict code fail gives an error whose fix equals the reason of its row.
 
 - `model_call.one_call_per_rule`. A draft with three items under one judgement rule makes one call of the mock model. A plan with two judgement rules makes two calls.
 
@@ -403,15 +520,19 @@ The plan names two checks for `plan.judge_step` ([the plan](../plans/2026-10-24-
 | `src/judge/step.ts` | new | `judgeDraft`, `decideOutcome`, `RowsIncomplete`, `JudgeOutcome`, `RepairError`, `Warning`, the order, and the row-total check |
 | `src/judge/mastra.ts` | new | `judgeStep`, `JudgeStepInput`, `JudgeStepOutput`, `toStepOutput` |
 | `src/judge/index.ts` | new | The public surface of the judge step |
-| `src/compiler/scorers.ts` | changed | The new answer-format line in `judgePrompt`. The quote check in `verify`. The evidence that a judged row keeps. The value 2 of `RUNTIME_VERSION`. |
+| `src/compiler/scorers.ts` | changed | The new answer-format line in `judgePrompt`. The quote rules and the one-answer rule in `verify`. The evidence parse in `verify`. The evidence that a judged row keeps. The value 2 of `RUNTIME_VERSION`. |
+| `src/compiler/index.ts` | changed | The field `statement` of `RuleScorer.rule` |
+| `scripts/compiler-lock.ts` | changed | `RUNTIME_FILES` adds `src/compiler/index.ts` and `src/judge/step.ts` |
+| `tests/setup/no-network.ts` | changed | The call count, the `afterEach` hook, and `takeFetchCalls()` |
+| `tests/compiler/boundary.test.ts` | changed | The list of files that import `src/compiler/index.ts` adds `src/judge/step.ts` |
 | `src/compiler/code.lock.json` | changed | The runtime entry `"2"`, from `npm run compiler:lock` |
 | `tests/compiler/judge.test.ts` | changed | The mock answers quote `500 mg` from `GOOD_EVIDENCE`. The reason assertion follows. |
 | `tests/compiler/hash.test.ts` | changed | The new literal of `FIXTURE_HASH` |
 | `tests/judge/` | new | One test file for each hazard of `judge.hazards` |
 
-`src/judge/` imports `src/compiler/index.ts` only. The test `boundary.internals_unreachable` reads `src/`, so it covers the new files.
+In `src/judge/`, only `step.ts` imports `src/compiler/index.ts`. The file `mastra.ts` imports its compiler types through `./step`. The test `boundary.internals_unreachable` reads `src/`, so it covers the new files. It also pins the list of files that import the compiler, so that list gets `src/judge/step.ts`.
 
-The docs PR of the build changes `compile.reconciliation.changes` for the judge row evidence, and the board.
+The docs PR of the build changes `compile.reconciliation.changes` for the judge row evidence, `compile.hash` for `RUNTIME_FILES`, and the board.
 
 ## Mastra parts that do not fit `judge.not_used`
 
@@ -434,13 +555,15 @@ Known limits that stay as risks:
 
 - The store still accepts an output with no pass verdict (the formal finding `verdicts.accept_without_pass`). The judge step and `plan.stage_workflow` hold the rule. The store does not.
 
-- A judgement rule whose run has no source text gives `cannot_verify` for each item. When the rule is strict, each such run goes to a person. The stage must give the sources that a judge needs (`enforce.risks`, context gaps).
+- A judgement rule whose run has no source text gives `cannot_verify` for each `pass`. When the rule is strict, such a run goes to a person. The stage must give the sources that a judge needs (`enforce.risks`, context gaps).
 
-- The quote check proves that the quote is in a source. It does not prove that the quote supports the answer. A short quote, such as one word, passes the check.
+- Code cannot check that a quote is relevant. A quote such as "Each", or an echo of a label quote that the draft copied, can pass. The quote rules prove only that the quote is in a permitted text.
 
-- The quote check is exact and case-sensitive. A judge that changes the white space or the letter case of a quote gives `cannot_verify`. This errs to the safe side, because `cannot_verify` is never a pass.
+- A `fail` can quote the judged item. So a judge can always back a `fail` with a quote. A `fail` gives a repair, never an accept.
 
-- When two sources hold the quote, `evidence.source` names the first in name order.
+- The quote check is case-sensitive after the normalize step of `judge.quote_rules`. A judge that changes the letter case or a word of a quote gives `cannot_verify`. This errs to the safe side, because `cannot_verify` is never a pass.
+
+- When two sources hold the quote, `evidence.source` names the first in name order. For a `fail`, the item comes before the sources.
 
 - A judged `pass` or `fail` row keeps the source quote, not the observed value of the item. The target path finds the item in the reply. `plan.stage_workflow` keeps each reply (`enforce.repair`).
 
@@ -454,4 +577,4 @@ Known limits that stay as risks:
 
 - The brief said that a strict `cannot_verify` gives `person`. With a strict judgement rule, that reading sends each strict code fail to a person. The cause is the skipped judge row, which is `cannot_verify`. This spec puts `repair` first (`judge.outcome_precedence`).
 
-- `compile.reconciliation.changes` says that a judge row keeps the observed value of the item. `judge.quote_verified` changes that for a judged `pass` or `fail` row.
+- `compile.reconciliation.changes` says that a judge row keeps the observed value of the item. `judge.quote_rules` changes that for a judged `pass` or `fail` row.
