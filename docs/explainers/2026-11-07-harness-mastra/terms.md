@@ -10,10 +10,9 @@ Each technical term that the voice says. `known` terms come from the agreed "ass
 | workflow | teach | mastra_step_workflow | workflow, workflows |
 | suspend | teach | mastra_suspend_resume | suspend, suspends, suspended |
 | resume | teach | mastra_suspend_resume | resume, resumes |
-| warn mode | teach | mastra_agent_output | warn mode, warn |
 | Mastra scorer | teach | mastra_scorer | scorer, scorers |
-| criterion | teach | tree_nodes | criterion, criteria |
-| attribute | teach | tree_nodes | attribute, attributes |
+| criterion | teach | tree_stages | criterion, criteria |
+| attribute | teach | tree_stage_cycle | attribute, attributes |
 | stage | teach | tree_stages | stage, stages |
 | graph store | teach | tree_stage_cycle | graph store |
 | rule record | teach | rules_record | rule record, rule records |
@@ -24,13 +23,11 @@ Each technical term that the voice says. `known` terms come from the agreed "ass
 | inheritance | teach | rules_inheritance | inheritance, inherit, inherits, inherited |
 | binding | teach | rules_binding | binding, bindings, strict, soft, watch |
 | hash | teach | rules_hash | hash, hashes |
-| lock file | teach | rules_lock_file | lock file, lock files |
 | compiler | teach | compiler_what | compiler, compile, compiles, compiled |
 | decode gate | teach | run_decode_gate | decode gate |
 | judge step | teach | run_judge_step | judge step |
 | repair loop | teach | run_repair_loop | repair loop, repair round |
 | three-way verdict | teach | verdict_three_way | three-way verdict, cannot verify |
-| trial | teach | change_trial | trial, trials |
 | LLM agent | known | | agent, agents |
 | structured output | known | | structured output |
 | LLM judge | known | | judge, judges |
@@ -50,9 +47,7 @@ Each technical term that the voice says. `known` terms come from the agreed "ass
 | prompt | known | | prompt |
 | mock model | known | | mock model |
 | migration | known | | migration |
-| connection pool | known | | connection pool |
 | enum | known | | enum |
 | await | known | | await |
 | unit test | known | | unit test |
 | CSS, ESLint | known | | CSS, ESLint |
-| transaction | known | | transaction |

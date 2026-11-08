@@ -158,3 +158,139 @@ Facts that the voice leaves out, by scene (`rules.keep_test`). Skim this before 
 - Zod gives "Invalid input" for a bad union member, so the loader writes its own messages (`docs/design/compiler.md:980`).
 - An edit to a template file that changes no behavior still needs a version raise (`docs/design/compiler.md:998`).
 - A provider can reject some schema limits in structured output; the code scorers check them again (`docs/design/compiler.md:978`).
+
+## Round 3: whole scenes cut (Rohan's shorter cut, 2026-11-08)
+
+Each scene below left the video whole. Its narration, as it stood at `357f999`, follows. Its sources stay in `sources.md` of that commit.
+
+### `mastra_agent_output`
+
+> Who writes the draft? An agent writes it, with structured output. The design gives the output schema to the agent, and the agent fills only those fields.
+>
+> What happens when the reply breaks the schema? By default, Mastra throws, and the code loses the draft. A reply costs money, so the design never throws a reply away. It sets a mode that Mastra calls warn. In warn mode, Mastra keeps the raw reply and gives no error. The harness then checks the reply itself.
+>
+> The agents run on the Claude command line tool, through Mastra. The harness tools reach them through one MCP server.
+>
+> A design spec of this repo records a test of warn mode with a mock model. The agents and the tool server are a design.
+
+### `mastra_storage`
+
+> Where does the state live? In this repo, Mastra storage runs on Postgres, in its own part of the database, named mastra. The harness stops Mastra from making tables at run time. The Mastra tables come from a migration that a person reviews.
+>
+> The tables of the harness sit beside them, in a part named harness, on the same connection pool. Each write to these tables adds a row. The harness role cannot update or delete a row. For five of the six tables, a trigger also refuses each update and each delete, for every role.
+>
+> Mastra can also keep a golden set and run each scorer over it, with a gate that must pass. The design uses this in CI, for the golden examples of each rule. That part is a design. Today, a repo command runs the golden examples of each rule that code can decide. It uses the real scorers, and no model.
+
+### `tree_nodes`
+
+> Back to the outline. This part covers the tree that the rules live in. The harness keeps one node for each node of the category tree. Each level of the tree makes its own things.
+>
+> Two words first. A criterion is one aspect of a product that a grade looks at, such as ingredient safety. An attribute is one measurable property of a product, such as the amount of zinc oxide on the label. Its value is a number with a unit, a word, a list of words, or a flag.
+>
+> A domain node, such as skincare, makes the criteria. Only a domain node makes criteria. So each product of one domain gets the same criteria, and two products stay comparable.
+>
+> An inner node, such as sunscreen, receives the criteria of its parent. It says how relevant each criterion is at this node, and what it means here. It also makes the attributes that measure each criterion.
+>
+> A leaf node gets the grading rules and the display rules, because only a leaf has products to grade.
+
+### `rules_lock_file`
+
+> How does one version number always mean the same words? A lock file holds the answer. The rules lock file maps each rule id and version to its hash.
+>
+> Think of a ledger signed in ink. You can add lines. You cannot change the words of an old line.
+>
+> Here is a real result. Change the words of units label unit, and keep version one. The loader refuses it with the message, the words changed under version one. The message tells you to raise the version and lock again.
+>
+> This lock file is not like a package lock file, which a tool can write again. It only grows. CI compares it with the lock file of the base branch. CI refuses a lost line or a changed line.
+>
+> The lock file, the loader check, and the CI check exist in code.
+
+### `run_zoom`
+
+> Back to the outline. This part zooms into one stage run. It goes from the draft to the judge, then to a repair or a person.
+>
+> The draft goes through a gate first. Then the code scorers run. Then the judges run, but only on a clean draft. Each scorer writes rows. Then the bindings decide where the draft goes.
+>
+> The worked example has three drafts at sunscreen. The label text says, zinc oxide two hundred milligrams in each gram. Free gift sachet five hundred milligrams with each order.
+>
+> The scorer rows on the screen are real. The judge answers come from a mock model, so they are illustrative. The loop itself is a design.
+
+### `change_new_version`
+
+> Back to the outline. This part covers how a rule changes. A rule never changes in place. It gets a new version.
+>
+> Here is the real run. Units label unit gets new words and version two, which replaces version one. The lock file gains a line, and the line for version one stays. The loader reports no problem. The rule-set hash at sunscreen changes.
+>
+> New outputs use the new version. Old outputs keep the versions that they passed. A reader of an old output applies those versions.
+>
+> A rule file never leaves the repo. To stop a rule, set its status to retired.
+
+### `change_trial`
+
+> How do you test a new version before it binds? You run a trial. A trial compiles one candidate version as watch, next to the live rules.
+>
+> The candidate gets a scorer only. It gets no part of the schema and no line in the prompt. So it does not change the drafts that it measures. Its hash differs from the live hash, so nobody can mix the two.
+>
+> The trial runs on the golden examples and on recent outputs. Its report shows where the verdicts change. A trial calls models, so it is a paid run, and it needs a yes.
+>
+> A shape rule cannot run as a trial, because a shape rule is always strict. The trial input of the compiler exists in code. The trial run and its report are a design.
+
+### `change_promotion`
+
+> Who makes the new version live after a good trial? Rohan does. He promotes it to its real binding through a PR that changes the rule file. The version becomes active when the PR merges.
+>
+> The improvement loop of the design can draft rule changes by itself. Its editors may add a watch rule, or change a statement, a reason, or the examples. Only Rohan deletes a rule, or changes its binding, its scope, its judge question, its check, or an output shape.
+>
+> So the loop cannot make its outputs pass through a weaker rule. That loop is a design, and no code exists for it.
+
+### `limits_compiler`
+
+> What are the known limits of the compiler? The CI check runs with no tree, so it cannot test a child rule that widens its parent. Only a compile at run time refuses it.
+>
+> A child judgement rule has no parameters, so the compiler cannot compare it with its parent. Rohan's review of the PR is the guard.
+>
+> A text shape with a list of values cannot also limit the length. A list shape cannot require unique items, so the unique by check does that. The shape language has no optional field yet.
+>
+> A spelled-out number, such as five hundred, passes the number check of the loader. Each upgrade of Zod or Mastra changes each rule-set hash. Types limit what a check returns, not what it does inside.
+
+### `limits_open`
+
+> What is still open in the design? Most of it waits for the judge step and the stage workflow.
+>
+> The design does not say yet how a stage proposes a new node. For now, an operator names each node. The object storage for large research files is open. It is also open whether Mastra writes can join a harness database transaction.
+>
+> Claude made each compiler decision for Rohan. Rohan reviews them in the decisions trail. That trail outranks the specs.
+
+## Round 3: text removed from shortened scenes
+
+These scenes kept one idea at about half their words. The full text before the cut follows.
+
+### `rules_hash`
+
+> How does the harness know that a rule changed? It computes a hash of the rule. A hash is a fingerprint of some content. The same content always gives the same hash. One changed word gives a different hash.
+>
+> Git names each version of a file in the same way. The name comes from the content.
+>
+> The harness first writes the rule as JSON with sorted keys. So the order of keys and the spacing do not matter. Then it takes the hash.
+>
+> The hash covers the statement, the reason, the kind, the scope, the binding, and the owner. It also covers the shape, the check, the judge question, and the golden examples. It leaves out the id, the version, the status, the provenance, and the version that the rule replaces.
+>
+> In the worked example, each rule shows its own hash on the screen. Two people can write the same rule with keys in another order, and they get the same hash. The rule hash exists in code.
+
+### `verdict_policy`
+
+> Who decides each verdict? One policy in code decides, and no check can go around it.
+>
+> An absent field gives fail for its shape rule, and cannot verify for its other rules. An empty list gives pass, with the empty list as the evidence. Missing evidence gives cannot verify. A check that throws gives cannot verify.
+>
+> For a judge, yes gives pass, no gives fail, and unknown gives cannot verify. A judge error, or no answer for an item, also gives cannot verify.
+>
+> Why not use the Mastra skip result? It means that the rule does not apply, and Mastra gates drop it. So the harness keeps its own rows. This policy exists in code.
+
+### `verdict_rows`
+
+> What does one row hold? It holds the rule id, the version, the hash, and the binding. It holds the item, the verdict, and the decider, which is code or a judge model. It also holds a reason and the evidence.
+>
+> The rows answer two questions. Why did the graph store accept this output? Which outputs passed an old version of a rule?
+>
+> The table for these rows exists in code, and it only grows.

@@ -10,10 +10,9 @@ Each term that the video teaches, with the scene that teaches it. The repo gloss
 | Workflow | A Mastra chain of steps in an order that code fixes. The model never picks the next step. | `mastra_step_workflow` |
 | Suspend | A step saves the run to storage, stops, and asks for input. | `mastra_suspend_resume` |
 | Resume | Any process continues a suspended run with the answer. The suspended step runs again from its top. | `mastra_suspend_resume` |
-| Warn mode | The Mastra `errorStrategy: 'warn'` of structured output. Mastra keeps the raw reply that breaks the schema, and gives no error. | `mastra_agent_output` |
 | Mastra scorer | A pipeline of up to four boxes (`preprocess`, `analyze`, `generateScore`, `generateReason`) that gives a number for one output. A function box costs nothing. A prompt box calls a judge model. | `mastra_scorer` |
-| Criterion | One aspect of a product that a grade looks at, such as ingredient safety. Only a domain node makes criteria. | `tree_nodes` |
-| Attribute | One measurable property of a product. Its value is a number with a unit, a word, a list of words, or a flag. | `tree_nodes` |
+| Criterion | One aspect of a product that a grade looks at, such as ingredient safety. Only a domain node makes criteria. | `tree_stages` |
+| Attribute | One measurable property of a product. Its value is a number with a unit, a word, a list of words, or a flag. | `tree_stage_cycle` |
 | Stage | One kind of work at one node: `define_criteria`, `create_node`, `create_pack`, or `create_layout`. Each stage runs the same cycle. | `tree_stages` |
 | Graph store | The harness tables in the schema `harness` of Postgres. Rows only grow. | `tree_stage_cycle` |
 | Drafter | The agent that writes the output of a stage, with structured output. | `tree_on_mastra` |
@@ -27,11 +26,9 @@ Each term that the video teaches, with the scene that teaches it. The repo gloss
 | Inheritance | A rule applies at the nodes below its owner. A child cannot loosen an inherited rule. It can only add or tighten. | `rules_inheritance` |
 | Binding | What a failed rule does: `strict` (repair, or a person), `soft` (keep, with a warning), or `watch` (log only). | `rules_binding` |
 | Hash | A fingerprint of content. The rule hash is the sha256 of the rule as JSON with sorted keys. | `rules_hash` |
-| Lock file | `rules/rules.lock.json`. It maps each rule id and version to its hash, and it only grows. | `rules_lock_file` |
 | Compiler | `compileStage`: the code that turns the rules for one stage run into an output schema, an instruction text, one scorer for each rule, and a rule-set hash. | `compiler_what` |
 | Rule-set hash | The hash of everything that one compile made. Stage runs and outputs keep it. | `compiler_rule_set_hash` |
 | Decode gate | `plan.decode`: it parses the reply as JSON and tests it against the whole output schema. A draft that fails it never reaches the judges or the graph store. | `run_decode_gate` |
 | Judge step | The part of a stage that runs each rule check on a draft: code scorers first, judges only on a clean draft. Not built yet. | `run_judge_step` |
 | Repair loop | The rounds in which a stage sends the exact errors back to the model. The budget is three rounds. Not built yet. | `run_repair_loop` |
 | Three-way verdict | Each check gives pass, fail, or cannot verify. Cannot verify means no evidence either way, and it is never a pass or a fail. | `verdict_three_way` |
-| Trial | A compile of one candidate rule version as watch, with a scorer only. Its hash differs from the live hash. | `change_trial` |

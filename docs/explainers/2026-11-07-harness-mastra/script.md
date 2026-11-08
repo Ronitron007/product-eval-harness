@@ -4,7 +4,7 @@ Scene list of the video. Each scene has a snake_case name, a target length, the 
 
 Labels in the visuals: BUILT means code on `main` at `cacc262`. DESIGN means a design doc only. ILLUSTRATIVE means output of a mock model. OPEN means not decided or not checked.
 
-Totals: 47 scenes, 6294 words, about 45 minutes.
+Totals: 37 scenes, 5055 words, about 36 minutes.
 
 ## Part `part.goal`: the goal and the outline
 
@@ -51,7 +51,7 @@ Visuals:
 
 ### `goal_outline`
 
-Target length: about 69 s (162 words).
+Target length: about 75 s (175 words).
 
 Narration:
 
@@ -63,13 +63,16 @@ Narration:
 >
 > Then the draft goes one of three ways. It goes back to the model with the errors. Or a person decides. Or the harness accepts it and stores it with its results.
 >
-> At the bottom, a rule changes only through a new version and Rohan's yes. Most of this path is a design today. The last part of the video shows which boxes exist in code.
+> A rule changes only through a new version and Rohan's yes. This video does not walk that path.
+>
+> Seven parts follow, and the screen names each part. Most of this path is a design today. The last part of the video shows which boxes exist in code.
 
 Visuals:
 
 - THE OUTLINE (`OutlineDiagram` anchor), left to right:
   `rules/ (YAML in git)` -> `compiler` -> {`instructions`, `schema`, `scorers`, `rule-set hash`} -> `drafter (agent)` -> `decode gate` -> `code scorers` -> `judges` -> `verdict rows` -> `bindings` -> three exits: `repair` (arrow back to drafter), `person`, `accept -> graph store`.
-  Bottom lane: `rule change: new version, trial, Rohan's yes` -> back to `rules/`.
+  Bottom lane, greyed: `rule change: new version, trial, Rohan's yes` -> back to `rules/`, tagged "outside this video".
+- Part list on screen (voice says only "seven parts follow"): the parts of Mastra; the category tree and its stages; rules written as data; the compiler; one stage run; the three-way verdict and the bindings; what is built today.
 - Box names appear on screen only. Voice uses plain words here.
 - Colour key in the corner: green = code today, grey = design only. Colours stay hidden until `built_status`.
 
@@ -125,27 +128,6 @@ Visuals:
 - Trap beat: the step body highlighted from its first line, "runs again from the top".
 - Chips: storage BUILT, person step DESIGN.
 
-### `mastra_agent_output`
-
-Target length: about 55 s (129 words).
-
-Narration:
-
-> Who writes the draft? An agent writes it, with structured output. The design gives the output schema to the agent, and the agent fills only those fields.
->
-> What happens when the reply breaks the schema? By default, Mastra throws, and the code loses the draft. A reply costs money, so the design never throws a reply away. It sets a mode that Mastra calls warn. In warn mode, Mastra keeps the raw reply and gives no error. The harness then checks the reply itself.
->
-> The agents run on the Claude command line tool, through Mastra. The harness tools reach them through one MCP server.
->
-> A design spec of this repo records a test of warn mode with a mock model. The agents and the tool server are a design.
-
-Visuals:
-
-- Agent box `drafter` with `structuredOutput: { schema }`.
-- A reply that breaks the schema: default `errorStrategy: 'strict'` -> throw, draft gone (bin icon). `errorStrategy: 'warn'` -> raw reply kept, no error.
-- Small row: Claude CLI via `ClaudeSDKAgent`, harness tools via one MCP server (`@mastra/mcp` 1.18.0).
-- Chips: warn-mode test recorded in docs/design/compiler.md (verified with createMockModel); agents and tool server DESIGN.
-
 ### `mastra_scorer`
 
 Target length: about 68 s (158 words).
@@ -168,25 +150,6 @@ Visuals:
 - `generateScore` is the only required box.
 - Real code card (src/compiler/scorers.ts): `createScorer({ id: 'quotes.from_label@1' }).preprocess(...).analyze(...).generateScore(... every pass ? 1 : 0)`.
 - Chip: BUILT (the compiler makes one scorer per rule).
-
-### `mastra_storage`
-
-Target length: about 67 s (156 words).
-
-Narration:
-
-> Where does the state live? In this repo, Mastra storage runs on Postgres, in its own part of the database, named mastra. The harness stops Mastra from making tables at run time. The Mastra tables come from a migration that a person reviews.
->
-> The tables of the harness sit beside them, in a part named harness, on the same connection pool. Each write to these tables adds a row. The harness role cannot update or delete a row. For five of the six tables, a trigger also refuses each update and each delete, for every role.
->
-> Mastra can also keep a golden set and run each scorer over it, with a gate that must pass. The design uses this in CI, for the golden examples of each rule. That part is a design. Today, a repo command runs the golden examples of each rule that code can decide. It uses the real scorers, and no model.
-
-Visuals:
-
-- One Postgres cylinder split into two parts: `mastra` (workflow runs) and `harness` (our tables), one connection pool feeding both.
-- `disableInit: true` stamp on the mastra part; "tables come from a reviewed migration".
-- The harness part: an "append-only" padlock; UPDATE and DELETE arrows bounce off.
-- Side panel: Mastra datasets + `runEvals` gate (DESIGN, `plan.golden_sync`) vs `npm run rules:check` golden gate today (BUILT).
 
 ### `mastra_gaps`
 
@@ -211,58 +174,42 @@ Visuals:
 
 ## Part `part.tree`: the category tree and its stages
 
-### `tree_nodes`
-
-Target length: about 75 s (176 words).
-
-Narration:
-
-> Back to the outline. This part covers the tree that the rules live in. The harness keeps one node for each node of the category tree. Each level of the tree makes its own things.
->
-> Two words first. A criterion is one aspect of a product that a grade looks at, such as ingredient safety. An attribute is one measurable property of a product, such as the amount of zinc oxide on the label. Its value is a number with a unit, a word, a list of words, or a flag.
->
-> A domain node, such as skincare, makes the criteria. Only a domain node makes criteria. So each product of one domain gets the same criteria, and two products stay comparable.
->
-> An inner node, such as sunscreen, receives the criteria of its parent. It says how relevant each criterion is at this node, and what it means here. It also makes the attributes that measure each criterion.
->
-> A leaf node gets the grading rules and the display rules, because only a leaf has products to grade.
-
-Visuals:
-
-- Outline, the node and stage area highlighted.
-- Category tree: `skincare` (domain) -> `sunscreen`, `moisturizer` (inner) -> `mineral sunscreen` (leaf).
-- Beside each level what it makes: domain = criteria; inner = relevance, meaning, attributes; leaf = grading rules and display rules (on screen: pack, layout).
-- Definition cards: "criterion: one aspect a grade looks at (ingredient safety)", "attribute: one measurable property (zinc oxide amount on the label)". Attribute value types: number+unit, word, list of words, flag.
-
 ### `tree_stages`
 
-Target length: about 52 s (122 words).
+Target length: about 82 s (192 words).
 
 Narration:
 
-> Who makes these things? A stage does. A stage is one kind of work at one node.
+> Back to the outline. This part covers the category tree and its stages. The harness keeps one node for each node of the category tree.
+>
+> Who makes the content of a node? A stage does. A stage is one kind of work at one node.
 >
 > Think of one station on a production line. Each station runs the same cycle. Only the product changes.
 >
-> The design has four stages. Define criteria runs at a domain node. Create node runs at an inner node and at a leaf node. At a leaf, two more stages write the grading rules and the display rules.
+> The design has four stages. Define criteria runs at a domain node. A criterion is one aspect of a product that a grade looks at, such as ingredient safety. Only a domain node makes criteria, so each product of one domain gets the same criteria.
+>
+> Create node runs at an inner node and at a leaf node. It says what each criterion means at that node. At a leaf, two more stages write the grading rules and the display rules.
 >
 > The code already holds this table of stages and levels. It also lists evaluate product at a leaf. That entry is the product evaluation, which the design keeps outside the stages. It refuses a stage at a level where that stage never runs. The stages themselves are a design.
 
 Visuals:
 
+- Outline, the node and stage area highlighted.
+- Category tree: `skincare` (domain) -> `sunscreen`, `moisturizer` (inner) -> `mineral sunscreen` (leaf).
+- Definition card: "criterion: one aspect a grade looks at (ingredient safety)". Only the domain node makes criteria.
 - A production line with four stations: `define_criteria` (domain), `create_node` (inner, leaf), `create_pack` (leaf), `create_layout` (leaf).
 - Real code card (src/rules/schema.ts): `STAGE_LEVELS = { define_criteria: ['domain'], create_node: ['inner','leaf'], create_pack: ['leaf'], create_layout: ['leaf'], evaluate_product: ['leaf'] /* inferred */ }`, with the `evaluate_product` line greyed: "the product evaluation, outside the stages".
 - Chips: table BUILT, stages DESIGN.
 
 ### `tree_stage_cycle`
 
-Target length: about 63 s (148 words).
+Target length: about 77 s (180 words).
 
 Narration:
 
 > What happens inside one stage run? Each stage runs the same cycle at one node.
 >
-> Context reads the path to the root, the rules for this node, past research, and the sibling nodes. Research searches the web and past work. Draft makes one output in the shape that the rules give. Judge checks each rule.
+> Context reads the path to the root, the criteria and rules of this node, past research, and the sibling nodes. Research searches the web and past work. Draft makes one output in the shape that the rules give. In the worked example, the output is a list of attributes. An attribute is one measurable property of a product, such as the amount of zinc oxide on the label. Judge checks each rule.
 >
 > If a rule fails, the model gets the exact errors and tries again, a fixed number of times. When the rules pass, the harness accepts the output. When the tries run out, a person decides.
 >
@@ -273,6 +220,7 @@ Narration:
 Visuals:
 
 - Six boxes: `context` -> `research` -> `draft` -> judge diamond -> `repair` (back arrow to draft, counter 1/3, 2/3, 3/3) / `person` / `assimilate`.
+- Definition card under `draft`: "attribute: one measurable property (zinc oxide amount on the label)"; value types number+unit, word, list of words, flag.
 - `assimilate` writes into a cylinder `graph store`: `nodes`, `stage_runs`, `outputs`, `verdicts`, `records`, `derived_rules` (real table names, src/store/schema.ts).
 - Chips: graph store BUILT, cycle DESIGN.
 
@@ -415,48 +363,19 @@ Visuals:
 
 ### `rules_hash`
 
-Target length: about 72 s (168 words).
+Target length: about 39 s (91 words).
 
 Narration:
 
-> How does the harness know that a rule changed? It computes a hash of the rule. A hash is a fingerprint of some content. The same content always gives the same hash. One changed word gives a different hash.
+> How does the harness know that a rule changed? It computes a hash of the rule. A hash is a fingerprint of some content. The same content always gives the same hash, and one changed word gives a different hash.
 >
-> Git names each version of a file in the same way. The name comes from the content.
->
-> The harness first writes the rule as JSON with sorted keys. So the order of keys and the spacing do not matter. Then it takes the hash.
->
-> The hash covers the statement, the reason, the kind, the scope, the binding, and the owner. It also covers the shape, the check, the judge question, and the golden examples. It leaves out the id, the version, the status, the provenance, and the version that the rule replaces.
->
-> In the worked example, each rule shows its own hash on the screen. Two people can write the same rule with keys in another order, and they get the same hash. The rule hash exists in code.
+> The harness first writes the rule as JSON with sorted keys, so the order of keys does not matter. The hash covers what the rule asks, how a check tests it, and where it applies. It leaves out the id, the version, and the status. The rule hash exists in code.
 
 Visuals:
 
 - Funnel: rule record -> "JSON with sorted keys (RFC 8785)" -> sha256 -> stamp on the card.
-- Covered fields lit: statement, reason, kind, scope, binding, owner, shape, check, judge, examples. Dimmed: id, version, status, provenance, supersedes (src/rules/hash.ts).
+- Covered fields lit, grouped as "what it asks" (statement, reason, kind, judge), "how it is checked" (shape, check, binding, examples), "where it applies" (scope, owner). Dimmed: id, version, status, provenance, supersedes (src/rules/hash.ts).
 - Real hash of `units.label_unit@1`: `68be9c64...a2a74cae` (worked-example output).
-
-### `rules_lock_file`
-
-Target length: about 60 s (141 words).
-
-Narration:
-
-> How does one version number always mean the same words? A lock file holds the answer. The rules lock file maps each rule id and version to its hash.
->
-> Think of a ledger signed in ink. You can add lines. You cannot change the words of an old line.
->
-> Here is a real result. Change the words of units label unit, and keep version one. The loader refuses it with the message, the words changed under version one. The message tells you to raise the version and lock again.
->
-> This lock file is not like a package lock file, which a tool can write again. It only grows. CI compares it with the lock file of the base branch. CI refuses a lost line or a changed line.
->
-> The lock file, the loader check, and the CI check exist in code.
-
-Visuals:
-
-- Ledger table `rules.lock.json`: rule id | version | hash; rows only added at the bottom.
-- Real refusal (worked-example output): `skincare/units.label_unit.yaml version: The words changed under version 1. Raise the version, set supersedes to 1, and run npm run rules:lock.`
-- CI strip (.github/workflows/ci.yml): `npm run rules:check -- --base <base lock>`.
-- Contrast chip: package-lock.json is regenerated; this lock only grows.
 
 ## Part `part.compiler`: the compiler
 
@@ -505,11 +424,11 @@ Visuals:
 
 ### `compiler_admit_scope`
 
-Target length: about 50 s (116 words).
+Target length: about 50 s (117 words).
 
 Narration:
 
-> What does the compiler do first? It admits the rules. It refuses a rule set with any loader problem, or a rule that the lock file does not hold.
+> What does the compiler do first? It admits the rules. It refuses a rule set with any loader problem, such as a rule with new words under an old version.
 >
 > Then it applies the scope of each rule at one node and one stage. It writes one line for each rule version. The line says applied, or left out with a reason.
 >
@@ -623,35 +542,17 @@ Visuals:
 
 ## Part `part.run`: one stage run
 
-### `run_zoom`
-
-Target length: about 49 s (115 words).
-
-Narration:
-
-> Back to the outline. This part zooms into one stage run. It goes from the draft to the judge, then to a repair or a person.
->
-> The draft goes through a gate first. Then the code scorers run. Then the judges run, but only on a clean draft. Each scorer writes rows. Then the bindings decide where the draft goes.
->
-> The worked example has three drafts at sunscreen. The label text says, zinc oxide two hundred milligrams in each gram. Free gift sachet five hundred milligrams with each order.
->
-> The scorer rows on the screen are real. The judge answers come from a mock model, so they are illustrative. The loop itself is a design.
-
-Visuals:
-
-- Outline, zoom into: `draft -> decode gate -> code scorers -> judges -> verdict rows -> bindings -> repair / person / accept`.
-- Label text card: `Zinc oxide 200 mg in each gram. Free gift sachet 500 mg with each order.`
-- Legend: rows REAL, judge answers ILLUSTRATIVE (mock model), loop DESIGN.
-
 ### `run_decode_gate`
 
-Target length: about 68 s (159 words).
+Target length: about 92 s (214 words).
 
 Narration:
 
+> Back to the outline. This part follows one stage run at sunscreen, with three drafts. The label text says, zinc oxide two hundred milligrams in each gram. Free gift sachet five hundred milligrams with each order. The scorer rows are real, and the judge answers come from a mock model.
+>
 > What stops a broken draft at the door? The decode gate does. It parses the reply as JSON, and then it tests the reply against the whole output schema.
 >
-> Why does the harness need it? Each shape scorer checks only its own field. So an extra key gets no fail from any scorer. In warn mode, Mastra gives no error for an extra key either. With no gate, that draft could reach the graph store.
+> Why does the harness need it? Each shape scorer checks only its own field. So an extra key gets no fail from any scorer. The design also sets Mastra to keep a raw reply that breaks the schema, with no error. With no gate, that draft could reach the graph store.
 >
 > Here is draft A. Its unit is micrograms. Its quote is zinc oxide two hundred milligrams, in lower case, with no space before the unit. It also has an extra key, grade.
 >
@@ -661,9 +562,11 @@ Narration:
 
 Visuals:
 
+- Outline, zoom into: `draft -> decode gate -> code scorers -> judges -> verdict rows -> bindings -> repair / person / accept`.
+- Label text card: `Zinc oxide 200 mg in each gram. Free gift sachet 500 mg with each order.` Legend: rows REAL, judge answers ILLUSTRATIVE (mock model), loop DESIGN.
 - Draft A JSON: `{"attributes":[{"key":"zinc_oxide","amount":200,"unit":"mcg","quote":"zinc oxide 200mg","grade":"A"}]}`.
 - Gate result (real): `attributes[0].unit: Invalid input: expected "mg"`, `attributes[0].grade: No rule defines the key grade. Remove it.`
-- Side note: shape scorers see only their own field, so `grade` gets no fail row; warn mode gives no error.
+- Side note: shape scorers see only their own field, so `grade` gets no fail row; `errorStrategy: 'warn'` keeps the raw reply with no error.
 - Chip: BUILT (`plan.decode`).
 
 ### `run_code_rows`
@@ -772,7 +675,7 @@ Visuals:
 
 ### `run_states`
 
-Target length: about 68 s (158 words).
+Target length: about 69 s (162 words).
 
 Narration:
 
@@ -784,13 +687,13 @@ Narration:
 >
 > Mastra keeps its own status for each run. A Mastra run has a status, such as success, failed, or suspended. Mastra has more statuses, such as canceled and paused, but the stage run uses these three. A suspended stage run is a suspended Mastra run.
 >
-> Rules have states too. A rule is draft, active, or retired. Only an active rule applies in a normal run. The part on rule changes shows how a rule moves between these states.
+> Rules have states too. A rule is draft, active, or retired. Only an active rule applies in a normal run. A new version of a rule starts as a draft. Rohan makes it active through a PR.
 
 Visuals:
 
 - State diagram (design): `context -> research -> draft -> judging -> {draft (repair round), suspended (person), accepted}`, `suspended -> accepted | rejected`.
 - Mastra run status chips: success, failed, suspended (also paused, tripwire).
-- Rule status chips: draft, active, retired; trial shown greyed, "next part".
+- Rule status chips: draft -> active (Rohan's PR) -> retired.
 
 ## Part `part.verdict`: the three-way verdict and the bindings
 
@@ -819,21 +722,19 @@ Visuals:
 
 ### `verdict_policy`
 
-Target length: about 49 s (115 words).
+Target length: about 29 s (67 words).
 
 Narration:
 
 > Who decides each verdict? One policy in code decides, and no check can go around it.
 >
-> An absent field gives fail for its shape rule, and cannot verify for its other rules. An empty list gives pass, with the empty list as the evidence. Missing evidence gives cannot verify. A check that throws gives cannot verify.
+> Missing evidence gives cannot verify, and so does a check that throws. For a judge, yes gives pass, no gives fail, and unknown gives cannot verify. A judge error also gives cannot verify.
 >
-> For a judge, yes gives pass, no gives fail, and unknown gives cannot verify. A judge error, or no answer for an item, also gives cannot verify.
->
-> Why not use the Mastra skip result? It means that the rule does not apply, and Mastra gates drop it. So the harness keeps its own rows. This policy exists in code.
+> The Mastra skip result means that the rule does not apply. So the harness keeps its own rows.
 
 Visuals:
 
-- Policy table (src/compiler/scorers.ts):
+- Policy table (src/compiler/scorers.ts); the voice reads only the evidence, throw and judge rows:
   | case | shape rule | code check | judge |
   | key absent | fail | cannot_verify | cannot_verify |
   | empty list | pass `[]` | pass `[]` | pass `[]` |
@@ -864,84 +765,20 @@ Visuals:
 
 ### `verdict_rows`
 
-Target length: about 32 s (75 words).
+Target length: about 22 s (52 words).
 
 Narration:
 
-> What does one row hold? It holds the rule id, the version, the hash, and the binding. It holds the item, the verdict, and the decider, which is code or a judge model. It also holds a reason and the evidence.
+> What does one row hold? It holds the rule, its version and hash, the binding, the item, the verdict, and the decider. It also holds a reason and the evidence.
 >
-> The rows answer two questions. Why did the graph store accept this output? Which outputs passed an old version of a rule?
->
-> The table for these rows exists in code, and it only grows.
+> So a later reader can ask why the graph store accepted an output. The table exists in code, and it only grows.
 
 Visuals:
 
 - One `harness.verdicts` row as a card: run_id, rule_id, rule_version, rule_hash, binding, target, verdict, decider, reason, evidence, created_at.
-- Two questions as captions. Padlock "append-only". Chip: table BUILT.
+- Caption: "why did the graph store accept this output?". Padlock "append-only". Chip: table BUILT.
 
-## Part `part.change`: how a rule changes
-
-### `change_new_version`
-
-Target length: about 44 s (103 words).
-
-Narration:
-
-> Back to the outline. This part covers how a rule changes. A rule never changes in place. It gets a new version.
->
-> Here is the real run. Units label unit gets new words and version two, which replaces version one. The lock file gains a line, and the line for version one stays. The loader reports no problem. The rule-set hash at sunscreen changes.
->
-> New outputs use the new version. Old outputs keep the versions that they passed. A reader of an old output applies those versions.
->
-> A rule file never leaves the repo. To stop a rule, set its status to retired.
-
-Visuals:
-
-- Outline, the bottom change lane highlighted.
-- Real lock entries (worked-example output): `units.label_unit: { "1": "68be9c64...", "2": "c6b4737a..." }`.
-- Real: `added: units.label_unit@2`, `loader problems: 0`, new rule-set hash `32b78174...`, "same as before: false".
-- Status chips: draft -> active -> retired.
-
-### `change_trial`
-
-Target length: about 58 s (135 words).
-
-Narration:
-
-> How do you test a new version before it binds? You run a trial. A trial compiles one candidate version as watch, next to the live rules.
->
-> The candidate gets a scorer only. It gets no part of the schema and no line in the prompt. So it does not change the drafts that it measures. Its hash differs from the live hash, so nobody can mix the two.
->
-> The trial runs on the golden examples and on recent outputs. Its report shows where the verdicts change. A trial calls models, so it is a paid run, and it needs a yes.
->
-> A shape rule cannot run as a trial, because a shape rule is always strict. The trial input of the compiler exists in code. The trial run and its report are a design.
-
-Visuals:
-
-- Live plan with one extra scorer marked `trial (watch)`: no schema part, no instruction line.
-- Hash card: trial hash differs from live hash.
-- Report sketch: golden examples + recent outputs -> "verdicts that change". Paid-run gate icon.
-- Refusal chip: `trial_shape_refused`. Chips: trial input BUILT, trial run and report DESIGN.
-
-### `change_promotion`
-
-Target length: about 45 s (106 words).
-
-Narration:
-
-> Who makes the new version live after a good trial? Rohan does. He promotes it to its real binding through a PR that changes the rule file. The version becomes active when the PR merges.
->
-> The improvement loop of the design can draft rule changes by itself. Its editors may add a watch rule, or change a statement, a reason, or the examples. Only Rohan deletes a rule, or changes its binding, its scope, its judge question, its check, or an output shape.
->
-> So the loop cannot make its outputs pass through a weaker rule. That loop is a design, and no code exists for it.
-
-Visuals:
-
-- PR card "promote rule to strict" with Rohan's approval.
-- Surface table (improve.boundaries.surface): editors may: add watch rule, edit statement / reason / examples, stage prompt. Only Rohan: delete, binding, scope, judge field, check, output shape.
-- Chip: improvement loop DESIGN.
-
-## Part `part.status`: what is built today, and the limits
+## Part `part.status`: what is built today
 
 ### `design_rules_table`
 
@@ -961,13 +798,13 @@ Visuals:
 
 ### `built_status`
 
-Target length: about 57 s (133 words).
+Target length: about 58 s (136 words).
 
 Narration:
 
 > What exists today? Four units of the plan exist in code on main. They are the starter project, the rule record, the graph store, and the compiler.
 >
-> Everything else is a design. That includes the judge step, the stage workflow, the repair loop, and the person step. It also includes the tool server, the research tools, and the four stages. It also includes the golden set sync, the change process, and the improvement loop.
+> Everything else is a design. That includes the judge step, the stage workflow, the repair loop, and the person step. It also includes the tool server, the research tools, and the four stages. It also includes the golden set sync, the change process, and the loop that improves the rules.
 >
 > Two more facts matter. The rules folder holds no rule yet.
 >
@@ -977,38 +814,3 @@ Visuals:
 
 - The outline again, now coloured: green (BUILT on main `cacc262`): `plan.scaffold`, `plan.rule_record`, `plan.graph_store`, `plan.compiler`. Grey (DESIGN): judge step, stage workflow, repair, person, tool server, research tools, four stages, golden sync, change process, improvement loop.
 - Two flags: "rules/: 0 rule files"; "live migration applied: 45 tables, RLS on each, harness_app logs in (verified 2026-11-02, read-only SQL)"; small note "harness docs still say not applied (stale)".
-
-### `limits_compiler`
-
-Target length: about 55 s (128 words).
-
-Narration:
-
-> What are the known limits of the compiler? The CI check runs with no tree, so it cannot test a child rule that widens its parent. Only a compile at run time refuses it.
->
-> A child judgement rule has no parameters, so the compiler cannot compare it with its parent. Rohan's review of the PR is the guard.
->
-> A text shape with a list of values cannot also limit the length. A list shape cannot require unique items, so the unique by check does that. The shape language has no optional field yet.
->
-> A spelled-out number, such as five hundred, passes the number check of the loader. Each upgrade of Zod or Mastra changes each rule-set hash. Types limit what a check returns, not what it does inside.
-
-Visuals:
-
-- Limits list (compile.limits), one line each, with the test or doc name: no-tree CI audit has no weaken test; judgement child not comparable; text values + length = conflict; no unique in list; no optional field; spelled-out numbers pass the lint; each Zod or Mastra upgrade changes each hash; types bound outputs, not behaviour.
-
-### `limits_open`
-
-Target length: about 34 s (80 words).
-
-Narration:
-
-> What is still open in the design? Most of it waits for the judge step and the stage workflow.
->
-> The design does not say yet how a stage proposes a new node. For now, an operator names each node. The object storage for large research files is open. It is also open whether Mastra writes can join a harness database transaction.
->
-> Claude made each compiler decision for Rohan. Rohan reviews them in the decisions trail. That trail outranks the specs.
-
-Visuals:
-
-- Open items board: node proposal (`graph.not_decided`), object storage (`data.open`), Mastra writes in our transactions (`store.open`), decisions to review (`compile.open`, `decisions.tsv`).
-- End card: the outline with green and grey boxes.

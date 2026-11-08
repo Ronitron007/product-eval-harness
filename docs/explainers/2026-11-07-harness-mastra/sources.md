@@ -8,7 +8,7 @@ Labels:
 - **verified (ran)**: `run.ts` printed it, at the cited line of `WE`.
 - **inferred**: it follows from the cited lines, but no line says it in these words.
 
-The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 partly wrong). Its corrections are in, each checked against the code cited below.
+The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 partly wrong). Its corrections are in, each checked against the code cited below. On 2026-11-08 Rohan chose a shorter cut. The sections of the cut scenes left this file, and `cuts.md` holds their narration.
 
 ## `goal_problem`
 
@@ -56,14 +56,6 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 | On resume the step body runs again from its top | teaching ladder `ladder-workflows-repair.md` (Mastra HITL example, LangGraph) | inferred |
 | Mastra storage on Postgres exists in code | `src/mastra/harness.ts:19-21` | verified (read) |
 
-## `mastra_agent_output`
-
-| Claim | Source | Label |
-|---|---|---|
-| The drafter gets the compiled schema as structured output | `docs/design/mastra-mapping.md:58` | verified (read) |
-| Default strict mode throws and loses the draft; warn keeps the raw text with no error | `docs/design/compiler.md:143-146` | verified (read; the spec says it ran with `createMockModel`) |
-| Agents run on the Claude CLI through Mastra; tools through one MCP server | `docs/design/mastra-mapping.md:141` | verified (read) |
-
 ## `mastra_scorer`
 
 | Claim | Source | Label |
@@ -74,17 +66,6 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 | One scorer per rule, id `rule@version` | `src/compiler/scorers.ts:52`, `src/compiler/scorers.ts:117` | verified (read) |
 | A code scorer has function steps only | `src/compiler/scorers.ts:117-120` | verified (read) |
 
-## `mastra_storage`
-
-| Claim | Source | Label |
-|---|---|---|
-| Mastra tables in schema `mastra`, init disabled, tables from a reviewed migration | `src/mastra/harness.ts:16-21`, `docs/design/graph-store.md:21` | verified (read) |
-| Harness tables in schema `harness`, same pool | `docs/design/graph-store.md:12-13` | verified (read) |
-| The harness role has select and insert only on `harness` tables | `db/migrations/0003_harness_role.sql:37-38` | verified (read) |
-| Five of the six tables have an append-only trigger; `nodes` has none | `db/migrations/0001_harness_tables.sql:171-189` (no trigger for `harness.nodes` except `nodes_check_path` at `:75`) | verified (read) |
-| Golden examples into Mastra datasets with a `runEvals` gate: design | `docs/design/mastra-mapping.md:178-180`, `docs/plans/2026-10-24-harness-plan.md:48` | verified (read) |
-| `rules:check` runs golden examples of shape and code-check rules through the real scorers, no model | `src/rules/cli.ts:39`, `src/compiler/index.ts:343-365` | verified (read) |
-
 ## `mastra_gaps`
 
 | Claim | Source | Label |
@@ -94,20 +75,15 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 | The three-way verdict lives in our own rows | `docs/decisions.tsv:31` | verified (read) |
 | No graph store, no compiler in Mastra | `docs/design/mastra-mapping.md:70-71`, `docs/design/mastra-mapping.md:219-231` | verified (read) |
 
-## `tree_nodes`
-
-| Claim | Source | Label |
-|---|---|---|
-| One node for each category node; each level makes its own things | `docs/design/rule-graph.md:37-67` | verified (read) |
-| Criterion and attribute definitions; attribute value types | `docs/glossary.md:12`, `docs/glossary.md:22` | verified (read) |
-| Only a domain node makes criteria, so products stay comparable | `docs/design/rule-graph.md:71`, `docs/decisions.tsv:16` | verified (read) |
-| An inner node judges relevance and meaning, makes attributes | `docs/design/rule-graph.md:65` | verified (read) |
-| Only a leaf gets the pack and the layout | `docs/design/rule-graph.md:66-69` | verified (read) |
-
 ## `tree_stages`
 
 | Claim | Source | Label |
 |---|---|---|
+| One node for each category node | `docs/design/rule-graph.md:37-67` | verified (read) |
+| Criterion definition | `docs/glossary.md:22` | verified (read) |
+| Only a domain node makes criteria, so products stay comparable | `docs/design/rule-graph.md:71`, `docs/decisions.tsv:16` | verified (read) |
+| Create node says what each criterion means at its node | `docs/design/rule-graph.md:65` | verified (read) |
+| Only a leaf gets the pack and the layout | `docs/design/rule-graph.md:66-69` | verified (read) |
 | Four stages and their levels | `docs/design/rule-graph.md:147-152`, `src/rules/schema.ts:34-40` | verified (read) |
 | The code also lists `evaluate_product` at a leaf; the design keeps the product evaluation outside the stages | `src/rules/schema.ts:39`, `docs/design/rule-graph.md:154` | verified (read) |
 | The code refuses a stage at a level where it never runs | `src/rules/schema.ts:211-216`, `src/compiler/scope.ts:201-203` | verified (read) |
@@ -116,6 +92,9 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 
 | Claim | Source | Label |
 |---|---|---|
+| Context reads the path with the criteria of each node, the rules, records, siblings | `docs/design/rule-graph.md:182-190` | verified (read) |
+| Attribute definition | `docs/glossary.md:12` | verified (read) |
+| The worked-example output is a list of attributes | `worked-example/rules/skincare/attributes.list.yaml` | verified (read) |
 | The cycle: context, research, draft, judge, repair, person, assimilate | `docs/design/rule-graph.md:115-141` | verified (read) |
 | The graph store tables | `src/store/schema.ts:15-107` | verified (read) |
 | Append-only | `db/migrations/0001_harness_tables.sql:166-175` | verified (read) |
@@ -184,15 +163,6 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 | Key order does not change the hash | `canonicalize` sorts keys (RFC 8785) | inferred |
 | Git names objects by content | teaching ladder `ladder-rules-as-data.md` (git book) | inferred |
 
-## `rules_lock_file`
-
-| Claim | Source | Label |
-|---|---|---|
-| The lock maps id and version to hash, and only grows | `src/rules/lock.ts:4-11`, `docs/decisions.tsv:57` | verified (read) |
-| The refusal message | `src/rules/load.ts:117`, `WE:555` | verified (ran) |
-| CI compares with the base lock | `.github/workflows/ci.yml:50-54`, `src/rules/load.ts:50-60` | verified (read) |
-| A package lock file gets rewritten by its tool | teaching ladder `ladder-rules-as-data.md` | inferred |
-
 ## `compiler_what`
 
 | Claim | Source | Label |
@@ -212,7 +182,7 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 
 | Claim | Source | Label |
 |---|---|---|
-| Admission refuses a library with a problem | `src/compiler/scope.ts:47-51` | verified (read) |
+| Admission refuses a library with a problem, such as new words under a locked version | `src/compiler/scope.ts:47-51`, `src/rules/load.ts:117` | verified (read) |
 | One ledger line per rule version | `src/compiler/scope.ts:194-229` | verified (read) |
 | At moisturizer, `units.mass_only` is `owner_not_on_path`, units stay g, mcg, mg | `WE:217-220` | verified (ran) |
 | Different hash at moisturizer | `WE:218` | verified (ran) |
@@ -259,17 +229,12 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 | Stored on stage runs and outputs | `src/store/schema.ts:30`, `src/store/schema.ts:42`, `src/store/store.ts:120-122` | verified (read) |
 | Re-compile each step, stop on mismatch: design | `docs/decisions.tsv:89` | verified (read) |
 
-## `run_zoom`
-
-| Claim | Source | Label |
-|---|---|---|
-| Order: gate, code scorers, judges, bindings | `docs/design/compiler.md:150-166`, `docs/canvas/judge.canvas` | verified (read) |
-| Label text and drafts | `worked-example/run.ts` (`LABEL`, `DRAFT_A`, `DRAFT_B`, `DRAFT_C`) | verified (read) |
-
 ## `run_decode_gate`
 
 | Claim | Source | Label |
 |---|---|---|
+| Label text and three drafts at sunscreen | `worked-example/run.ts` (`LABEL`, `DRAFT_A`, `DRAFT_B`, `DRAFT_C`) | verified (read) |
+| The design keeps a raw reply that breaks the schema, with no error (`errorStrategy: 'warn'`) | `docs/design/compiler.md:143-146` | verified (read) |
 | Parse JSON, then the whole schema | `src/compiler/index.ts:206-226` | verified (read) |
 | Shape scorers miss an extra key; warn gives no error | `docs/design/compiler.md:654` | verified (read) |
 | Draft A gate issues | `WE:225-237` | verified (ran) |
@@ -327,6 +292,7 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 | Stage run states | `docs/design/rule-graph.md:117-127`, `docs/canvas/judge.canvas` | inferred (the docs draw the flow; no state list exists) |
 | Mastra run statuses include success, failed, suspended, canceled, paused, and more | `docs/research/2026-10-24-mastra-primitives.md:158`; `@mastra/core` 1.79.0 `dist/workflows/types.d.ts` (status literals) | verified (read) |
 | Rule statuses draft, active, retired | `src/rules/schema.ts:12` | verified (read) |
+| A new version starts as a draft; Rohan makes it active through a PR | `docs/design/rule-enforcement.md:174`, `docs/design/rule-enforcement.md:180` | verified (read) |
 
 ## `verdict_three_way`
 
@@ -357,29 +323,6 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 | Row columns | `src/store/schema.ts:56-71` | verified (read) |
 | Two questions | `docs/design/rule-enforcement.md:170` | verified (read) |
 
-## `change_new_version`
-
-| Claim | Source | Label |
-|---|---|---|
-| Version 2 locks; old line stays; no loader problem; new hash | `WE:557-564` | verified (ran) |
-| Old outputs keep their versions | `docs/design/rule-enforcement.md:182-184` | verified (read) |
-| A rule file never leaves the repo; retire it | `docs/decisions.tsv:57`, `src/rules/load.ts:124-127` | verified (read) |
-
-## `change_trial`
-
-| Claim | Source | Label |
-|---|---|---|
-| Trial: watch, scorer only, other hash | `docs/design/compiler.md:750`, `src/compiler/scope.ts:131`, `src/compiler/index.ts:181` | verified (read) |
-| Golden examples and recent outputs; report; paid run | `docs/design/rule-enforcement.md:176-178` | verified (read) |
-| Shape trial refused | `src/compiler/scope.ts:124-125` | verified (read) |
-
-## `change_promotion`
-
-| Claim | Source | Label |
-|---|---|---|
-| Rohan promotes through a PR | `docs/design/rule-enforcement.md:180` | verified (read) |
-| Editor surface and Rohan-only changes | `docs/design/self-improvement.md:76-94`, `docs/decisions.tsv:27` | verified (read) |
-
 ## `design_rules_table`
 
 | Claim | Source | Label |
@@ -404,17 +347,3 @@ The fact-check of `stage.factcheck` ran on 2026-11-07 (288 claims, 1 wrong, 8 pa
 | The Kyaloon PR of the migration merged | RealDose `git log`: merge commit `4e866d6d`, "Merge pull request #470" | verified (ran `git log` in the RealDose clone) |
 | Migration applied live: 45 tables in `harness` and `mastra`, row level security on each, `harness_app` logs in | fact-check `factcheck.md` (orchestrator, read-only SQL, 2026-11-02); 45 = 6 tables in `db/migrations/0001` + 39 in `0002`; `docs/decisions.tsv:69` (Rohan's yes) | verified by the orchestrator, not re-run here |
 
-## `limits_compiler`
-
-| Claim | Source | Label |
-|---|---|---|
-| Each limit | `docs/design/compiler.md:972-1008`, `docs/design/compiler.md:1064` | verified (read) |
-
-## `limits_open`
-
-| Claim | Source | Label |
-|---|---|---|
-| Node proposal open | `docs/design/rule-graph.md:208`, `docs/decisions.tsv:18` | verified (read) |
-| Object storage open | `docs/design/data-layers.md:81` | verified (read) |
-| Mastra writes in our transactions open | `docs/design/graph-store.md:82` | verified (read) |
-| Compiler decisions are Claude's; the trail outranks the specs | `docs/design/compiler.md:1076`, `docs/README.md:21` | verified (read) |
