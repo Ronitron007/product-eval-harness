@@ -13,6 +13,7 @@ Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but 
 | [data-layers.md](data-layers.md) | `data` | What each layer of data holds, where it lives, and how the isolated steps hand off work |
 | [compiler.md](compiler.md) | `compile` | The rule compiler of `plan.compiler`. Spec of 2026-11-02, shipped 2026-11-04 in [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). |
 | [judge-step.md](judge-step.md) | `judge` | The judge step of `plan.judge_step`: the order, the binding table, the outcome, and the quote check. Shipped 2026-11-08 in [Ronitron007/product-eval-harness#26](https://github.com/Ronitron007/product-eval-harness/pull/26). |
+| [stage-workflow.md](stage-workflow.md) | `stage` | The stage workflow of `plan.stage_workflow`: the steps, the repair loop, the person step, the draft log, the run end, and the hazards. Spec of 2026-11-08, in review. |
 
 ## Name map `harness.names`
 
@@ -68,3 +69,12 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `accept`, `repair`, `person` | The three kinds of a judge outcome | `judge.bindings` |
 | `RepairError`, `Warning` | One error for the next repair round, and one soft verdict that is not pass | `judge.types` |
 | `missing_row`, `watch_leak`, `error_pass`, `fake_quote`, `order_decides`, `soft_block`, `decode_bypass`, `model_call`, `stale_pin`, `bad_evidence`, `bare_fix`, `decider_lost`, `outcome_table` | The hazards of the judge step. Each test name starts with one of them. | `judge.hazards` |
+| `stage.*` | The sections of the stage workflow spec | [stage-workflow.md](stage-workflow.md) |
+| `stage_probes` | The probes behind the Mastra claims of the stage workflow spec | [../research/2026-11-08-stage-workflow-probes/README.md](../research/2026-11-08-stage-workflow-probes/README.md) |
+| `stageWorkflow`, `StageDeps`, `REPAIR_BUDGET`, `Round`, `NodeContext` | The factory of one stage workflow, its dependencies, the repair budget, the loop state, and the node context | `stage.types` |
+| `draft_and_judge` | The nested workflow of one repair round: the draft step, the judge step, and the map to the next round | `stage.workflow` |
+| `ResearchPort`, `Drafter`, `agentDrafter`, `unbuiltResearch` | The research port, the drafter port, its agent adapter, and the research port that refuses until `plan.research_tools` | `stage.research_port`, `stage.models_injected` |
+| `PersonPayload`, `PersonDecision` | What a person sees at the person step, and what a person sends back | `stage.person_payload` |
+| `harness.drafts`, `harness.run_ends`, `endRun` | The draft log, the run end table, and the store call that ends a run | `stage.store` |
+| `accepted`, `person_accepted`, `person_rejected` | The three run ends | `stage.types` |
+| `flow`, `lost_draft`, `double_write`, `rule_drift`, `budget_overrun`, `reject_writes`, `watch_block`, `model_call`, `empty_payload`, `wrong_level`, `broken_accept`, `extra_key`, `self_judge`, `no_round` | The hazards of the stage workflow. Each test name starts with one of them. `model_call` has the meaning of `judge.hazards`. | `stage.hazards` |

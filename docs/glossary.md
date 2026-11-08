@@ -8,7 +8,7 @@ Each term has one definition. Docs link here at the first use of a term.
 | Addition | One item that earns or loses points at a node, and that no inherited criterion prices. It has a sign, an attribute, and a reason. A pack turns additions into its bonus and subtraction rules. |
 | Anchored scope | A scope that starts at the node that owns the rule. It selects the owner, the subtree of the owner, or one level in that subtree. It holds no node id. |
 | Blind selector | The part of the improvement loop that picks one of k anonymous final outputs, with no view of the rules that made them. |
-| Assimilate | To accept a stage output into the graph, with its research records and the id, version, and verdict of each rule in scope. |
+| Assimilate | To end a stage run in the graph. The step writes the run end and, for an accept, the output. The output keeps its round, so its verdict rows give the id, version, and verdict of each rule in scope. |
 | Attribute | One measurable property of a product. Its value is a number with a unit, a word from a closed list, a list of words, or a flag with details. It describes the product, not the category, the market, or public opinion. |
 | Authoring database | The one shared, persistent database of the authoring stages. It holds the authoring graph and the run state of Mastra. |
 | Binding | The part of a rule that sets what a fail does: `strict`, `soft`, or `watch`. |
@@ -22,6 +22,8 @@ Each term has one definition. Docs link here at the first use of a term.
 | Criterion | One aspect of a product that an evaluation grades. Only a domain node creates criteria. |
 | Decode gate | The one test of a stage output against the whole output schema, `plan.decode`. An output that fails it never reaches the judges or the graph. |
 | Derived rule | A rule that a stage creates as part of its output, such as the meaning of a criterion at a node. It lives in the graph store. |
+| Draft log | The append-only table `harness.drafts`. It keeps each reply of the drafter, one row for each round of a stage run, also the replies that failed. |
+| Drafter | The port that gives one reply for one round of a stage run. A real drafter is an agent with structured output. A test drafter uses `createMockModel`. |
 | Finding | A rule that a formal check shows to break in the code today. It keeps its name until Rohan rules on its fix. |
 | Formal check | A check that covers each case in a stated scope: each order of steps in a model, or each pre-state of a sweep. |
 | Domain node | A top node of the rule graph, such as skincare or supplements. |
@@ -53,17 +55,22 @@ Each term has one definition. Docs link here at the first use of a term.
 | Reference knowledge | A value that is the same for each product of a category, such as an upper limit. It is never a product fact. |
 | Repair | A round in which a stage sends the exact errors back to the model, and the model fixes its output. |
 | Research record | The research or thinking work behind an output: the question, the sources with quotes, the findings, and the run. Records are append-only. |
+| Research port | The injected function that the research step calls. It returns the run evidence of one stage run. |
 | Rule | One instruction, with an id, a version, a statement, a reason, a kind, a scope, a binding, golden examples, and provenance. A rule and an instruction are the same thing. |
 | Rule library | Every rule that the loader read and checked, with its hash. The compiler takes the rules in scope of one stage run from it. |
 | Rule-set hash | The sha256 of the manifest of one compile. The stage run and its output keep it. Equal artifacts give one hash. |
+| Run end | The one row in `harness.run_ends` that ends a stage run: `accepted`, `person_accepted`, or `person_rejected`. A failed run has no run end. |
 | Rule graph | The graph of nodes that projects the category tree. Each node holds its criteria, attributes, records, rules, and, at a leaf, its pack and layout. |
 | Ruleset | The rules in scope of one stage run at one node. |
 | Ruleset judge | The part of a stage that runs each rule in scope on the output, with code checks and LLM judges. Its code is the judge step (`plan.judge_step`). It returns the judge outcome. |
 | Scope | The nodes, the stages, and the output fields where a rule applies. |
 | Pre-state | The state of a database before a migration runs, such as a role or a schema that already exists. |
+| Person payload | What the person step shows when it suspends: the run, the reason, the last draft, the strict errors, the open strict rows, the warnings, and whether a person can accept the draft. |
+| Person decision | What a person sends back to the person step: accept or reject, with a reviewer handle and a note. A reject needs the note. |
 | Slot | What two rules check together. Two shape rules share a slot when they have one type on one field. Two code checks share a slot when they have one template and equal identity parameters on one field. |
 | Stage | One kind of work at one node: `define_criteria`, `create_node`, `create_pack`, or `create_layout`. |
 | Stage rule | A rule that governs how a stage works and the shape of its output. Rohan approves it. It lives in git. |
+| Stage workflow | The Mastra workflow of one stage at one node: context, research, the repair loop of drafts and judge steps, the person step, and assimilate. |
 | Test vector | A test case of a check template. It holds parameters, a value, evidence, and the expected verdict. Vectors are tests, not hash inputs. |
 | Trial | A compile of one candidate rule version as watch, beside the active rules. The candidate gets a scorer only, so it does not change the drafts. Its hash differs from the live hash. |
 | Verdict | The result of one check: pass, fail, or cannot verify. |

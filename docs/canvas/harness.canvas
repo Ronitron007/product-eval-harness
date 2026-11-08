@@ -13,13 +13,13 @@
 		{"id":"rec","type":"text","text":"## record system\nKeeps the research behind each output.\nwrites: research records, append-only\nlinks: each criterion, attribute, rule","x":220,"y":360,"width":280,"height":200,"color":"5"},
 		{"id":"hdr","type":"text","text":"## Evaluation harness\nThe rule graph, its stages, rule enforcement, Mastra, self-improvement.\nparent: [docs hub](../README.md)\nscope: design only","x":0,"y":-360,"width":640,"height":200},
 		{"id":"stamp","type":"text","text":"## stamp\ncode: the scaffold only, `main` at `4560d23`, 2026-10-25\nMastra `@mastra/core` 1.79.0, harness2 `1cfe254e`\ndescribes: design/*.md, plans/2026-10-24-harness-plan.md\n_unverified_","x":780,"y":-360,"width":640,"height":200},
-		{"id":"asm","type":"text","text":"## `assimilate`\nAccepts the output into the graph.\nwrites: output, records, verdicts","x":1540,"y":400,"width":240,"height":180,"color":"4"},
+		{"id":"asm","type":"text","text":"## `assimilate`\nEnds the run in one transaction.\nwrites: run end, output on accept","x":1540,"y":400,"width":240,"height":180,"color":"4"},
 		{"id":"ctx","type":"text","text":"## `context`\nReads the graph for one node.\nreads: path to root, rules in scope\nreads: records, sibling nodes","x":1140,"y":-30,"width":240,"height":180,"color":"4"},
 		{"id":"rep","type":"text","text":"## `repair`\nSends the exact errors back.\nbudget: 3 rounds","x":2940,"y":490,"width":240,"height":180,"color":"4"},
-		{"id":"jud","type":"text","text":"## `judge`\nRuns each rule in scope.\ndecides: pass, fail, cannot verify\nwrites: `VerdictRow`","x":2880,"y":-30,"width":240,"height":180,"color":"4"},
-		{"id":"dra","type":"text","text":"## `draft`\nFills the output that shape rules define.\nwrites: one output","x":2360,"y":-30,"width":240,"height":180,"color":"4"},
+		{"id":"jud","type":"text","text":"## `judge`\nRuns each rule in scope.\ndecides: pass, fail, cannot verify\nwrites: `VerdictRow` of each round","x":2880,"y":-30,"width":240,"height":180,"color":"4"},
+		{"id":"dra","type":"text","text":"## `draft`\nFills the output that shape rules define.\nwrites: one draft row each round","x":2360,"y":-30,"width":240,"height":180,"color":"4"},
 		{"id":"res","type":"text","text":"## `research`\nResearches under the rules.\ntools: `web_search`, `web_fetch`\ntools: `get_node_context`, `search_records`","x":1700,"y":-30,"width":240,"height":180,"color":"4"},
-		{"id":"per","type":"text","text":"## `person`\nDecides on a spent budget.\nAlso decides on a strict cannot verify.","x":2120,"y":400,"width":240,"height":180,"color":"4"},
+		{"id":"per","type":"text","text":"## `person`\nSuspends on a spent budget or a strict cannot verify.\nresume: accept or reject","x":2120,"y":400,"width":240,"height":180,"color":"4"},
 		{"id":"msc","type":"text","text":"## scorers\nOne scorer for each check rule.\ncode checks: function steps\njudges: `analyze` prompt step","x":2790,"y":800,"width":300,"height":200,"color":"4"},
 		{"id":"mag","type":"text","text":"## agents\nResearcher, drafter, editors.\nreads: `RequestContext` with the node\nwrites: `structuredOutput`","x":1960,"y":800,"width":300,"height":200,"color":"4"},
 		{"id":"mdb","type":"text","text":"## our graph tables\nNodes, rules, records, verdicts.\nDrizzle ORM on the Mastra client","x":2140,"y":1100,"width":300,"height":200,"color":"5"},
@@ -61,7 +61,8 @@
 		{"id":"cscr","type":"text","text":"## scorers and `decode`\nCode scorers, judge scorers, one decode gate.\nwrites: one verdict row for each target","x":3920,"y":240,"width":440,"height":200},
 		{"id":"chsh","type":"text","text":"## rule-set hash\nsha256 of the manifest of the compiled artifacts.\nreads: `code.lock.json`, `RUNTIME_VERSION`\nwrites: `stage_runs.rule_set_hash`","x":3440,"y":500,"width":920,"height":200},
 		{"id":"cstamp","type":"text","text":"## stamp\ncode: `main` at `0703520`, 2026-11-04\ndescribes: design/compiler.md, `src/compiler/`","x":3440,"y":760,"width":920,"height":160},
-		{"id":"f8","type":"file","file":"design/compiler.md","x":3700,"y":1000,"width":400,"height":120}
+		{"id":"f8","type":"file","file":"design/compiler.md","x":3700,"y":1000,"width":400,"height":120},
+		{"id":"f9","type":"file","file":"design/stage-workflow.md","x":2420,"y":600,"width":440,"height":100}
 	],
 	"edges":[
 		{"id":"eA1","fromNode":"dom","fromSide":"right","toNode":"inn","toSide":"left","label":"criteria"},
@@ -111,6 +112,7 @@
 		{"id":"eH3","fromNode":"cadm","fromSide":"bottom","toNode":"cshp","toSide":"top","label":"shape rules"},
 		{"id":"eH4","fromNode":"cshp","fromSide":"bottom","toNode":"chsh","toSide":"top","label":"schema"},
 		{"id":"eH5","fromNode":"cstamp","fromSide":"bottom","toNode":"f8","toSide":"top"},
-		{"id":"eH6","fromNode":"cmp","fromSide":"top","toNode":"gH","toSide":"left","label":"details"}
+		{"id":"eH6","fromNode":"cmp","fromSide":"top","toNode":"gH","toSide":"left","label":"details"},
+		{"id":"eB9","fromNode":"per","fromSide":"bottom","toNode":"f9","toSide":"left","label":"spec"}
 	]
 }

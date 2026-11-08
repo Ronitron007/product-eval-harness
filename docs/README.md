@@ -35,6 +35,7 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [design/graph-store.md](design/graph-store.md) | `store`: the graph store in the Kyaloon Supabase database |
 | [design/compiler.md](design/compiler.md) | `compile`: the rule compiler of `plan.compiler`. Shipped 2026-11-04 in [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). |
 | [design/judge-step.md](design/judge-step.md) | `judge`: the judge step of `plan.judge_step`. Shipped 2026-11-08 in [Ronitron007/product-eval-harness#26](https://github.com/Ronitron007/product-eval-harness/pull/26). |
+| [design/stage-workflow.md](design/stage-workflow.md) | `stage`: the stage workflow of `plan.stage_workflow`. Spec of 2026-11-08, in review. |
 | [design/formal-checks.md](design/formal-checks.md) | `formal`: the TLA+ models, the migration sweep, and the replays that check the code |
 
 ## Plan `docs.plan`
@@ -61,3 +62,4 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [research/2026-11-02-formal-check.md](research/2026-11-02-formal-check.md) | The first formal check of the code: the results, the findings, and the charts |
 | [research/2026-10-28-mastra-cli-spike/README.md](research/2026-10-28-mastra-cli-spike/README.md) | Mastra with the Claude CLI and the Cursor CLI: SDK agents, one MCP tool server, and its traps |
 | [research/2026-11-02-compiler-architect/README.md](research/2026-11-02-compiler-architect/README.md) | The architect run behind the compiler spec: two designs, their probes, and the synthesis |
+| [research/2026-11-08-stage-workflow-probes/README.md](research/2026-11-08-stage-workflow-probes/README.md) | The Mastra probes behind the stage workflow spec: the sketch type check, and the suspend, resume, and loop facts |
