@@ -224,7 +224,7 @@ The parent still applies, so international units would fail anyway. But the chil
 
 So the compiler refuses it. Here is the real message. Sunscreen units allow I U allows I U, which skincare units label unit forbids. Change the skincare rule, or drop the value.
 
-One limit applies. The CI check runs with no tree, so it cannot see this problem. The real CI result here shows no problem. The compile at run time refuses the rule.
+One limit applies. The rules check that runs on each pull request has no tree, so it cannot see this problem. Here, that check shows no problem. The compile at run time refuses the rule.
 
 ## compiler_instructions
 
@@ -378,7 +378,7 @@ Judges run only after the code checks pass. A watch rule never steers a draft. A
 
 What exists today? Four units of the plan exist in code on main. They are the starter project, the rule record, the graph store, and the compiler.
 
-Everything else is a design. That includes the judge step, the stage workflow, the repair loop, and the person step. It also includes the tool server, the research tools, and the four stages. It also includes the golden set sync, the change process, and the loop that improves the rules.
+Everything else is a design. That includes the judge step, the stage workflow, the repair loop, and the person step. It also includes the tool server, which gives the agents their tools, the research tools, and the four stages. It also includes the change process and the loop that improves the rules. The golden set sync, which copies the golden examples into Mastra, is a design too.
 
 Two more facts matter. The rules folder holds no rule yet.
 

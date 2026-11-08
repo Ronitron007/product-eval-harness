@@ -43,7 +43,6 @@ Each technical term that the voice says. `known` terms come from the agreed "ass
 | YAML | known | | YAML |
 | git | known | | git |
 | PR | known | | PR |
-| CI | known | | CI |
 | prompt | known | | prompt |
 | mock model | known | | mock model |
 | migration | known | | migration |

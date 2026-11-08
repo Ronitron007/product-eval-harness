@@ -4,7 +4,7 @@ Scene list of the video. Each scene has a snake_case name, a target length, the 
 
 Labels in the visuals: BUILT means code on `main` at `cacc262`. DESIGN means a design doc only. ILLUSTRATIVE means output of a mock model. OPEN means not decided or not checked.
 
-Totals: 37 scenes, 5055 words, about 36 minutes.
+Totals: 37 scenes, 5075 words, about 36 minutes.
 
 ## Part `part.goal`: the goal and the outline
 
@@ -439,7 +439,7 @@ Narration:
 Visuals:
 
 - Problem groups: admission problems come back alone. After admission, scope, weaken and shape problems come back in one list (probe: `rule_inert slot_conflict shape_conflict`). Fit problems join only when the shapes compose; a node or level problem stops early.
-- `admit` gate: library with zero loader problems passes; a lock problem gives `library_invalid`.
+- `admit` gate: a rule set with zero loader problems passes; a rule with new words under an old version number gives `library_invalid`.
 - Real ledger at sunscreen: eight lines, each `applied strict`.
 - Real ledger line at moisturizer: `units.mass_only@1 {"kind":"excluded","reason":"owner_not_on_path"}` and shape line `text, one of: g, mcg, mg`.
 - Two real hashes side by side: sunscreen `f8d76e16...`, moisturizer `ec713b82...`.
@@ -466,7 +466,7 @@ Visuals:
 
 ### `compiler_weaken`
 
-Target length: about 57 s (133 words).
+Target length: about 58 s (136 words).
 
 Narration:
 
@@ -476,7 +476,7 @@ Narration:
 >
 > So the compiler refuses it. Here is the real message. Sunscreen units allow I U allows I U, which skincare units label unit forbids. Change the skincare rule, or drop the value.
 >
-> One limit applies. The CI check runs with no tree, so it cannot see this problem. The real CI result here shows no problem. The compile at run time refuses the rule.
+> One limit applies. The rules check that runs on each pull request has no tree, so it cannot see this problem. Here, that check shows no problem. The compile at run time refuses the rule.
 
 Visuals:
 
@@ -798,13 +798,13 @@ Visuals:
 
 ### `built_status`
 
-Target length: about 58 s (136 words).
+Target length: about 66 s (153 words).
 
 Narration:
 
 > What exists today? Four units of the plan exist in code on main. They are the starter project, the rule record, the graph store, and the compiler.
 >
-> Everything else is a design. That includes the judge step, the stage workflow, the repair loop, and the person step. It also includes the tool server, the research tools, and the four stages. It also includes the golden set sync, the change process, and the loop that improves the rules.
+> Everything else is a design. That includes the judge step, the stage workflow, the repair loop, and the person step. It also includes the tool server, which gives the agents their tools, the research tools, and the four stages. It also includes the change process and the loop that improves the rules. The golden set sync, which copies the golden examples into Mastra, is a design too.
 >
 > Two more facts matter. The rules folder holds no rule yet.
 >
