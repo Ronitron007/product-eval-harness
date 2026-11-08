@@ -108,11 +108,6 @@ export interface EnvOptions {
 
 export function makeEnv(url: string, o: EnvOptions = {}) {
   const pool = new pg.Pool({ connectionString: withUser(url, 'harness_app') })
-  // The drop of the test database ends each open connection with 57P01. An idle client of the
-  // pool then emits an error that no query awaits (CI saw it once). Each other error still throws.
-  pool.on('error', e => {
-    if ((e as { code?: string }).code !== '57P01') throw e
-  })
   const graph: GraphStore = createGraphStore(pool)
   const lib = { current: library(o.rules ?? FIXTURE) }
   const stub = stubResearch(o.evidence ?? GOOD_EVIDENCE)

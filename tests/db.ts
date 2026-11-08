@@ -54,6 +54,19 @@ export interface TestDatabase {
   drop(): Promise<void>
 }
 
+// pg-pool 3.14 resolves end() before each client.end() finishes, so a backend of an ended pool can
+// still be open. A drop with force would end it, and its idle client would emit an error that no
+// query awaits. So the drop waits until no backend of another session uses the database. Each
+// caller ends its own pools before drop().
+async function waitForNoBackend(admin: pg.Client, name: string, ms = 10_000): Promise<void> {
+  for (const until = Date.now() + ms; ; ) {
+    const { rows } = await admin.query('select count(*)::int as n from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()', [name])
+    if (rows[0].n === 0) return
+    if (Date.now() > until) throw new Error(`Database ${name} still has ${rows[0].n} open connection(s) after ${ms} ms. End each pool before drop().`)
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+}
+
 export async function freshDatabase({ migrate = true }: { migrate?: boolean } = {}): Promise<TestDatabase> {
   const admin = adminUrl()
   const name = `harness_test_${randomBytes(6).toString('hex')}`
@@ -79,8 +92,12 @@ export async function freshDatabase({ migrate = true }: { migrate?: boolean } = 
       await Promise.all(pools.splice(0).map(p => p.end()))
       const c = new pg.Client({ connectionString: admin })
       await c.connect()
-      await c.query(`drop database ${name} with (force)`)
-      await c.end()
+      try {
+        await waitForNoBackend(c, name)
+        await c.query(`drop database ${name} with (force)`)
+      } finally {
+        await c.end()
+      }
     },
   }
 }
