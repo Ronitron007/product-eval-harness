@@ -35,6 +35,7 @@ Each term has one definition. Docs link here at the first use of a term.
 | Improvement run | One run of the self-improvement loop for one node and one stage. It is a paid run. |
 | Inner node | A node of the rule graph between a domain node and a leaf node. |
 | Judge (LLM judge) | A model call that answers one rule question about one output, with an "unknown" answer. |
+| Judge outcome | What the ruleset judge returns for one draft: `accept`, `repair` with all strict errors, or `person` with the open strict rows. The stage workflow acts on it. |
 | Lane | One sequence of items in the improvement stream. Each domain has one lane, and its items run in a fixed order. |
 | Layout | The rules for how an evaluation shows a product at a leaf node. |
 | Manifest | The compiled artifacts of one stage run, as plain JSON. The rule-set hash covers exactly the manifest. |
@@ -57,7 +58,7 @@ Each term has one definition. Docs link here at the first use of a term.
 | Rule-set hash | The sha256 of the manifest of one compile. The stage run and its output keep it. Equal artifacts give one hash. |
 | Rule graph | The graph of nodes that projects the category tree. Each node holds its criteria, attributes, records, rules, and, at a leaf, its pack and layout. |
 | Ruleset | The rules in scope of one stage run at one node. |
-| Ruleset judge | The part of a stage that runs each rule in scope on the output, with code checks and LLM judges. |
+| Ruleset judge | The part of a stage that runs each rule in scope on the output, with code checks and LLM judges. Its code is the judge step (`plan.judge_step`). It returns the judge outcome. |
 | Scope | The nodes, the stages, and the output fields where a rule applies. |
 | Pre-state | The state of a database before a migration runs, such as a role or a schema that already exists. |
 | Slot | What two rules check together. Two shape rules share a slot when they have one type on one field. Two code checks share a slot when they have one template and equal identity parameters on one field. |
@@ -66,4 +67,5 @@ Each term has one definition. Docs link here at the first use of a term.
 | Test vector | A test case of a check template. It holds parameters, a value, evidence, and the expected verdict. Vectors are tests, not hash inputs. |
 | Trial | A compile of one candidate rule version as watch, beside the active rules. The candidate gets a scorer only, so it does not change the drafts. Its hash differs from the live hash. |
 | Verdict | The result of one check: pass, fail, or cannot verify. |
+| Verified quote | A quote of a judge that code found word for word in a source text of the run. A judge pass or fail with no verified quote becomes cannot verify. |
 | Weaken | To restate an inherited slot more loosely. A child rule weakens when a dimension that both rules set is looser. A code check also weakens with a lower binding. The compiler refuses it. |

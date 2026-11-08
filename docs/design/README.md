@@ -12,6 +12,7 @@ Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but 
 | [formal-checks.md](formal-checks.md) | `formal` | What the formal checks cover, their parts, the models, and their bounds |
 | [data-layers.md](data-layers.md) | `data` | What each layer of data holds, where it lives, and how the isolated steps hand off work |
 | [compiler.md](compiler.md) | `compile` | The rule compiler of `plan.compiler`. Spec of 2026-11-02, shipped 2026-11-04 in [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). |
+| [judge-step.md](judge-step.md) | `judge` | The judge step of `plan.judge_step`: the order, the binding table, the outcome, and the quote check. Spec of 2026-11-07, not built. |
 
 ## Name map `harness.names`
 
@@ -61,3 +62,8 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `decode` | The decode gate of a plan. It tests the whole output schema before the judges and the graph. | `compile.scorers` |
 | `ledger`, `trial` | The record of what a compile did with each rule, and the compile of one candidate as watch | `compile.ledger` |
 | `noop`, `drift`, `weaken`, `hash`, `status`, `admit`, `verify`, `params`, `shape`, `judge` | The hazards of the compiler. Each test name starts with one of them. | `compile.hazards` |
+| `judge.*` | The sections of the judge step spec. The doc name is the stage part `judge`. | [judge-step.md](judge-step.md) |
+| `judgeDraft`, `decideOutcome`, `judgeStep`, `JudgeOutcome`, `RowsIncomplete` | The calls, the outcome type, and the row-total error of the judge step | `judge.types` |
+| `accept`, `repair`, `person` | The three kinds of a judge outcome | `judge.bindings` |
+| `RepairError`, `Warning` | One error for the next repair round, and one soft verdict that is not pass | `judge.types` |
+| `missing_row`, `watch_leak`, `error_pass`, `fake_quote`, `soft_block`, `decode_bypass`, `model_call`, `decider_lost`, `outcome_table` | The hazards of the judge step. Each test name starts with one of them. | `judge.hazards` |
