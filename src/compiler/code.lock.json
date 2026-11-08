@@ -6,7 +6,8 @@
   },
   "runtime": {
     "1": "2d4006995c7ce27396e8acaaddcd8e4f035e151e8898fa3a93d3e27a19fdb1c3",
-    "2": "bac00dd2d99ff71cacb6c3a99c008c93f403f0a8a8ce556bc092edb64de201ba"
+    "2": "bac00dd2d99ff71cacb6c3a99c008c93f403f0a8a8ce556bc092edb64de201ba",
+    "3": "ef26b3163fc8c74ed9258dd45590bf9a64cddb9bae7516ebb5665b2aa6a57a0d"
   },
   "checks": {
     "key_in_registry": {

@@ -14,7 +14,7 @@ import { describe, printShape } from './shape'
 // that no template can bypass. Runtime code: RUNTIME_VERSION covers RUNTIME_FILES of
 // scripts/compiler-lock.ts (paths.ts, shape.ts, this file, checks/define.ts, compiler/index.ts and
 // judge/step.ts). Raise it when one of them changes, and run npm run compiler:lock.
-export const RUNTIME_VERSION = 2
+export const RUNTIME_VERSION = 3
 
 export const sha256 = (text: string) => createHash('sha256').update(text).digest('hex') as Sha256
 

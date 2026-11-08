@@ -47,8 +47,8 @@ const atStages = (rules: readonly RuleInput[], stages: string[]) => rules.map(r 
 
 // The pinned hash of the fixture library at sunscreen and create_node. It moves when any artifact
 // moves: a rule, the instruction layout, the printer, a declared code version, or a dependency pin.
-// RUNTIME_VERSION 2 and the new answer-format line of the judge prompt moved it (judge.quote_rules).
-const FIXTURE_HASH = 'd8d0f2df67365ee1f76aa71b51f842afe3d813a681298597260dc104a48ff9c6'
+// The new answer-format line of the judge prompt (judge.quote_rules) and RUNTIME_VERSION 3 moved it.
+const FIXTURE_HASH = 'c0a499e46eef502530fd75182595d6ac5827f0b1f9974e78c16a2013ba5386e9'
 
 describe('hash, of a compiled plan', () => {
   it('hash.same_inputs: two compiles of the same input give one hash', () => {

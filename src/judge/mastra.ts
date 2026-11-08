@@ -2,7 +2,7 @@ import { createStep } from '@mastra/core/workflows'
 import { z } from 'zod'
 import { NodeId, Stage } from '../rules/schema'
 import { VerdictInput, type GraphStore } from '../store/store'
-import { judgeDraft, type JudgeModel, type JudgeOutcome, type StagePlan } from './step'
+import { judgeDraft, toStepOutput, type JudgeModel, type StagePlan } from './step'
 
 // The thin Mastra wrapper of the judge step (judge.types). The plan holds a Zod schema and
 // functions, so a workflow snapshot cannot hold it (compile.limits). The step compiles again in
@@ -22,6 +22,7 @@ export type JudgeStepInput = z.infer<typeof JudgeStepInput>
 const RuleRefText = z.string().regex(/^.+@\d+$/)
 const WarningJson = z.object({ rule: RuleRefText, target: z.string(), kind: z.enum(['warning', 'note']), text: z.string() })
 const RepairErrorJson = z.object({ from: z.union([RuleRefText, z.literal('decode')]), target: z.string(), fix: z.string() })
+// The schema of the output of toStepOutput (src/judge/step.ts, a runtime file: judge.runtime_pinned).
 export const JudgeStepOutput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('accept'), output: z.json(), warnings: z.array(WarningJson) }),
   z.object({ kind: z.literal('repair'), errors: z.array(RepairErrorJson), warnings: z.array(WarningJson) }),
@@ -36,23 +37,6 @@ export interface JudgeStepDeps {
   readonly store: Pick<GraphStore, 'writeVerdicts'>
   readonly planFor: PlanFor
   readonly judgeModel: JudgeModel
-}
-
-// The outcome as plain JSON. It drops the rows: the store holds them.
-export function toStepOutput(outcome: JudgeOutcome): JudgeStepOutput {
-  const warnings = [...outcome.warnings]
-  switch (outcome.kind) {
-    case 'accept':
-      return { kind: 'accept', output: outcome.output, warnings }
-    case 'repair':
-      return { kind: 'repair', errors: [...outcome.errors], warnings }
-    case 'person':
-      return { kind: 'person', open: [...outcome.open], warnings }
-    default: {
-      const never: never = outcome
-      return never
-    }
-  }
 }
 
 export function judgeStep(deps: JudgeStepDeps) {

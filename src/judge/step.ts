@@ -160,3 +160,27 @@ export function decideOutcome(input: DecideInput): JudgeOutcome {
   if (open.length > 0) return { kind: 'person', rows, warnings, open }
   return { kind: 'accept', rows, warnings, output: decoded.output }
 }
+
+// The outcome as plain JSON, for the Mastra step: it drops the rows, because the store holds them.
+// It lives here, in a runtime file, so a change that turns one kind into another moves the lock
+// fingerprint (judge.runtime_pinned).
+export type StepOutput =
+  | { readonly kind: 'accept'; readonly output: Json; readonly warnings: Warning[] }
+  | { readonly kind: 'repair'; readonly errors: RepairError[]; readonly warnings: Warning[] }
+  | { readonly kind: 'person'; readonly open: VerdictInput[]; readonly warnings: Warning[] }
+
+export function toStepOutput(outcome: JudgeOutcome): StepOutput {
+  const warnings = [...outcome.warnings]
+  switch (outcome.kind) {
+    case 'accept':
+      return { kind: 'accept', output: outcome.output, warnings }
+    case 'repair':
+      return { kind: 'repair', errors: [...outcome.errors], warnings }
+    case 'person':
+      return { kind: 'person', open: [...outcome.open], warnings }
+    default: {
+      const never: never = outcome
+      return never
+    }
+  }
+}
