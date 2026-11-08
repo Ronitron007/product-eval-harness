@@ -216,6 +216,8 @@ Each decision below has a mechanism and a test that fails when the mechanism bre
 
 - Claude took `judge.quote_rules`, `judge.one_answer`, `judge.runtime_pinned`, `judge.no_network`, `judge.evidence_parsed`, and `judge.fail_fix` on 2026-11-08, from the interrogate run. The row of `judge.quote_rules` supersedes the two rows on `judge.quote_verified`.
 
+- Claude took `judge.quote_plain_span` on 2026-11-08, from the verify round of the interrogate run.
+
 - `judge.decode_repairs` uses the existing decisions row of 2026-11-02 on the decode gate.
 
 ### Quote rules `judge.quote_rules`
@@ -244,13 +246,13 @@ The rules, all in `verify` of `src/compiler/scorers.ts`:
 
 3. For a `pass`, search the normalized source texts of `evidence.sources`, in name order. Never search the draft output.
 
-4. For a `fail`, search the normalized value of the judged item first. The value is the canonical JSON of the item at its target. Then search the source texts.
+4. For a `fail`, search the plain text of the judged item first. Then search the source texts. The plain text of a string item is the string itself. For an object or a list, it is each string leaf value, in path order, searched one at a time. Code never searches escaped JSON, so a quote with `"` or a line break can match (`judge.quote_plain_span`).
 
 5. Use an exact, case-sensitive substring test. No fuzzy match.
 
 6. If no permitted text holds the quote, give `cannot_verify`. The reason starts with the words "Quote not found in source". Then it gives the answer, the reason, and the quote of the judge.
 
-7. If a permitted text holds the quote, keep the verdict. Set `evidence.quote` to the quote of the judge. Set `evidence.source` to `item` for the judged item, or to `sources.<name>` for the first source that holds it.
+7. If a permitted text holds the quote, keep the verdict. Set `evidence.quote` to the matched span, exactly as it is in the raw text, not the quote of the judge. Set `evidence.source` to where the span came from (`judge.quote_plain_span`).
 
 8. An answer of unknown needs no quote.
 
@@ -268,9 +270,31 @@ Effect on versions:
 
 - The answers of the mock judge in `tests/compiler/judge.test.ts` must carry a quote from `GOOD_EVIDENCE`, such as `500 mg`.
 
-Effect on rows. A judged `pass` or `fail` row now keeps the quote of the judge in `evidence`, not the observed value of the item. This changes one line of `compile.reconciliation.changes`, which said that a judge row keeps the observed value. A judge row that gives `cannot_verify` still keeps the observed value, with `source: output`. The test `verify.observed_from_runtime` reads code rows only, so it does not change.
+Effect on rows. A judged `pass` or `fail` row now keeps the matched span in `evidence`, not the observed value of the item. This changes one line of `compile.reconciliation.changes`, which said that a judge row keeps the observed value. A judge row that gives `cannot_verify` still keeps the observed value, with `source: output`. The test `verify.observed_from_runtime` reads code rows only, so it does not change.
 
-Tests: `fake_quote.not_in_source`, `fake_quote.too_short`, `fake_quote.normalized_match`, `fake_quote.pass_from_the_draft`, `fake_quote.fail_from_the_item`, `fake_quote.fail_from_a_source`, `fake_quote.case_differs`, `fake_quote.no_sources`, `fake_quote.unknown_needs_none`.
+Tests: `fake_quote.not_in_source`, `fake_quote.too_short`, `fake_quote.normalized_match`, `fake_quote.pass_from_the_draft`, `fake_quote.fail_from_the_item`, `fake_quote.fail_from_a_source`, `fake_quote.fail_quote_plain_text`, `fake_quote.stored_span_raw`, `fake_quote.case_differs`, `fake_quote.no_sources`, `fake_quote.unknown_needs_none`.
+
+### Plain text and raw span `judge.quote_plain_span`
+
+Decision. The quote rules match against plain text and store the raw span. This decision came from the verify round of the interrogate run.
+
+Why, verified (the coordinator ran the verify of `c359187`):
+
+- Code matched the item as canonical JSON. So an honest `fail` quote with `"` or a line break did not match the escaped text, and gave `cannot_verify`.
+
+- The evidence kept the raw quote of the judge. After the normalize step, that quote can differ from the text, for example at a no-break space.
+
+Mechanism, in `verify` of `src/compiler/scorers.ts`:
+
+- Each searched text is a string. It is a source text, a string item, or one string leaf of an object or list item. Code never builds JSON text to search.
+
+- For each searched text, the normalize step keeps a map. It maps each normalized character to its raw offset. Code normalizes each raw code point, so the map stays exact.
+
+- A match gives a range in the normalized text. The map turns it into a range in the raw text. `evidence.quote` is that raw slice.
+
+- `evidence.source` names where the slice came from. It is `sources.<name>` for a source. For the item, it is `item` for a string item, or `item.` and the leaf path, such as `item.key`.
+
+Tests: `fake_quote.fail_quote_plain_text`, `fake_quote.stored_span_raw`.
 
 ### One answer `judge.one_answer`
 
@@ -391,7 +415,7 @@ Each hazard has a mechanism and tests that fail when the mechanism breaks. The n
 | `missing_row`. A rule in the plan has no row for a draft | `judgeDraft` compares the rule refs of the rows with `plan.manifest.rules`. A difference throws `RowsIncomplete`. A scorer that throws still gives rows. | `missing_row.applied_ids_judged`, `missing_row.applied_ids_skipped`, `missing_row.applied_ids_decode_failed`, `missing_row.scorer_dropped_refused`, `missing_row.verify_throw_keeps_rows` |
 | `watch_leak`. A watch verdict changes the outcome, the errors, or the warnings | `decideOutcome` filters by binding before it reads a verdict. | `watch_leak.fail_changes_nothing`, `watch_leak.cannot_verify_changes_nothing`, `watch_leak.trial_changes_nothing` |
 | `error_pass`. A judge error counts as a pass | Each judge failure gives `cannot_verify`. A failure is a model error, no answer, two answers that disagree, or a bad answer. A strict `cannot_verify` gives `person`, never `accept`. | `error_pass.model_error`, `error_pass.no_answer`, `error_pass.two_answers`, `error_pass.bad_answer_shape` |
-| `fake_quote`. A judge backs a verdict with a junk quote, or a quote that no permitted text holds | `judge.quote_rules` in `verify` | `fake_quote.not_in_source`, `fake_quote.too_short`, `fake_quote.normalized_match`, `fake_quote.pass_from_the_draft`, `fake_quote.fail_from_the_item`, `fake_quote.fail_from_a_source`, `fake_quote.case_differs`, `fake_quote.no_sources`, `fake_quote.unknown_needs_none` |
+| `fake_quote`. A judge backs a verdict with a junk quote, or a quote that no permitted text holds | `judge.quote_rules` in `verify` | `fake_quote.not_in_source`, `fake_quote.too_short`, `fake_quote.normalized_match`, `fake_quote.pass_from_the_draft`, `fake_quote.fail_from_the_item`, `fake_quote.fail_from_a_source`, `fake_quote.fail_quote_plain_text`, `fake_quote.stored_span_raw`, `fake_quote.case_differs`, `fake_quote.no_sources`, `fake_quote.unknown_needs_none` |
 | `order_decides`. The order of two answers for one item decides the row | `judge.one_answer` | `order_decides.verdict_differs`, `order_decides.quote_differs`, `order_decides.reversed_same_rows`, `order_decides.copy_counts_once` |
 | `soft_block`. A soft fail blocks the output or enters the repair errors | `decideOutcome` sends `soft` rows to `warnings` only. | `soft_block.fail_accepts_with_warning`, `soft_block.cannot_verify_accepts_with_note`, `soft_block.fail_not_in_errors` |
 | `decode_bypass`. A draft that fails the decode gate reaches a judge or an accept | The gate needs `decoded.ok`. `decideOutcome` reads `decoded.ok` before any row. | `decode_bypass.never_accepts`, `decode_bypass.no_judge_call`, `decode_bypass.issues_in_errors` |
@@ -438,7 +462,11 @@ The fixture is the library of `tests/compiler/rules.ts`, with `GOOD_OUTPUT` and 
 
 - `fake_quote.pass_from_the_draft`. A yes that quotes only the draft item gives `cannot_verify`.
 
-- `fake_quote.fail_from_the_item`. A no that quotes the key of the judged item gives `fail`, with `evidence.source` set to `item`. The outcome is `repair`, not `person`.
+- `fake_quote.fail_from_the_item`. A no that quotes the key of the judged item gives `fail`, with `evidence.source` set to `item.key`. The outcome is `repair`, not `person`.
+
+- `fake_quote.fail_quote_plain_text`. An item with the string value `Use "daily"` and a line break before `SPF 50` gives two honest no answers. One quotes `Use "daily"`, and one quotes the text across the line break. Each gives `fail`, not `cannot_verify`.
+
+- `fake_quote.stored_span_raw`. The label holds `500` and a no-break space and `mg`. A yes with the quote `500 mg` gives `pass`. `evidence.quote` equals the raw label slice with the no-break space, and `evidence.source` is `sources.label`.
 
 - `fake_quote.fail_from_a_source`. A no with the quote `500 mg` gives `fail`, with `evidence.source` set to `sources.label`.
 
@@ -563,7 +591,9 @@ Known limits that stay as risks:
 
 - The quote check is case-sensitive after the normalize step of `judge.quote_rules`. A judge that changes the letter case or a word of a quote gives `cannot_verify`. This errs to the safe side, because `cannot_verify` is never a pass.
 
-- When two sources hold the quote, `evidence.source` names the first in name order. For a `fail`, the item comes before the sources.
+- When two sources hold the quote, `evidence.source` names the first in name order. For a `fail`, the item comes before the sources. In the item, the first string leaf in path order wins.
+
+- The normalize step works on each code point alone. NFKC of a combining sequence can then differ from NFKC of the whole text. Such a quote gives `cannot_verify`, which is never a pass.
 
 - A judged `pass` or `fail` row keeps the source quote, not the observed value of the item. The target path finds the item in the reply. `plan.stage_workflow` keeps each reply (`enforce.repair`).
 
