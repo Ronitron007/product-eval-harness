@@ -107,6 +107,16 @@ describe('double_write', () => {
     expect([await a.count('drafts', 'twin-instances'), await a.count('run_ends', 'twin-instances')]).toEqual([1, 1])
   })
 
+  // stage.draft_claim: a claim is a row, so no connection stays open across a model call. Twelve runs
+  // on the default pool of 10 connections all end.
+  it('double_write.pool_twelve_runs: 12 runs at the same time on a pool of 10 connections all end', { timeout: 30_000 }, async () => {
+    const env = db.env({ judgeDelayMs: 200 })
+    expect(env.pool.options.max).toBe(10)
+    const results = await Promise.all(Array.from({ length: 12 }, (_, i) => start(env, `pool-run-${i}`)))
+    expect(results.map(r => r.result.status)).toEqual(Array(12).fill('success'))
+    expect([env.spies.drafter.calls, env.spies.judge.calls]).toEqual([12, 12])
+  })
+
   it('double_write.start_on_ended_run: a second start on an ended run id gives the stored end, with no research and no drafter call', async () => {
     const env = db.env()
     const first = await start(env)

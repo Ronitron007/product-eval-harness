@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Busy, JudgeStepOutput, RoundOutcome, TIMING, type JudgeModel, type PlanFor, type StagePlan, type Timing } from '../judge'
+import { Busy, JudgeStepInput, JudgeStepOutput, RoundOutcome, TIMING, type JudgeModel, type PlanFor, type StagePlan, type Timing } from '../judge'
 import { RunEvidence } from '../rules/checks/define'
 import { NodeId, Stage } from '../rules/schema'
 import { VerdictInput, type DecisionRow as StoreDecisionRow, type DraftRow, type GraphStore, type RunEndInput } from '../store/store'
@@ -74,7 +74,12 @@ export type StageBusy = z.infer<typeof StageBusy>
 export const StageRunResult = z.union([StageResult, StageBusy])
 
 // The input of the judge step (src/judge/mastra.ts): the draft step gives the round.
-export { JudgeStepInput } from '../judge'
+export { JudgeStepInput }
+
+// The output of the draft step: the input of the judge step, or busy when another attempt holds a
+// live draft claim for one lease (stage.draft_claim).
+export const DraftOutput = z.union([JudgeStepInput, z.object({ busy: Busy, round: z.number().int().min(1).max(REPAIR_BUDGET) }).strict()])
+export type DraftOutput = z.infer<typeof DraftOutput>
 
 // ---- ports ----
 export interface ResearchInput {
@@ -109,7 +114,7 @@ export type StageStore = Pick<
   | 'siblings'
   | 'stageRun'
   | 'addDraft'
-  | 'withDraftLock'
+  | 'claimDraft'
   | 'draftOf'
   | 'writeVerdicts'
   | 'verdictsOf'

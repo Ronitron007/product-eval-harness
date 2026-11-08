@@ -115,10 +115,9 @@ export interface GraphStore {
   // stage.store: the calls of the stage workflow.
   stageRun(runId: string): Promise<Pick<StageRun, 'runId' | 'stage' | 'nodeId' | 'ruleSetHash'> | undefined>
   addDraft(row: DraftRow): Promise<void>
-  // stage.draft_claim: runs draft while this caller holds the draft lock of the round, a session
-  // advisory lock on one connection. A crash ends the connection, so the lock ends with it. It waits
-  // up to waitMs for the lock, and it throws when another caller still holds it.
-  withDraftLock<T>(runId: string, round: number, waitMs: number, pollMs: number, draft: () => Promise<T>): Promise<T>
+  // stage.draft_claim, stage.claim_lease: the new attempt number, or null. It inserts attempt
+  // max + 1 only when the latest claim is older than leaseMs and the round has no draft row.
+  claimDraft(runId: string, round: number, leaseMs: number): Promise<number | null>
   draftOf(runId: string, round: number): Promise<DraftRow | undefined>
   verdictsOf(runId: string, round: number): Promise<VerdictInput[]>
   // stage.judge_claim, stage.claim_lease: the new attempt number, or null. It inserts attempt
@@ -293,28 +292,18 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
       await pool.query('insert into harness.drafts (run_id, round, reply_text, reply, drafter) values ($1, $2, $3, harness.try_jsonb($3), $4)', [d.runId, d.round, text, d.drafter])
     },
 
-    async withDraftLock(runId, round, waitMs, pollMs, draft) {
-      const client = await pool.connect()
-      const key = [runId, Round.parse(round)]
-      let held = false
-      try {
-        const take = async () => (await client.query('select pg_try_advisory_lock(hashtext($1), $2) as ok', key)).rows[0].ok as boolean
-        held = await take()
-        for (const until = Date.now() + waitMs; !held && Date.now() < until; ) {
-          await new Promise(resolve => setTimeout(resolve, pollMs))
-          held = await take()
-        }
-        if (!held) throw new Error(`Another process drafts round ${round} of run ${runId}. Start the run id again later.`)
-        try {
-          return await draft()
-        } finally {
-          await client.query('select pg_advisory_unlock(hashtext($1), $2)', key)
-          held = false
-        }
-      } finally {
-        // A client that may still hold the lock never goes back to the pool: release(true) ends it.
-        client.release(held)
-      }
+    // One statement, as claimJudge. A row, not a session lock: no connection stays open across
+    // the model call, so the pool and a transaction pooler stay free.
+    async claimDraft(runId, round, leaseMs) {
+      const { rows } = await pool.query(
+        `insert into harness.draft_claims (run_id, round, attempt)
+         select $1, $2, coalesce(max(c.attempt), 0) + 1 from harness.draft_claims c where c.run_id = $1 and c.round = $2
+         having (max(c.claimed_at) is null or max(c.claimed_at) < now() - make_interval(secs => $3::double precision / 1000))
+            and not exists (select 1 from harness.drafts d where d.run_id = $1 and d.round = $2)
+         on conflict do nothing returning attempt`,
+        [runId, Round.parse(round), z.number().int().min(0).parse(leaseMs)],
+      )
+      return rows[0] ? (rows[0].attempt as number) : null
     },
 
     async draftOf(runId, round) {

@@ -93,7 +93,7 @@ describe('the RealDose migration rules', () => {
         where n.nspname in ('harness', 'mastra') and c.relkind in ('r', 'p') group by n.nspname order by 1`,
     )
     expect(rows).toEqual([
-      { schema: 'harness', tables: 10, rls: 10, with_policy: 10 },
+      { schema: 'harness', tables: 11, rls: 11, with_policy: 11 },
       { schema: 'mastra', tables: 39, rls: 39, with_policy: 39 },
     ])
   })
@@ -184,8 +184,8 @@ describe('0004_stage_runs.sql', () => {
     const empty = await freshDatabase()
     try {
       await applyMigrations(empty.url, ['0004_stage_runs.sql'])
-      const { rows } = await empty.pool().query(`select count(*)::int as n from pg_class where relnamespace = 'harness'::regnamespace and relname in ('drafts', 'judge_claims', 'person_decisions', 'run_ends')`)
-      expect(rows).toEqual([{ n: 4 }])
+      const { rows } = await empty.pool().query(`select count(*)::int as n from pg_class where relnamespace = 'harness'::regnamespace and relname in ('drafts', 'draft_claims', 'judge_claims', 'person_decisions', 'run_ends')`)
+      expect(rows).toEqual([{ n: 5 }])
     } finally {
       await empty.drop()
     }

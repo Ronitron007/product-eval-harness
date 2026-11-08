@@ -1,9 +1,9 @@
 import { parseModelString } from '@mastra/core/llm'
 import { createStep, createWorkflow } from '@mastra/core/workflows'
-import { judgeStep, JudgeStepInput, type StagePlan } from '../judge'
+import { judgeRound, type StagePlan } from '../judge'
 import { RunEvidence } from '../rules/checks/define'
 import type { NodeId, Stage } from '../rules/schema'
-import { PersonDecision, PersonPayload, REPAIR_BUDGET, Round, StageInput, StageResult, StageRunResult, TIMING, type StageDeps } from './types'
+import { DraftOutput, PersonDecision, PersonPayload, REPAIR_BUDGET, Round, RoundOutcome, StageInput, StageResult, StageRunResult, TIMING, type StageDeps } from './types'
 
 // The stage workflow (docs/design/stage-workflow.md, stage.workflow): one Mastra workflow for each
 // stage. context, research, the repair loop of draft_and_judge, person, assimilate. Each top-level
@@ -85,38 +85,61 @@ export function stageSteps(stage: Stage, deps: StageDeps) {
     },
   })
 
-  // stage.draft_log, stage.rerun_reuses: the reply is in the store before the judge step runs.
+  // stage.draft_log, stage.rerun_reuses, stage.draft_claim: the reply is in the store before the
+  // judge step runs. Only the winner of the draft claim calls the drafter. A loser waits up to one
+  // lease for the draft, takes a new attempt when the claim expires, or gives busy. No connection
+  // stays open across the model call.
   const draft = createStep({
     id: 'draft',
     description: 'Writes one draft of the round, or reuses the stored draft.',
     inputSchema: Round,
-    outputSchema: JudgeStepInput,
+    outputSchema: DraftOutput,
     execute: async ({ inputData }) => {
+      const { runId } = inputData
       const round = inputData.round + 1
       if (round > REPAIR_BUDGET) throw new Error('The repair budget is spent. The loop must not start another round.')
       const plan = await planOrThrow(deps, inputData)
-      const errors = inputData.last?.kind === 'repair' ? inputData.last.errors : []
-      // stage.draft_claim: only the holder of the draft lock calls the drafter. A caller that waited
-      // for the lock reads the draft of the holder.
+      const out = (reply: unknown) => ({ runId, stage: inputData.stage, nodeId: inputData.nodeId, ruleSetHash: inputData.ruleSetHash, round, reply, evidence: inputData.evidence })
       const t = deps.timing ?? TIMING
-      const stored = await deps.store.draftOf(inputData.runId, round)
-      const reply =
-        stored !== undefined
-          ? stored.reply
-          : await deps.store.withDraftLock(inputData.runId, round, t.claimLeaseMs, t.pollMs, async () => {
-              const kept = await deps.store.draftOf(inputData.runId, round)
-              if (kept !== undefined) return kept.reply
-              const drafted = await deps.drafter.draft({ runId: inputData.runId, round, plan, evidence: inputData.evidence, context: inputData.context, errors })
-              await deps.store.addDraft({ runId: inputData.runId, round, reply: drafted, drafter: deps.drafter.id })
-              return drafted
-            })
-      return { runId: inputData.runId, stage: inputData.stage, nodeId: inputData.nodeId, ruleSetHash: inputData.ruleSetHash, round, reply, evidence: inputData.evidence }
+      const stored = await deps.store.draftOf(runId, round)
+      if (stored !== undefined) return out(stored.reply)
+      let attempt = await deps.store.claimDraft(runId, round, t.claimLeaseMs)
+      for (const until = Date.now() + t.claimLeaseMs; attempt === null && Date.now() < until; ) {
+        await sleep(t.pollMs)
+        const kept = await deps.store.draftOf(runId, round)
+        if (kept !== undefined) return out(kept.reply)
+        attempt = await deps.store.claimDraft(runId, round, t.claimLeaseMs)
+      }
+      if (attempt === null) {
+        const kept = await deps.store.draftOf(runId, round) // claimDraft also gives null once the draft exists
+        return kept !== undefined ? out(kept.reply) : { busy: { kind: 'busy' as const, retryAfterMs: t.claimLeaseMs }, round }
+      }
+      const errors = inputData.last?.kind === 'repair' ? inputData.last.errors : []
+      const reply = await deps.drafter.draft({ runId, round, plan, evidence: inputData.evidence, context: inputData.context, errors })
+      try {
+        await deps.store.addDraft({ runId, round, reply, drafter: deps.drafter.id })
+      } catch (e) {
+        const kept = await deps.store.draftOf(runId, round) // the primary key: a later attempt wrote first
+        if (kept === undefined) throw e
+        return out(kept.reply)
+      }
+      return out(reply)
     },
+  })
+
+  // The judge step of the loop: busy from the draft step passes through, with no judge call.
+  const judge = createStep({
+    id: 'judge',
+    description: 'Runs the ruleset judge on one draft of one round and returns the judge outcome.',
+    inputSchema: DraftOutput,
+    outputSchema: RoundOutcome,
+    // No retries option. A retry would call each judge again, and a judge call is paid.
+    execute: async ({ inputData }) => ('busy' in inputData ? inputData.busy : judgeRound(deps, inputData)),
   })
 
   const draftAndJudge = createWorkflow({ id: `${stage}.draft_and_judge`, inputSchema: Round, outputSchema: Round })
     .then(draft)
-    .then(judgeStep(deps))
+    .then(judge)
     .map(async ({ inputData, getInitData }) => {
       const before = getInitData<Round>()
       return { ...before, round: before.round + 1, last: inputData }
@@ -173,8 +196,10 @@ export function stageSteps(stage: Stage, deps: StageDeps) {
     execute: async ({ inputData }) => finishRun(deps, inputData),
   })
 
-  return { context, research, draft, draftAndJudge, person, assimilate }
+  return { context, research, draft, judge, draftAndJudge, person, assimilate }
 }
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 export function stageWorkflow(stage: Stage, deps: StageDeps) {
   const { context, research, draftAndJudge, person, assimilate } = stageSteps(stage, deps)

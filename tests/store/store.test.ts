@@ -134,7 +134,10 @@ describe('the append-only writes', () => {
   // stage.end_once: endRun writes the run end and the output in one transaction.
   it('accepts an output with the stage, node, rule set hash and round of its run, after its run end', async () => {
     await store.recordStageRun({ runId: 'run-out', stage: 'create_node', nodeId: 'sunscreen', ruleSetHash: RULE_SET })
+    expect(await store.claimDraft('run-out', 1, 60_000)).toBe(1)
+    expect(await store.claimDraft('run-out', 1, 60_000)).toBeNull()
     await store.addDraft({ runId: 'run-out', round: 1, reply: { criteria: [{ key: 'spf' }] }, drafter: 'drafter/mock' })
+    expect(await store.claimDraft('run-out', 1, 0)).toBeNull()
     expect(await store.claimJudge('run-out', 1, 0)).toBe(1)
     await store.writeVerdicts([{ runId: 'run-out', ruleId: 'criteria.attribute_is_product', ruleVersion: 1, ruleHash: ruleHash(rule), binding: 'strict', target: 'criteria[0]', verdict: 'pass', decider: { by: 'code' }, reason: 'ok' }], 1)
     const end = await store.endRun({ runId: 'run-out', round: 1, end: 'accepted', output: { criteria: [{ key: 'spf' }] } })
@@ -241,6 +244,7 @@ describe('the append-only triggers', () => {
     ['records', 'created_at'],
     ['derived_rules', 'created_at'],
     ['drafts', 'created_at'],
+    ['draft_claims', 'claimed_at'],
     ['judge_claims', 'claimed_at'],
     ['person_decisions', 'created_at'],
     ['run_ends', 'created_at'],

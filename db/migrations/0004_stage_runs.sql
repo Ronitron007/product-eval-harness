@@ -1,6 +1,6 @@
 -- The tables of the stage workflow (stage.store in docs/design/stage-workflow.md), in schema harness.
 -- src/store/schema.ts mirrors this file. tests/store/migrations.test.ts fails when they drift.
--- It adds harness.drafts, harness.judge_claims, harness.person_decisions and harness.run_ends, and
+-- It adds harness.drafts, harness.draft_claims, harness.judge_claims, harness.person_decisions and harness.run_ends, and
 -- it adds the round to harness.verdicts and harness.outputs. Triggers hold the rules that a check
 -- cannot: no verdict and no decision after the run end, and what each run end and output needs.
 -- A second run of this file changes nothing: each statement has "if not exists", "or replace",
@@ -52,6 +52,17 @@ create table if not exists harness.drafts (
   drafter text not null check (drafter ~ '^[^/]+/.+$'),
   created_at timestamptz not null default now(),
   primary key (run_id, round)
+);
+
+-- stage.draft_claim: one row for each attempt to draft one round, with the lease of
+-- stage.claim_lease. Only the caller whose insert wins calls the drafter. A row, not a session
+-- lock, so that no connection stays open across the model call.
+create table if not exists harness.draft_claims (
+  run_id text not null references harness.stage_runs (run_id),
+  round integer not null check (round between 1 and 3),
+  attempt integer not null check (attempt >= 1),
+  claimed_at timestamptz not null default now(),
+  primary key (run_id, round, attempt)
 );
 
 -- stage.judge_claim, stage.claim_lease: one row for each attempt to judge one round. Only the caller whose
@@ -169,7 +180,7 @@ create or replace trigger outputs_check before insert on harness.outputs for eac
 
 -- Rows only grow (store.safety).
 do $$ declare t text; begin
-  foreach t in array array['drafts', 'judge_claims', 'person_decisions', 'run_ends'] loop
+  foreach t in array array['drafts', 'draft_claims', 'judge_claims', 'person_decisions', 'run_ends'] loop
     execute format('create or replace trigger %I before update or delete on harness.%I for each row execute function harness.refuse_change()', t || '_append_only', t);
     execute format('create or replace trigger %I before truncate on harness.%I for each statement execute function harness.refuse_change()', t || '_no_truncate', t);
     execute format('alter table harness.%I enable row level security', t);
@@ -184,7 +195,7 @@ end $$;
 do $$ declare r text; begin
   foreach r in array array['anon', 'authenticated'] loop
     if exists (select 1 from pg_roles where rolname = r) then
-      execute format('revoke all on harness.drafts, harness.judge_claims, harness.person_decisions, harness.run_ends from %I', r);
+      execute format('revoke all on harness.drafts, harness.draft_claims, harness.judge_claims, harness.person_decisions, harness.run_ends from %I', r);
       execute format('revoke all on function harness.try_jsonb(text), harness.check_verdict_open(), harness.check_decision_open(), harness.check_run_end(), harness.check_output() from %I', r);
     end if;
   end loop;

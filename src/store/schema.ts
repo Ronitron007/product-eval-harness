@@ -124,6 +124,20 @@ export const drafts = harness.table(
   t => [primaryKey({ columns: [t.runId, t.round] })],
 )
 
+// stage.draft_claim: one row for each attempt to draft one round.
+export const draftClaims = harness.table(
+  'draft_claims',
+  {
+    runId: text('run_id')
+      .notNull()
+      .references(() => stageRuns.runId),
+    round: integer('round').notNull(),
+    attempt: integer('attempt').notNull(),
+    claimedAt: at('claimed_at'),
+  },
+  t => [primaryKey({ columns: [t.runId, t.round, t.attempt] })],
+)
+
 // stage.judge_claim, stage.claim_lease: one row for each attempt to judge one round.
 export const judgeClaims = harness.table(
   'judge_claims',
@@ -166,4 +180,4 @@ export const runEnds = harness.table(
   t => [foreignKey({ columns: [t.runId, t.round], foreignColumns: [drafts.runId, drafts.round] })],
 )
 
-export const graphTables = { nodes, stageRuns, outputs, verdicts, records, derivedRules, drafts, judgeClaims, personDecisions, runEnds }
+export const graphTables = { nodes, stageRuns, outputs, verdicts, records, derivedRules, drafts, draftClaims, judgeClaims, personDecisions, runEnds }
