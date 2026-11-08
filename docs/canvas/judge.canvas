@@ -11,7 +11,7 @@
 		{"id":"rep","type":"text","text":"## repair round\nAll errors in one round, with the fix.\nBudget: 3 rounds (`.dountil`).","x":2500,"y":-160,"width":280,"height":140,"color":"1"},
 		{"id":"per","type":"text","text":"## person step\nBudget spent, or a strict rule cannot be verified.\nWorkflow suspends.","x":2500,"y":40,"width":280,"height":150,"color":"1"},
 		{"id":"acc","type":"text","text":"## assimilate\n`acceptOutput` + `writeVerdicts`\nOnly when each strict rule passes.","x":2500,"y":240,"width":280,"height":140,"color":"3"},
-		{"id":"note","type":"text","text":"Spec: [judge-step.md](../design/judge-step.md) (`judge.order`, `judge.bindings`)\n[rule-enforcement.md](../design/rule-enforcement.md) (`enforce.binding`, `enforce.deciders`)\n[compiler.md](../design/compiler.md) (`compile.scorers`)\nUnit: `plan.judge_step`, spec of 2026-11-07, not built yet.","x":0,"y":260,"width":420,"height":130,"color":"6"}
+		{"id":"note","type":"text","text":"Spec: [judge-step.md](../design/judge-step.md) (`judge.order`, `judge.bindings`)\n[rule-enforcement.md](../design/rule-enforcement.md) (`enforce.binding`, `enforce.deciders`)\n[compiler.md](../design/compiler.md) (`compile.scorers`)\nUnit: `plan.judge_step`, built. Shipped 2026-11-08 in #26.\nCode: `src/judge/step.ts` (`judgeDraft`, `decideOutcome`),\n`src/judge/mastra.ts` (`judgeStep`).","x":0,"y":260,"width":420,"height":170,"color":"6"}
 	],
 	"edges":[
 		{"id":"e1","fromNode":"in","fromSide":"right","toNode":"dec","toSide":"left"},

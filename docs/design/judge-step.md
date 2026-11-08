@@ -1,6 +1,6 @@
 # The judge step `judge`
 
-Status. Spec of 2026-11-07, not built. It is the spec of the unit `plan.judge_step` ([the plan](../plans/2026-10-24-harness-plan.md)). Verified against `main` at `f0bfed8` on 2026-11-08. Code paths: `src/compiler/scorers.ts`, `src/compiler/index.ts`, `src/store/store.ts`, `tests/compiler/judge.test.ts`. Terms are in [glossary.md](../glossary.md).
+Status. Spec of 2026-11-07 for the unit `plan.judge_step` ([the plan](../plans/2026-10-24-harness-plan.md)), shipped 2026-11-08 in [Ronitron007/product-eval-harness#26](https://github.com/Ronitron007/product-eval-harness/pull/26). Verified against `main` at `9cdc25f` on 2026-11-08. Code paths: `src/judge/`, `src/compiler/scorers.ts`, `src/compiler/index.ts`, `scripts/compiler-lock.ts`, `tests/judge/`. The section `judge.reconciliation` lists where the code differs from the text. Terms are in [glossary.md](../glossary.md).
 
 Source. This spec builds on three docs:
 

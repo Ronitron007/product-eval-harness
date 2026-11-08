@@ -720,7 +720,11 @@ The node id is not in the hash, so two nodes with the same artifacts share a has
 
 Code that is not data has a declared version:
 
-- `RUNTIME_VERSION` covers `paths.ts`, `shape.ts`, `scorers.ts`, and `checks/define.ts`. These files hold the walk, the per-rule shape check, the outcome policy, and the run part of the judge prompt.
+- `RUNTIME_VERSION` covers the files of `RUNTIME_FILES` in `scripts/compiler-lock.ts`. Version 1 covered `paths.ts`, `shape.ts`, `scorers.ts`, and `checks/define.ts`. These files hold the walk, the per-rule shape check, the outcome policy, and the run part of the judge prompt.
+
+- From version 2, the list also holds `src/compiler/index.ts` and `src/judge/step.ts` (`judge.runtime_pinned`). These files hold the decode gate, the binding table, and the output of the judge step. A change to one of them moves the lock fingerprint, so it needs a new version and gives a new rule-set hash.
+
+- `RUNTIME_VERSION` is 3 at `9cdc25f`. Version 2 added the quote rules of `judge.quote_rules` to `verify`. Version 3 moved `toStepOutput` into `src/judge/step.ts`. The lock holds the entries 1, 2, and 3. No stage run used version 2.
 
 - Each check template has its own `version`.
 
@@ -1038,7 +1042,7 @@ The code of [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007
 | `CheckRef` problems name the fix | The loader gives its own message for a missing `shape`, `check`, or `judge` field. It also does so for an unknown `kind` or check, a bad `scope.nodes`, and `unique` in a list shape. | Zod gives "Invalid input" for a bad union member (`compile.limits`). |
 | `targets` gives `present`, `absent`, or `empty_list` | An `absent` target also has `why`. It has `found` when a value on the path is not the container that the path needs. | A reply that is not JSON reaches the shape scorers as a string. The fail row then keeps that string in `evidence.quote`. A key that is missing gives no evidence. |
 | The policy table covers shape rules and code checks | A judgement rule on an existing empty list gives `pass`, decided by code. An absent target gives `cannot_verify`, decided by code. Only the rows that the model answered have the decider `judge`. | This follows the empty list tradeoff of `compile.limits`. Code never answers a judge question. |
-| The judge returns a quote for each item | The row of a judge keeps the observed value at the target in `evidence.quote`, with `source: output`. The quote of the judge goes into the reason. | Each row then holds the same kind of evidence, so `verify.observed_from_runtime` holds for all rows. |
+| The judge returns a quote for each item | A judged `pass` or `fail` row keeps the verified quote in `evidence.quote`: the matched span, exactly as it is in the raw text. `evidence.source` is `sources.<name>`, `item`, or `item.` and a leaf path. A judge row with `cannot_verify` keeps the observed value at the target, with `source: output`. The quote of the judge also goes into the reason. | Changed in [Ronitron007/product-eval-harness#26](https://github.com/Ronitron007/product-eval-harness/pull/26) by `judge.quote_rules` and `judge.quote_plain_span`. A `pass` quote must be in a source text. A `fail` quote may be in the judged item or in a source. A quote with fewer than 2 letters or digits, or a quote that no permitted text holds, gives `cannot_verify`. The test `verify.observed_from_runtime` reads code rows only. |
 | `literals(params)` of each template | `quote_in_source` gives `[source]`. `unique_by` gives `[by]`. The other two templates give `[]`. | The spec does not name them. A statement that names the source or the key would hold a second copy of a parameter. |
 
 ### Changes from the review of #19 `compile.reconciliation.review`

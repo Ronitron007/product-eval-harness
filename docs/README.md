@@ -34,6 +34,7 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [design/data-layers.md](design/data-layers.md) | `data`: the data layers and their stores |
 | [design/graph-store.md](design/graph-store.md) | `store`: the graph store in the Kyaloon Supabase database |
 | [design/compiler.md](design/compiler.md) | `compile`: the rule compiler of `plan.compiler`. Shipped 2026-11-04 in [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). |
+| [design/judge-step.md](design/judge-step.md) | `judge`: the judge step of `plan.judge_step`. Shipped 2026-11-08 in [Ronitron007/product-eval-harness#26](https://github.com/Ronitron007/product-eval-harness/pull/26). |
 | [design/formal-checks.md](design/formal-checks.md) | `formal`: the TLA+ models, the migration sweep, and the replays that check the code |
 
 ## Plan `docs.plan`
