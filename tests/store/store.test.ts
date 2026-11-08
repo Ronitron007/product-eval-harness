@@ -8,6 +8,8 @@ import { z } from 'zod'
 import { createHarness } from '../../src/mastra/harness'
 import { ruleHash } from '../../src/rules/hash'
 import { RuleRecord } from '../../src/rules/schema'
+import { eq } from 'drizzle-orm'
+import { outputs } from '../../src/store/schema'
 import { createGraphStore, type GraphStore } from '../../src/store/store'
 import { applyMigrations, freshDatabase, withUser, type TestDatabase } from '../db'
 
@@ -129,13 +131,32 @@ describe('the append-only writes', () => {
     expect(run.startedAt).toBeInstanceOf(Date)
   })
 
-  it('accepts an output with the stage, node and rule set hash of its run', async () => {
-    const out = await store.acceptOutput({ runId: 'run-1', body: { criteria: [{ key: 'spf' }] } })
-    expect(out).toMatchObject({ runId: 'run-1', stage: 'create_node', nodeId: 'sunscreen', ruleSetHash: RULE_SET, body: { criteria: [{ key: 'spf' }] } })
-    await expect(store.acceptOutput({ runId: 'no-such-run', body: {} })).rejects.toThrow(/No stage run no-such-run/)
+  // stage.end_once: endRun writes the run end and the output in one transaction.
+  it('accepts an output with the stage, node, rule set hash and round of its run, after its run end', async () => {
+    await store.recordStageRun({ runId: 'run-out', stage: 'create_node', nodeId: 'sunscreen', ruleSetHash: RULE_SET })
+    await store.addDraft({ runId: 'run-out', round: 1, reply: { criteria: [{ key: 'spf' }] }, drafter: 'drafter/mock' })
+    expect(await store.claimJudge('run-out', 1, 0)).toBe(1)
+    await store.writeVerdicts([{ runId: 'run-out', ruleId: 'criteria.attribute_is_product', ruleVersion: 1, ruleHash: ruleHash(rule), binding: 'strict', target: 'criteria[0]', verdict: 'pass', decider: { by: 'code' }, reason: 'ok' }], 1)
+    const end = await store.endRun({ runId: 'run-out', round: 1, end: 'accepted', output: { criteria: [{ key: 'spf' }] } })
+    expect(end).toEqual({ runId: 'run-out', end: 'accepted', round: 1, outputId: expect.any(String) })
+    const [out] = (await store.db.select().from(outputs).where(eq(outputs.runId, 'run-out')))
+    expect(out).toMatchObject({ id: end.outputId, runId: 'run-out', stage: 'create_node', nodeId: 'sunscreen', ruleSetHash: RULE_SET, round: 1, body: { criteria: [{ key: 'spf' }] } })
+    await expect(store.acceptOutput({ runId: 'no-such-run', round: 1, body: {} })).rejects.toThrow(/No stage run no-such-run/)
+    // The outputs trigger refuses an output with no accepting run end.
+    await expect(store.acceptOutput({ runId: 'run-1', round: 1, body: {} })).rejects.toThrow()
   })
 
-  it('writes verdict rows, all or none', async () => {
+  it('ends a rejected run with a decision row and a run end, and no output', async () => {
+    await store.recordStageRun({ runId: 'run-rej', stage: 'create_node', nodeId: 'sunscreen', ruleSetHash: RULE_SET })
+    await store.addDraft({ runId: 'run-rej', round: 1, reply: 'not json', drafter: 'drafter/mock' })
+    await store.addDecision({ runId: 'run-rej', round: 1, decision: 'reject', reviewer: 'operator', note: 'Not a criterion.' })
+    const end = await store.endRun({ runId: 'run-rej', round: 1, end: 'person_rejected', reviewer: 'operator', note: 'Not a criterion.' })
+    expect(end).toEqual({ runId: 'run-rej', end: 'person_rejected', round: 1, outputId: null })
+    expect(await store.decisionOf('run-rej')).toEqual({ runId: 'run-rej', round: 1, decision: 'reject', reviewer: 'operator', note: 'Not a criterion.' })
+  })
+
+  it('writes verdict rows of one round, all or none', async () => {
+    await store.addDraft({ runId: 'run-1', round: 1, reply: {}, drafter: 'drafter/mock' })
     const base = { runId: 'run-1', ruleId: 'criteria.attribute_is_product', ruleVersion: 1, ruleHash: ruleHash(rule), binding: 'strict' as const }
     const rows = await store.writeVerdicts([
       { ...base, target: 'criteria[0]', verdict: 'pass', decider: { by: 'code' }, reason: 'The key names a product property.' },
@@ -147,10 +168,14 @@ describe('the append-only writes', () => {
         reason: 'The label text does not say.',
         evidence: { quote: 'SPF 50', source: 'label' },
       },
+    ], 1)
+    expect(rows.map(r => [r.target, r.verdict, r.decider.by, r.round])).toEqual([
+      ['criteria[0]', 'pass', 'code', 1],
+      ['criteria[1]', 'cannot_verify', 'judge', 1],
     ])
-    expect(rows.map(r => [r.target, r.verdict, r.decider.by])).toEqual([
-      ['criteria[0]', 'pass', 'code'],
-      ['criteria[1]', 'cannot_verify', 'judge'],
+    expect((await store.verdictsOf('run-1', 1)).map(r => [r.target, r.evidence ?? null])).toEqual([
+      ['criteria[0]', null],
+      ['criteria[1]', { quote: 'SPF 50', source: 'label' }],
     ])
 
     // A row of an unknown run fails the whole call, so the first row is not stored either.
@@ -158,7 +183,7 @@ describe('the append-only writes', () => {
       store.writeVerdicts([
         { ...base, target: 'criteria[9]', verdict: 'pass', decider: { by: 'code' }, reason: 'ok' },
         { ...base, runId: 'no-such-run', target: 'criteria[9]', verdict: 'pass', decider: { by: 'code' }, reason: 'ok' },
-      ]),
+      ], 1),
     ).rejects.toThrow()
     const { rows: left } = await pool.query("select count(*)::int as n from harness.verdicts where target = 'criteria[9]'")
     expect(left[0].n).toBe(0)
@@ -171,8 +196,8 @@ describe('the append-only writes', () => {
   ])('lets the database refuse a bad %s: %s %s', async (_field, decider, evidence, error) => {
     await expect(
       pool.query(
-        `insert into harness.verdicts (run_id, rule_id, rule_version, rule_hash, binding, target, verdict, decider, evidence, reason)
-         values ('run-1', 'a.b', 1, $1, 'strict', 'x', 'pass', $2, $3, 'r')`,
+        `insert into harness.verdicts (run_id, round, rule_id, rule_version, rule_hash, binding, target, verdict, decider, evidence, reason)
+         values ('run-1', 1, 'a.b', 1, $1, 'strict', 'x', 'pass', $2, $3, 'r')`,
         [sha('r'), decider, evidence],
       ),
     ).rejects.toThrow(error)
@@ -215,6 +240,10 @@ describe('the append-only triggers', () => {
     ['verdicts', 'created_at'],
     ['records', 'created_at'],
     ['derived_rules', 'created_at'],
+    ['drafts', 'created_at'],
+    ['judge_claims', 'claimed_at'],
+    ['person_decisions', 'created_at'],
+    ['run_ends', 'created_at'],
   ]
 
   it.each(tables)('harness.%s refuses update, delete and truncate', async (table, column) => {

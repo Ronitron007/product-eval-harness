@@ -1,8 +1,9 @@
 import { customType, foreignKey, integer, jsonb, pgSchema, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import type { RuleRecord } from '../rules/schema'
 
-// The graph tables of store.tables (docs/design/graph-store.md).
-// db/migrations/0001_harness_tables.sql makes them, with their checks and append-only triggers.
+// The graph tables of store.tables (docs/design/graph-store.md) and of stage.store
+// (docs/design/stage-workflow.md). db/migrations/0001_harness_tables.sql and
+// 0004_stage_runs.sql make them, with their checks, keys and triggers.
 // tests/store/migrations.test.ts fails when this file and the migration drift apart.
 
 const ltree = customType<{ data: string }>({ dataType: () => 'ltree' })
@@ -41,6 +42,7 @@ export const outputs = harness.table(
     body: jsonb('body').$type<unknown>().notNull(),
     ruleSetHash: text('rule_set_hash').notNull(),
     acceptedAt: at('accepted_at'),
+    round: integer('round').notNull(), // stage.round_rows: the round of the accepted draft
   },
   t => [
     foreignKey({
@@ -68,6 +70,7 @@ export const verdicts = harness.table('verdicts', {
   reason: text('reason').notNull(),
   evidence: jsonb('evidence').$type<Evidence>(),
   createdAt: at('created_at'),
+  round: integer('round').notNull(), // stage.round_rows: 1 to 3, with a draft row
 })
 
 export const records = harness.table(
@@ -104,4 +107,63 @@ export const derivedRules = harness.table(
   t => [primaryKey({ columns: [t.id, t.version] })],
 )
 
-export const graphTables = { nodes, stageRuns, outputs, verdicts, records, derivedRules }
+// stage.draft_log, stage.reply_lossless: one row for each round. reply_text is JSON.stringify of
+// the reply, and reply is harness.try_jsonb(reply_text), null when jsonb refuses it.
+export const drafts = harness.table(
+  'drafts',
+  {
+    runId: text('run_id')
+      .notNull()
+      .references(() => stageRuns.runId),
+    round: integer('round').notNull(),
+    replyText: text('reply_text').notNull(),
+    reply: jsonb('reply').$type<unknown>(),
+    drafter: text('drafter').notNull(),
+    createdAt: at('created_at'),
+  },
+  t => [primaryKey({ columns: [t.runId, t.round] })],
+)
+
+// stage.judge_claim, stage.claim_lease: one row for each attempt to judge one round.
+export const judgeClaims = harness.table(
+  'judge_claims',
+  {
+    runId: text('run_id').notNull(),
+    round: integer('round').notNull(),
+    attempt: integer('attempt').notNull(),
+    claimedAt: at('claimed_at'),
+  },
+  t => [primaryKey({ columns: [t.runId, t.round, t.attempt] }), foreignKey({ columns: [t.runId, t.round], foreignColumns: [drafts.runId, drafts.round] })],
+)
+
+// stage.decision_first: the decision of a person, one row for each run.
+export const personDecisions = harness.table(
+  'person_decisions',
+  {
+    runId: text('run_id').primaryKey(),
+    round: integer('round').notNull(),
+    decision: text('decision', { enum: ['accept', 'reject'] }).notNull(),
+    reviewer: text('reviewer').notNull(),
+    note: text('note'),
+    createdAt: at('created_at'),
+  },
+  t => [foreignKey({ columns: [t.runId, t.round], foreignColumns: [drafts.runId, drafts.round] })],
+)
+
+// stage.end_once, stage.reject_end: one run end for each run.
+export const runEnds = harness.table(
+  'run_ends',
+  {
+    runId: text('run_id')
+      .primaryKey()
+      .references(() => stageRuns.runId),
+    round: integer('round').notNull(),
+    end: text('end', { enum: ['accepted', 'person_accepted', 'person_rejected'] }).notNull(),
+    reviewer: text('reviewer'),
+    note: text('note'),
+    createdAt: at('created_at'),
+  },
+  t => [foreignKey({ columns: [t.runId, t.round], foreignColumns: [drafts.runId, drafts.round] })],
+)
+
+export const graphTables = { nodes, stageRuns, outputs, verdicts, records, derivedRules, drafts, judgeClaims, personDecisions, runEnds }

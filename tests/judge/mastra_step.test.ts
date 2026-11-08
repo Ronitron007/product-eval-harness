@@ -13,12 +13,12 @@ function harness(items: unknown[], planHash?: string) {
   const spy: Spy = { calls: 0 }
   const plan = planOf()
   const deps: JudgeStepDeps = {
-    store: { writeVerdicts: async rows => (written.push(rows), []) },
+    store: { writeVerdicts: async rows => (written.push([...rows]), []) },
     planFor: async () => (planHash === undefined ? plan : { ...plan, ruleSetHash: planHash as never }),
     judgeModel: judgeOf(items, spy),
   }
   const workflow = createWorkflow({ id: 'judge-only', inputSchema: JudgeStepInput, outputSchema: JudgeStepOutput }).then(judgeStep(deps)).commit()
-  const input = { runId: 'run-step', stage: 'create_node' as const, nodeId: 'sunscreen', ruleSetHash: plan.ruleSetHash, reply: JSON.stringify(GOOD_OUTPUT), evidence: GOOD_EVIDENCE }
+  const input = { runId: 'run-step', stage: 'create_node' as const, nodeId: 'sunscreen', ruleSetHash: plan.ruleSetHash, round: 1, reply: JSON.stringify(GOOD_OUTPUT), evidence: GOOD_EVIDENCE }
   return { workflow, written, plan, input, spy }
 }
 

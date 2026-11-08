@@ -38,7 +38,7 @@ afterAll(async () => {
 
 describe('db/migrations', () => {
   it('has the files in their order', () => {
-    expect(migrationFiles()).toEqual(['0001_harness_tables.sql', '0002_mastra_schema.sql', '0003_harness_role.sql'])
+    expect(migrationFiles()).toEqual(['0001_harness_tables.sql', '0002_mastra_schema.sql', '0003_harness_role.sql', '0004_stage_runs.sql'])
   })
 
   it('makes the tables of src/store/schema.ts, column for column', async () => {
@@ -93,12 +93,13 @@ describe('the RealDose migration rules', () => {
         where n.nspname in ('harness', 'mastra') and c.relkind in ('r', 'p') group by n.nspname order by 1`,
     )
     expect(rows).toEqual([
-      { schema: 'harness', tables: 6, rls: 6, with_policy: 6 },
+      { schema: 'harness', tables: 10, rls: 10, with_policy: 10 },
       { schema: 'mastra', tables: 39, rls: 39, with_policy: 39 },
     ])
   })
 
-  it('revokes execute on each function in harness and mastra from PUBLIC and harness_app', async () => {
+  // harness_app runs harness.try_jsonb in the insert of a draft (stage.reply_lossless). It runs no other function.
+  it('revokes execute on each function in harness and mastra from PUBLIC, and from harness_app except try_jsonb', async () => {
     const { rows } = await pool.query(
       `select p.oid::regprocedure::text as fn,
               (select count(*)::int from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0) as public_grants,
@@ -107,8 +108,13 @@ describe('the RealDose migration rules', () => {
          from pg_proc p where p.pronamespace in ('harness'::regnamespace, 'mastra'::regnamespace) order by 1`,
     )
     expect(rows).toEqual([
+      { fn: 'harness.check_decision_open()', public_grants: 0, app_executes: false, config: ['search_path=""'] },
       { fn: 'harness.check_node_path()', public_grants: 0, app_executes: false, config: ['search_path=""'] },
+      { fn: 'harness.check_output()', public_grants: 0, app_executes: false, config: ['search_path=""'] },
+      { fn: 'harness.check_run_end()', public_grants: 0, app_executes: false, config: ['search_path=""'] },
+      { fn: 'harness.check_verdict_open()', public_grants: 0, app_executes: false, config: ['search_path=""'] },
       { fn: 'harness.refuse_change()', public_grants: 0, app_executes: false, config: ['search_path=""'] },
+      { fn: 'harness.try_jsonb(text)', public_grants: 0, app_executes: true, config: ['search_path=""'] },
       { fn: 'mastra.trigger_set_timestamps()', public_grants: 0, app_executes: false, config: ['search_path=""'] },
     ])
   })

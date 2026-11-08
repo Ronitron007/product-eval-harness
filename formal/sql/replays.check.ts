@@ -101,10 +101,15 @@ describe('NodeTree', () => {
 })
 
 describe('VerdictLog', () => {
+  const draft = (runId: string, round: number) => store.addDraft({ runId, round, reply: { criteria: [] }, drafter: 'drafter/replay' })
+
   it('holds: an output has the stage and the node of its run', async () => {
     const runId = await newRun('define_criteria', 'skincare')
+    await draft(runId, 1)
+    await store.writeVerdicts([verdict(runId, ruleHash(rule), 'pass')], 1)
+    await app.query(`insert into harness.run_ends (run_id, round, "end") values ($1, 1, 'accepted')`, [runId])
     await expect(
-      app.query(`insert into harness.outputs (run_id, stage, node_id, body, rule_set_hash) values ($1, 'create_pack', 'skincare', '{}', $2)`, [runId, RULE_SET]),
+      app.query(`insert into harness.outputs (run_id, stage, node_id, body, rule_set_hash, round) values ($1, 'create_pack', 'skincare', '{}', $2, 1)`, [runId, RULE_SET]),
     ).rejects.toThrow(/outputs_run_id_stage_node_id_rule_set_hash_fkey/)
   })
 
@@ -114,32 +119,35 @@ describe('VerdictLog', () => {
     expect(runId).toMatch(/^replay-/)
   })
 
-  // AcceptedAfterPassOrPerson: record the run, accept the output. Also: after a fail. A person
-  // may accept after a spent repair budget (decisions.tsv, 2026-10-24), but no table records
-  // that decision, so the store cannot tell such an output from one that skipped the judge.
-  it('finding verdicts.accept_without_pass: an output with no verdict, and an output after a strict fail, with no record of a person', async () => {
+  // AcceptedAfterPassOrPerson, fixed by 0004_stage_runs.sql: an output needs an accepting run
+  // end of its round. An accepted run end needs a strict row of its round, each one pass. A
+  // person end needs the equal decision of a person, which harness.person_decisions records.
+  it('holds verdicts.accept_without_pass: the store refuses an output with no verdict, after a strict fail, or with no record of a person', async () => {
     const none = await newRun('define_criteria', 'skincare')
-    await store.acceptOutput({ runId: none, body: { criteria: [] } })
+    await draft(none, 1)
+    await expect(store.acceptOutput({ runId: none, round: 1, body: { criteria: [] } })).rejects.toThrow()
+    await expect(store.endRun({ runId: none, round: 1, end: 'accepted', output: { criteria: [] } })).rejects.toThrow(/accepted needs a strict verdict row/)
     const failed = await newRun('define_criteria', 'skincare')
-    await store.writeVerdicts([verdict(failed, ruleHash(rule), 'fail')])
-    await store.acceptOutput({ runId: failed, body: { criteria: [] } })
+    await draft(failed, 1)
+    await store.writeVerdicts([verdict(failed, ruleHash(rule), 'fail')], 1)
+    await expect(store.endRun({ runId: failed, round: 1, end: 'accepted', output: { criteria: [] } })).rejects.toThrow(/each strict row to pass/)
+    await expect(store.endRun({ runId: failed, round: 1, end: 'person_accepted', reviewer: 'operator', output: { criteria: [] } })).rejects.toThrow(/needs the equal person decision/)
+    await store.addDecision({ runId: failed, round: 1, decision: 'accept', reviewer: 'operator' })
+    await store.endRun({ runId: failed, round: 1, end: 'person_accepted', reviewer: 'operator', output: { criteria: [] } })
     const { rows } = await owner.query(
-      `select o.run_id, array_agg(v.verdict) filter (where v.verdict is not null) as verdicts
-         from harness.outputs o left join harness.verdicts v on v.run_id = o.run_id
-        where o.run_id in ($1, $2) group by o.run_id order by o.run_id`,
+      `select o.run_id, d.decision from harness.outputs o left join harness.person_decisions d on d.run_id = o.run_id where o.run_id in ($1, $2) order by o.run_id`,
       [none, failed],
     )
-    expect(rows).toEqual([
-      { run_id: none, verdicts: null },
-      { run_id: failed, verdicts: ['fail'] },
-    ])
+    expect(rows).toEqual([{ run_id: failed, decision: 'accept' }])
   })
 
-  // OneVersionOneHash: two verdict rows of one rule id and version with two hashes.
+  // OneVersionOneHash: two verdict rows of one rule id and version with two hashes, in two rounds.
   it('finding verdicts.hash_per_version: one rule version with two hashes in the verdict log', async () => {
     const runId = await newRun('define_criteria', 'skincare')
-    await store.writeVerdicts([verdict(runId, ruleHash(rule), 'pass')])
-    await store.writeVerdicts([verdict(runId, sha('other words'), 'pass')])
+    await draft(runId, 1)
+    await draft(runId, 2)
+    await store.writeVerdicts([verdict(runId, ruleHash(rule), 'pass')], 1)
+    await store.writeVerdicts([verdict(runId, sha('other words'), 'pass')], 2)
     const { rows } = await owner.query(
       `select count(distinct rule_hash)::int as hashes from harness.verdicts where rule_id = $1 and rule_version = 1 and run_id = $2`,
       [rule.id, runId],
@@ -147,32 +155,31 @@ describe('VerdictLog', () => {
     expect(rows).toEqual([{ hashes: 2 }])
   })
 
-  // OneVerdictPerTargetAndRound: a repair round writes a fail, then a pass, for one target. No
-  // column says which round or which output a row judged: the columns are exactly these.
-  it('finding verdicts.no_round: a repair round gives two verdict rows for one target and one rule', async () => {
+  // OneVerdictPerTargetAndRound, fixed by 0004_stage_runs.sql: each row names its round, and the
+  // unique key refuses a second row for one rule, target and round.
+  it('holds verdicts.no_round: a repair round gives one row for each round, and a second row in one round is refused', async () => {
     const runId = await newRun('define_criteria', 'skincare')
-    await store.writeVerdicts([verdict(runId, ruleHash(rule), 'fail')])
-    await store.writeVerdicts([verdict(runId, ruleHash(rule), 'pass')])
-    await store.acceptOutput({ runId, body: { criteria: [] } })
-    const { rows } = await owner.query(`select verdict from harness.verdicts where run_id = $1 order by created_at`, [runId])
-    expect(rows.map(r => r.verdict)).toEqual(['fail', 'pass'])
-    const { rows: cols } = await owner.query(
-      `select column_name from information_schema.columns where table_schema = 'harness' and table_name = 'verdicts' order by column_name`,
-    )
-    // A new column fails this check. If it names the round or the output, the finding is fixed.
-    expect(cols.map(c => c.column_name)).toEqual([
-      'binding', 'created_at', 'decider', 'evidence', 'id', 'reason', 'rule_hash', 'rule_id', 'rule_version', 'run_id', 'target', 'verdict',
+    await draft(runId, 1)
+    await draft(runId, 2)
+    await store.writeVerdicts([verdict(runId, ruleHash(rule), 'fail')], 1)
+    await store.writeVerdicts([verdict(runId, ruleHash(rule), 'pass')], 2)
+    await expect(store.writeVerdicts([verdict(runId, ruleHash(rule), 'pass')], 2)).rejects.toThrow()
+    const { rows } = await owner.query(`select round, verdict from harness.verdicts where run_id = $1 order by round`, [runId])
+    expect(rows).toEqual([
+      { round: 1, verdict: 'fail' },
+      { round: 2, verdict: 'pass' },
     ])
   })
 
-  // OneOutputPerRun: accept two outputs for one run.
-  it('finding verdicts.outputs_per_run: one run with two outputs', async () => {
+  // OneOutputPerRun, fixed by 0004_stage_runs.sql: outputs.run_id is unique.
+  it('holds verdicts.outputs_per_run: the store refuses a second output of one run', async () => {
     const runId = await newRun('define_criteria', 'skincare')
-    await store.writeVerdicts([verdict(runId, ruleHash(rule), 'pass')])
-    await store.acceptOutput({ runId, body: { draft: 1 } })
-    await store.acceptOutput({ runId, body: { draft: 2 } })
+    await draft(runId, 1)
+    await store.writeVerdicts([verdict(runId, ruleHash(rule), 'pass')], 1)
+    await store.endRun({ runId, round: 1, end: 'accepted', output: { draft: 1 } })
+    await expect(store.acceptOutput({ runId, round: 1, body: { draft: 2 } })).rejects.toThrow()
     const { rows } = await owner.query(`select count(*)::int as n from harness.outputs where run_id = $1`, [runId])
-    expect(rows).toEqual([{ n: 2 }])
+    expect(rows).toEqual([{ n: 1 }])
   })
 })
 

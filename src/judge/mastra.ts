@@ -14,6 +14,7 @@ export const JudgeStepInput = z.object({
   stage: Stage,
   nodeId: NodeId,
   ruleSetHash: z.string().regex(/^[0-9a-f]{64}$/, 'Give the lowercase sha256 hex rule-set hash of the run.'),
+  round: z.number().int().min(1), // stage.round_rows: the draft step gives it
   reply: z.unknown(), // draft.object, else draft.text
   evidence: z.unknown(), // parsed with RunEvidence inside judgeDraft (judge.evidence_parsed)
 })
@@ -47,11 +48,11 @@ export function judgeStep(deps: JudgeStepDeps) {
     outputSchema: JudgeStepOutput,
     // No retries option. A retry would call each judge again, and a judge call is paid.
     execute: async ({ inputData }) => {
-      const { runId, stage, nodeId, ruleSetHash, reply, evidence } = inputData
+      const { runId, stage, nodeId, ruleSetHash, round, reply, evidence } = inputData
       const plan = await deps.planFor({ runId, stage, nodeId, ruleSetHash })
       if (plan.ruleSetHash !== ruleSetHash) throw new Error(`The rules changed during run ${runId}. Start a new run.`)
       const outcome = await judgeDraft({ runId, plan, reply, evidence, judgeModel: deps.judgeModel })
-      await deps.store.writeVerdicts([...outcome.rows]) // one statement, all rows or none
+      await deps.store.writeVerdicts(outcome.rows, round) // one statement, all rows or none
       return toStepOutput(outcome)
     },
   })

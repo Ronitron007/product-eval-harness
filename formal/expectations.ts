@@ -35,9 +35,11 @@ export const MODEL_RULES: ModelRule[] = [
     ['OutputAgreesWithRun', 'holds'],
     ['StageFitsNodeLevel', 'breaks', 'verdicts.stage_level'],
     ['OneVersionOneHash', 'breaks', 'verdicts.hash_per_version'],
-    ['AcceptedAfterPassOrPerson', 'breaks', 'verdicts.accept_without_pass'],
-    ['OneVerdictPerTargetAndRound', 'breaks', 'verdicts.no_round'],
-    ['OneOutputPerRun', 'breaks', 'verdicts.outputs_per_run'],
+    // Fixed by db/migrations/0004_stage_runs.sql (plan.stage_workflow): the round of each row,
+    // the run end and person decision tables, and their triggers.
+    ['AcceptedAfterPassOrPerson', 'holds'],
+    ['OneVerdictPerTargetAndRound', 'holds'],
+    ['OneOutputPerRun', 'holds'],
   ]),
   ...rows('RuleVersions', 'RuleVersions', 'INVARIANT', [
     ['FileMatchesLock', 'holds'],

@@ -4,7 +4,7 @@ import type pg from 'pg'
 import { z } from 'zod'
 import { ruleHash } from '../rules/hash'
 import { Binding, NodeId, NodeLevel, OWNER_ALL, RuleId, RuleRecord, Stage, Verdict } from '../rules/schema'
-import { derivedRules, nodes, outputs, records, stageRuns, verdicts } from './schema'
+import { derivedRules, drafts, nodes, outputs, records, stageRuns, verdicts } from './schema'
 
 // The graph store (docs/design/graph-store.md). The ltree type and operators live in
 // schema extensions (db/migrations/0001_harness_tables.sql), so the queries name that schema
@@ -24,7 +24,7 @@ export const NodeInput = z
     message: 'A domain node has no parent. An inner or leaf node needs a parent.',
   })
 export const StageRunInput = z.object({ runId: Text, stage: Stage, nodeId: NodeId, ruleSetHash: Sha256 }).strict()
-export const OutputInput = z.object({ runId: Text, body: z.unknown() }).strict()
+export const OutputInput = z.object({ runId: Text, round: z.number().int().min(1), body: z.unknown() }).strict()
 export const Decider = z.union([
   z.object({ by: z.literal('code') }).strict(),
   z.object({ by: z.literal('judge'), model: Text, promptHash: Text }).strict(),
@@ -55,6 +55,42 @@ export type VerdictInput = z.infer<typeof VerdictInput>
 export type RecordInput = z.infer<typeof RecordInput>
 export type DerivedRuleInput = z.input<typeof DerivedRuleInput>
 
+// The rows of the stage workflow (stage.store in docs/design/stage-workflow.md).
+const Round = z.number().int().min(1)
+// stage.person_payload: a reviewer or a note that is blank after a trim is refused. No transform.
+const Filled = z.string().refine(v => v.trim() !== '', 'Give a value that is not blank.')
+const ModelId = z.string().regex(/^[^/]+\/.+$/, 'Give a provider/model id.')
+export const DraftRowInput = z.object({ runId: Text, round: Round, reply: z.unknown(), drafter: ModelId }).strict()
+export const DecisionRowInput = z.discriminatedUnion('decision', [
+  z.object({ runId: Text, round: Round, decision: z.literal('accept'), reviewer: Filled, note: Filled.optional() }).strict(),
+  z.object({ runId: Text, round: Round, decision: z.literal('reject'), reviewer: Filled, note: Filled }).strict(),
+])
+export const RunEnd = z.enum(['accepted', 'person_accepted', 'person_rejected'])
+export type RunEnd = z.infer<typeof RunEnd>
+
+export interface DraftRow {
+  runId: string
+  round: number
+  reply: unknown // JSON.parse of reply_text (stage.reply_lossless)
+  drafter: string // provider/model
+}
+// stage.decision_first: one row for each run, written before assimilate runs.
+export type DecisionRow = { readonly runId: string; readonly round: number; readonly reviewer: string } & (
+  | { readonly decision: 'accept'; readonly note?: string }
+  | { readonly decision: 'reject'; readonly note: string }
+)
+export type RunEndInput =
+  | { readonly runId: string; readonly round: number; readonly end: 'accepted'; readonly output: unknown }
+  | { readonly runId: string; readonly round: number; readonly end: 'person_accepted'; readonly reviewer: string; readonly note?: string; readonly output: unknown }
+  | { readonly runId: string; readonly round: number; readonly end: 'person_rejected'; readonly reviewer: string; readonly note: string }
+// The stored end of a run: StageResult of src/stage/types.ts.
+export interface RunEndRow {
+  runId: string
+  end: RunEnd
+  round: number
+  outputId: string | null
+}
+
 export type GraphNode = typeof nodes.$inferSelect
 export type StageRun = typeof stageRuns.$inferSelect
 export type Output = typeof outputs.$inferSelect
@@ -66,8 +102,8 @@ export interface GraphStore {
   db: NodePgDatabase
   addNode(input: NodeInput): Promise<GraphNode>
   recordStageRun(input: StageRunInput): Promise<StageRun>
-  acceptOutput(input: OutputInput): Promise<Output>
-  writeVerdicts(rows: VerdictInput[]): Promise<VerdictRow[]>
+  acceptOutput(input: OutputInput): Promise<Output> // only endRun calls it, inside its transaction
+  writeVerdicts(rows: readonly VerdictInput[], round: number): Promise<VerdictRow[]> // stage.round_rows
   addRecord(input: RecordInput): Promise<ResearchRecord>
   addDerivedRule(input: DerivedRuleInput): Promise<DerivedRule>
   // store.tree: the walks of graph.traversal.
@@ -76,11 +112,52 @@ export interface GraphStore {
   pathToRoot(nodeId: string): Promise<GraphNode[]>
   subtree(nodeId: string): Promise<GraphNode[]>
   siblings(nodeId: string): Promise<GraphNode[]>
+  // stage.store: the calls of the stage workflow.
+  stageRun(runId: string): Promise<{ runId: string; ruleSetHash: string } | undefined>
+  addDraft(row: DraftRow): Promise<void>
+  draftOf(runId: string, round: number): Promise<DraftRow | undefined>
+  verdictsOf(runId: string, round: number): Promise<VerdictInput[]>
+  // stage.judge_claim, stage.claim_lease: the new attempt number, or null. It inserts attempt
+  // max + 1 only when the latest claim is older than leaseMs and the round has no verdict row.
+  claimJudge(runId: string, round: number, leaseMs: number): Promise<number | null>
+  // stage.decision_first: an equal row again is a no-op. Another row for the run throws.
+  addDecision(row: DecisionRow): Promise<void>
+  decisionOf(runId: string): Promise<DecisionRow | undefined>
+  // stage.reuse_end: the stored end of a run, or undefined.
+  runEndOf(runId: string): Promise<RunEndRow | undefined>
+  // stage.end_once: one transaction, the run_ends row, then the output for an accepting end.
+  // An equal end that is stored already gives the stored end. Another end throws.
+  endRun(input: RunEndInput): Promise<RunEndRow>
 }
+
+// The SQLSTATE of a unique or primary key violation.
+const UNIQUE_VIOLATION = '23505'
+const codeOf = (e: unknown) => (e as { code?: string })?.code
+
+const OUTPUT_SQL = `insert into harness.outputs (run_id, stage, node_id, body, rule_set_hash, round)
+  select run_id, stage, node_id, $2::jsonb, rule_set_hash, $3 from harness.stage_runs where run_id = $1 returning id`
 
 // One store on the pool that Mastra storage uses too.
 export function createGraphStore(pool: pg.Pool): GraphStore {
   const db = drizzle(pool)
+
+  async function runEndOf(runId: string): Promise<RunEndRow | undefined> {
+    const { rows } = await pool.query(
+      'select e.run_id, e."end", e.round, o.id as output_id from harness.run_ends e left join harness.outputs o on o.run_id = e.run_id where e.run_id = $1',
+      [runId],
+    )
+    const r = rows[0]
+    return r && { runId: r.run_id, end: r.end, round: r.round, outputId: r.output_id ?? null }
+  }
+
+  async function decisionOf(runId: string): Promise<DecisionRow | undefined> {
+    const { rows } = await pool.query('select run_id, round, decision, reviewer, note from harness.person_decisions where run_id = $1', [runId])
+    const r = rows[0]
+    if (!r) return undefined
+    return r.decision === 'reject'
+      ? { runId: r.run_id, round: r.round, decision: 'reject', reviewer: r.reviewer, note: r.note }
+      : { runId: r.run_id, round: r.round, decision: 'accept', reviewer: r.reviewer, ...(r.note !== null ? { note: r.note } : {}) }
+  }
 
   async function nodeOrThrow(nodeId: string): Promise<GraphNode> {
     const [node] = await db.select().from(nodes).where(eq(nodes.id, NodeId.parse(nodeId)))
@@ -112,6 +189,7 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
     },
 
     // The stage, node and rule set hash come from the run, so an output cannot disagree with it.
+    // The database refuses an output with no accepting run end of its run and round.
     async acceptOutput(input) {
       const o = OutputInput.parse(input)
       const [run] = await db.select().from(stageRuns).where(eq(stageRuns.runId, o.runId))
@@ -119,15 +197,16 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
       if (o.body === undefined) throw new Error('An output needs a body.')
       const [row] = await db
         .insert(outputs)
-        .values({ runId: run.runId, stage: run.stage, nodeId: run.nodeId, ruleSetHash: run.ruleSetHash, body: o.body })
+        .values({ runId: run.runId, stage: run.stage, nodeId: run.nodeId, ruleSetHash: run.ruleSetHash, body: o.body, round: o.round })
         .returning()
       return row!
     },
 
-    // All rows or none, in one statement.
-    async writeVerdicts(rows) {
+    // All rows or none, in one statement. Each row gets the round (stage.round_rows).
+    async writeVerdicts(rows, round) {
+      const n = Round.parse(round)
       if (rows.length === 0) return []
-      return db.insert(verdicts).values(rows.map(r => VerdictInput.parse(r))).returning()
+      return db.insert(verdicts).values(rows.map(r => ({ ...VerdictInput.parse(r), round: n }))).returning()
     },
 
     async addRecord(input) {
@@ -183,6 +262,106 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
         .from(nodes)
         .where(and(sameParent, ne(nodes.id, node.id)))
         .orderBy(asc(nodes.id))
+    },
+
+    async stageRun(runId) {
+      const [run] = await db.select({ runId: stageRuns.runId, ruleSetHash: stageRuns.ruleSetHash }).from(stageRuns).where(eq(stageRuns.runId, runId))
+      return run
+    },
+
+    // stage.reply_lossless: JSON.stringify writes NUL and a lone surrogate as escapes, so the text
+    // column keeps each reply. The jsonb column is null when jsonb refuses the text.
+    async addDraft(row) {
+      const d = DraftRowInput.parse(row)
+      const text = JSON.stringify(d.reply)
+      if (text === undefined) throw new Error(`The drafter gave no reply for round ${d.round} of run ${d.runId}.`)
+      await pool.query('insert into harness.drafts (run_id, round, reply_text, reply, drafter) values ($1, $2, $3, harness.try_jsonb($3), $4)', [d.runId, d.round, text, d.drafter])
+    },
+
+    async draftOf(runId, round) {
+      const [d] = await db
+        .select({ runId: drafts.runId, round: drafts.round, replyText: drafts.replyText, drafter: drafts.drafter })
+        .from(drafts)
+        .where(and(eq(drafts.runId, runId), eq(drafts.round, round)))
+      return d && { runId: d.runId, round: d.round, reply: JSON.parse(d.replyText), drafter: d.drafter }
+    },
+
+    async verdictsOf(runId, round) {
+      const rows = await db
+        .select()
+        .from(verdicts)
+        .where(and(eq(verdicts.runId, runId), eq(verdicts.round, round)))
+        .orderBy(asc(verdicts.ruleId), asc(verdicts.ruleVersion), asc(verdicts.target))
+      return rows.map(r => ({
+        runId: r.runId,
+        ruleId: r.ruleId,
+        ruleVersion: r.ruleVersion,
+        ruleHash: r.ruleHash,
+        binding: r.binding,
+        target: r.target,
+        verdict: r.verdict,
+        decider: r.decider,
+        reason: r.reason,
+        ...(r.evidence !== null ? { evidence: r.evidence } : {}),
+      }))
+    },
+
+    // One statement. The primary key lets one caller win each attempt.
+    async claimJudge(runId, round, leaseMs) {
+      const { rows } = await pool.query(
+        `insert into harness.judge_claims (run_id, round, attempt)
+         select $1, $2, coalesce(max(c.attempt), 0) + 1 from harness.judge_claims c where c.run_id = $1 and c.round = $2
+         having (max(c.claimed_at) is null or max(c.claimed_at) < now() - make_interval(secs => $3::double precision / 1000))
+            and not exists (select 1 from harness.verdicts v where v.run_id = $1 and v.round = $2)
+         on conflict do nothing returning attempt`,
+        [runId, Round.parse(round), z.number().int().min(0).parse(leaseMs)],
+      )
+      return rows[0] ? (rows[0].attempt as number) : null
+    },
+
+    async addDecision(row) {
+      const d = DecisionRowInput.parse(row)
+      try {
+        await pool.query('insert into harness.person_decisions (run_id, round, decision, reviewer, note) values ($1, $2, $3, $4, $5)', [d.runId, d.round, d.decision, d.reviewer, d.note ?? null])
+      } catch (e) {
+        if (codeOf(e) !== UNIQUE_VIOLATION) throw e
+        const o = await decisionOf(d.runId)
+        const same = o !== undefined && o.round === d.round && o.decision === d.decision && o.reviewer === d.reviewer && (o.note ?? null) === (d.note ?? null)
+        if (!same) throw new Error(`Run ${d.runId} has another person decision. A run takes one decision (stage.end_once).`)
+      }
+    },
+
+    decisionOf,
+    runEndOf,
+
+    async endRun(input) {
+      const e = input
+      const client = await pool.connect()
+      try {
+        await client.query('begin')
+        await client.query('insert into harness.run_ends (run_id, round, "end", reviewer, note) values ($1, $2, $3, $4, $5)', [
+          e.runId,
+          Round.parse(e.round),
+          RunEnd.parse(e.end),
+          e.end === 'accepted' ? null : e.reviewer,
+          e.end === 'accepted' ? null : (e.note ?? null),
+        ])
+        if (e.end !== 'person_rejected') {
+          if (e.output === undefined) throw new Error('An output needs a body.')
+          const { rowCount } = await client.query(OUTPUT_SQL, [e.runId, JSON.stringify(e.output), e.round])
+          if (rowCount !== 1) throw new Error(`No stage run ${e.runId} in harness.stage_runs.`)
+        }
+        await client.query('commit')
+      } catch (err) {
+        await client.query('rollback')
+        if (codeOf(err) !== UNIQUE_VIOLATION) throw err
+        const stored = await runEndOf(e.runId)
+        if (stored === undefined || stored.end !== e.end || stored.round !== e.round) throw err
+        return stored
+      } finally {
+        client.release()
+      }
+      return (await runEndOf(e.runId))!
     },
   }
 }

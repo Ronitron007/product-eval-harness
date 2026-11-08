@@ -81,14 +81,13 @@ A `ModelAgrees` failure in the sweep means that `MigrationApply.tla` no longer m
 
 These rules break today. Rohan rules on each fix. Each fix is its own plan unit.
 
+The findings `verdicts.accept_without_pass`, `verdicts.no_round`, and `verdicts.outputs_per_run` hold from `db/migrations/0004_stage_runs.sql` (`plan.stage_workflow`). Their replays check that the database refuses each step.
+
 | Finding | Rule that breaks | What happens |
 |---|---|---|
 | `nodes.owner_update` | `NodeTree_owner`: `PathAgreesWithParent`, `NoChildUnderLeaf`, `WalkAgreesWithParents` | `harness.nodes` has no append-only trigger, and its path trigger fires on insert only. A plain UPDATE by the table owner breaks the tree. `harness_app` cannot update. |
 | `verdicts.stage_level` | `StageFitsNodeLevel` | A `create_pack` run at a domain node is stored. |
 | `verdicts.hash_per_version` | `OneVersionOneHash` | Two verdict rows of one rule version can name two hashes. |
-| `verdicts.accept_without_pass` | `AcceptedAfterPassOrPerson` | `acceptOutput()` reads no verdict, and no table records the decision of a person. So an output with no verdict, or after a strict fail, is stored with no record of why. |
-| `verdicts.no_round` | `OneVerdictPerTargetAndRound` | A repair round gives two rows for one target. No column names the round or the output. |
-| `verdicts.outputs_per_run` | `OneOutputPerRun` (inferred rule) | One run can store two outputs. |
 | `rules.watch_first` | `NewVersionStartsWatch` | `rules:lock` locks a new version with binding `strict`. |
 | `rules.lock_hand_entry` | `LockSkipsNoVersion` | A PR can add a lock entry by hand for a version that no file had, such as version 3 with no version 2. `rules:check --base` passes. |
 | `derived_rules.skip_version` | `DerivedSkipsNoVersion` | Version 2 of a derived rule is stored with no version 1. |
