@@ -1,7 +1,7 @@
 {
 	"nodes":[
 		{"id":"gE","type":"group","x":-380,"y":1480,"width":3680,"height":620,"color":"6","label":"How does the harness improve its own rules?"},
-		{"id":"gB","type":"group","x":1100,"y":-80,"width":2200,"height":820,"color":"6","label":"What runs in one stage?"},
+		{"id":"gB","type":"group","x":1100,"y":-80,"width":2200,"height":820,"color":"6","label":"What runs in one stage? (built, #29)"},
 		{"id":"gD","type":"group","x":1100,"y":740,"width":2200,"height":680,"color":"6","label":"Where does it run on Mastra?"},
 		{"id":"gA","type":"group","x":-320,"y":-60,"width":1320,"height":700,"color":"6","label":"Which node makes what?"},
 		{"id":"gC","type":"group","x":-400,"y":740,"width":1400,"height":640,"color":"6","label":"How is a rule enforced?"},
@@ -12,7 +12,7 @@
 		{"id":"leaf","type":"text","text":"## `leaf` node\nGets the pack and the layout.\nreads: node criteria, attributes\nwrites: evaluation pack, layout\nstages: `create_pack`, `create_layout`","x":700,"y":60,"width":280,"height":200,"color":"5"},
 		{"id":"rec","type":"text","text":"## record system\nKeeps the research behind each output.\nwrites: research records, append-only\nlinks: each criterion, attribute, rule","x":220,"y":360,"width":280,"height":200,"color":"5"},
 		{"id":"hdr","type":"text","text":"## Evaluation harness\nThe rule graph, its stages, rule enforcement, Mastra, self-improvement.\nparent: [docs hub](../README.md)\nscope: design only","x":0,"y":-360,"width":640,"height":200},
-		{"id":"stamp","type":"text","text":"## stamp\ncode: the scaffold only, `main` at `4560d23`, 2026-10-25\nMastra `@mastra/core` 1.79.0, harness2 `1cfe254e`\ndescribes: design/*.md, plans/2026-10-24-harness-plan.md\n_unverified_","x":780,"y":-360,"width":640,"height":200},
+		{"id":"stamp","type":"text","text":"## stamp\ncode: `main` at `718a0c1`, 2026-11-08. Only the stage workflow is verified.\nMastra `@mastra/core` 1.79.0, harness2 `1cfe254e`\ndescribes: design/*.md, plans/2026-10-24-harness-plan.md\n_unverified_","x":780,"y":-360,"width":640,"height":200},
 		{"id":"asm","type":"text","text":"## `assimilate`\nEnds the run in one transaction.\nreads: the decision row\nwrites: run end, output on accept","x":1540,"y":400,"width":240,"height":180,"color":"4"},
 		{"id":"ctx","type":"text","text":"## `context`\nReads the graph for one node.\nreads: path to root, rules in scope\nreads: records, sibling nodes","x":1140,"y":-30,"width":240,"height":180,"color":"4"},
 		{"id":"rep","type":"text","text":"## `repair`\nSends the exact errors back.\nbudget: 3 rounds","x":2940,"y":490,"width":240,"height":180,"color":"4"},
@@ -24,7 +24,7 @@
 		{"id":"mag","type":"text","text":"## agents\nResearcher, drafter, editors.\nreads: `RequestContext` with the node\nwrites: `structuredOutput`","x":1960,"y":800,"width":300,"height":200,"color":"4"},
 		{"id":"mdb","type":"text","text":"## our graph tables\nNodes, rules, records, verdicts.\nDrizzle ORM on the Mastra client","x":2140,"y":1100,"width":300,"height":200,"color":"5"},
 		{"id":"mds","type":"text","text":"## datasets, experiments\nGolden examples and rule trials.\nCI gate: `runEvals`","x":1400,"y":1100,"width":300,"height":200,"color":"3"},
-		{"id":"mwf","type":"text","text":"## workflows\nOne `createWorkflow` for each stage.\nrepair: `.dountil` with a budget\nperson: `suspend`, `resume`","x":1140,"y":800,"width":300,"height":200,"color":"4"},
+		{"id":"mwf","type":"text","text":"## workflows\nOne `createWorkflow` for each stage.\nrepair: `.dountil` with a budget\nperson: `suspend`, `resume`\nbuilt: `src/stage/`, #29","x":1140,"y":800,"width":300,"height":200,"color":"4"},
 		{"id":"mrules","type":"text","text":"## `rules/` in git\nStage rules, one YAML file each.\nreviewed by PR","x":2790,"y":1140,"width":300,"height":200,"color":"3"},
 		{"id":"f1","type":"file","file":"design/rule-graph.md","x":-300,"y":2240,"width":400,"height":120},
 		{"id":"f2","type":"file","file":"design/rule-enforcement.md","x":180,"y":2240,"width":400,"height":120},

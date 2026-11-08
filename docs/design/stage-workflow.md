@@ -1,6 +1,6 @@
 # The stage workflow `stage`
 
-Status. Spec of 2026-11-08 for the unit `plan.stage_workflow` ([the plan](../plans/2026-10-24-harness-plan.md)). No code builds it yet. Written against `main` at `2821755`. Terms are in [glossary.md](../glossary.md).
+Status. Spec of 2026-11-08 for the unit `plan.stage_workflow` ([the plan](../plans/2026-10-24-harness-plan.md)). Shipped 2026-11-08 in [#29](https://github.com/Ronitron007/product-eval-harness/pull/29), at `main` `718a0c1`. The code differs from the sketches in the items of `stage.reconciliation`. Nobody applied the migration `0004_stage_runs.sql` to the live database yet. Written against `main` at `2821755`. Terms are in [glossary.md](../glossary.md).
 
 Review. Two adversaries interrogated this spec at `7fb8f87` on 2026-11-08. Claude ran each repro again on a local Postgres 18, with no model call. The spec folds in each fix whose repro reproduced. `stage.interrogate` lists each finding and its result. The repros are in [the interrogate folder](../research/2026-11-08-stage-interrogate/README.md).
 

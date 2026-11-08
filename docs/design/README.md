@@ -1,6 +1,6 @@
 # Design index `design`
 
-Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but no code implements this design yet.
+Status. Design of 2026-10-24. The code implements the units from `plan.scaffold` to `plan.stage_workflow`, which shipped on 2026-11-08 in [#29](https://github.com/Ronitron007/product-eval-harness/pull/29). The [plan](../plans/2026-10-24-harness-plan.md) gives the status of each unit.
 
 | Doc | Name | What it holds |
 |---|---|---|
@@ -13,7 +13,7 @@ Status. Design of 2026-10-24. The Mastra scaffold exists (`plan.scaffold`), but 
 | [data-layers.md](data-layers.md) | `data` | What each layer of data holds, where it lives, and how the isolated steps hand off work |
 | [compiler.md](compiler.md) | `compile` | The rule compiler of `plan.compiler`. Spec of 2026-11-02, shipped 2026-11-04 in [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). |
 | [judge-step.md](judge-step.md) | `judge` | The judge step of `plan.judge_step`: the order, the binding table, the outcome, and the quote check. Shipped 2026-11-08 in [Ronitron007/product-eval-harness#26](https://github.com/Ronitron007/product-eval-harness/pull/26). |
-| [stage-workflow.md](stage-workflow.md) | `stage` | The stage workflow of `plan.stage_workflow`: the steps, the repair loop, the person step, the draft log, the run end, and the hazards. Spec of 2026-11-08, in review. |
+| [stage-workflow.md](stage-workflow.md) | `stage` | The stage workflow of `plan.stage_workflow`: the steps, the repair loop, the person step, the draft log, the run end, and the hazards. Spec of 2026-11-08, shipped on 2026-11-08 in [#29](https://github.com/Ronitron007/product-eval-harness/pull/29). |
 
 ## Name map `harness.names`
 

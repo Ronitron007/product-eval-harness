@@ -2,7 +2,7 @@
 
 Status. Spec of 2026-10-29 for `plan.graph_store`. The code shipped on 2026-10-30 in [#12](https://github.com/Ronitron007/product-eval-harness/pull/12): `src/store/`, `db/migrations/`, and `db/README.md`. Rohan ruled on 2026-10-29 that the authoring database is the Kyaloon Supabase Postgres database ([decisions.tsv](../decisions.tsv)). A spike on a local Postgres 18 verified the parts below ([the spike](../research/2026-10-29-postgres-spike.md)). Terms are in [glossary.md](../glossary.md).
 
-On 2026-10-31, [#14](https://github.com/Ronitron007/product-eval-harness/pull/14) made the migrations safe for the live database (`store.safety`). Nobody applied them to the Kyaloon database yet. They wait for [Ronitron007/RealDose#470](https://github.com/Ronitron007/RealDose/pull/470).
+On 2026-10-31, [#14](https://github.com/Ronitron007/product-eval-harness/pull/14) made the migrations safe for the live database (`store.safety`). On 2026-11-08, [#29](https://github.com/Ronitron007/product-eval-harness/pull/29) added `0004_stage_runs.sql` (`store.stage_tables`). Nobody applied any of them to the Kyaloon database yet. They wait for [Ronitron007/RealDose#470](https://github.com/Ronitron007/RealDose/pull/470).
 
 ## Where it lives `store.place`
 
@@ -60,6 +60,20 @@ This unit builds the tables that every stage needs. The tables of the stage outp
 | `harness.verdicts` | One row for each target and each rule (`VerdictRow`) | `id`, `run_id`, `rule_id`, `rule_version`, `rule_hash`, `binding`, `target`, `verdict`, `decider`, `reason`, `evidence` (JSON), `created_at` |
 | `harness.records` | The metadata of each research record | `id`, `version`, `question`, `run_id`, `artifact_ref`, `artifact_hash`, `created_at` |
 | `harness.derived_rules` | Each derived rule, with the fields of `RuleRecord` | `id`, `version`, `hash`, `owner`, `record` (JSON), `run_id`, `created_at` |
+
+## The tables of the stage workflow `store.stage_tables`
+
+`plan.stage_workflow` added `db/migrations/0004_stage_runs.sql` in [#29](https://github.com/Ronitron007/product-eval-harness/pull/29). Nobody applied the migration to the live database yet (NOT live). Its live apply needs Rohan's yes (`rules.gates`). The migration runs in one transaction. It stops when `harness.verdicts` or `harness.outputs` has rows before it adds their `round` column. The spec is `stage.store` in [stage-workflow.md](stage-workflow.md).
+
+| Table | Holds | Key columns |
+|---|---|---|
+| `harness.drafts` | One draft for each round of a stage run | `run_id`, `round` (1 to 3), `reply_text`, `reply` (JSON), `error`, `drafter`, `created_at` |
+| `harness.draft_claims` | One row for each attempt to draft a round | `run_id`, `round`, `attempt`, `claimed_at` |
+| `harness.judge_claims` | One row for each attempt to judge a round | `run_id`, `round`, `attempt`, `claimed_at` |
+| `harness.person_decisions` | The decision of a person, one for each run | `run_id`, `round`, `decision` (`accept`, `reject`), `reviewer`, `note`, `created_at` |
+| `harness.run_ends` | The end of a run, one for each run | `run_id`, `round`, `end` (`accepted`, `person_accepted`, `person_rejected`), `reviewer`, `note`, `created_at` |
+
+The migration also adds the column `round` to `harness.verdicts` and `harness.outputs`. Triggers refuse a verdict row or a decision after the run end. Each claim is a row, not a session lock, so the claims work through the transaction pooler.
 
 ## The tree walk `store.tree`
 
