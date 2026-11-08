@@ -56,4 +56,15 @@ export const MODEL_RULES: ModelRule[] = [
     ['CommittedIsSafe', 'breaks', 'migration.guard_gaps'],
     ['StopRollsBack', 'breaks', 'migration.per_file_stop'],
   ]),
+  ...rows('HarnessRun', 'HarnessRun', 'INVARIANT', [
+    ['RepairBudget', 'holds'],
+    ['JudgeOnlyAfterCode', 'holds'],
+    ['EveryRuleHasARow', 'holds'],
+    ['SoftNeverBlocks', 'holds'],
+    ['AutoAcceptOnlyWhenStrictPass', 'holds'],
+    ['BrokenSchemaNeverAccepted', 'breaks', 'harness_run.extra_key_accepted'],
+    ['BrokenSchemaNeverLandsByReviewer', 'breaks', 'harness_run.reviewer_lands_broken_schema'],
+    ['JudgeVerdictRestsOnQuote', 'breaks', 'harness_run.quote_unchecked'],
+    ['ResumeAfterRuleChangeRefuses', 'breaks', 'harness_run.resume_after_rule_change'],
+  ]),
 ]
