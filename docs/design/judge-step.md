@@ -608,3 +608,21 @@ Known limits that stay as risks:
 - The brief said that a strict `cannot_verify` gives `person`. With a strict judgement rule, that reading sends each strict code fail to a person. The cause is the skipped judge row, which is `cannot_verify`. This spec puts `repair` first (`judge.outcome_precedence`).
 
 - `compile.reconciliation.changes` says that a judge row keeps the observed value of the item. `judge.quote_rules` changes that for a judged `pass` or `fail` row.
+
+## Implementation reconciliation `judge.reconciliation`
+
+The code of the build PR of `plan.judge_step` builds this spec. This section lists each place where the code differs from the text above, and why. Mastra APIs are those of `@mastra/core` 1.79.0, from `reference-workflows-step.md`.
+
+| Spec text | Code | Why |
+|---|---|---|
+| An unmocked judge model leaves one call of `fetch` in the count (`judge.no_network`) | The test `model_call.unmocked_model_fails` sets a placeholder `OPENAI_API_KEY` with `vi.stubEnv`. | With no provider key, Mastra throws before it calls `fetch`. The count then stays at zero, and the run still gives `person`. Verified (ran the test with no key). |
+| The reason of a row from a scorer that throws is "The scorer threw" | The reason is "The scorer threw: " and the message of the error. | The message names the bug to fix. |
+| `evidence.source` is `item.` and the leaf path, such as `item.key` | A leaf in a list has a path with an index, such as `item[0]` or `item.tags[1]`. | The path uses the format of the decode issues, so one path syntax names each place. |
+| The string leaves of an item are in path order | The walk takes the keys of an object in code-unit order, and the items of a list in index order. | This order is the same on each run, and it gives `item[2]` before `item[10]`. |
+| Exact copies by answer and normalized quote count once (`judge.one_answer`) | Of two copies, the copy with the first canonical JSON stays. | Two copies can have two reasons. The order of the answers must not choose the reason. |
+| `planFor` refuses a hash that differs from the run | `judgeStep` also compares `plan.ruleSetHash` with the hash of its input. It throws before any judge call, and it writes no row. | `planFor` comes from the caller. The step must not trust it for the rule. |
+| The tests live in `tests/judge/`, one file for each hazard | `tests/judge/mastra_step.test.ts` tests `judgeStep` in a workflow. `tests/judge/helpers.ts` holds the shared mock parts. | No hazard test ran the Mastra wrapper. |
+| `tests/compiler/hash.test.ts` changes only `FIXTURE_HASH` | The tests `hash.manifest_plain_json` and `hash.code_lock` read `RUNTIME_VERSION`, not the literal 1. | The lock holds version 2 now. So the old test step that adds version 2 would get a refusal. |
+| The list of `RUNTIME_FILES` applies from `RUNTIME_VERSION` 2 | The script has one list. The lock entry of version 1 keeps the fingerprint of the first four files. | `lockProblems` reads only the current version, so an old entry never needs the old list. |
+
+Known limit. The fetch count finds an unmocked model only when the key of its provider is in the environment. With no key, Mastra fails before `fetch`, and the test can pass as `person`. The judge tests use `createMockModel` through `tests/judge/helpers.ts`, so they do not depend on this guard.
