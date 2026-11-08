@@ -159,6 +159,39 @@ describe('the RealDose migration rules', () => {
   })
 })
 
+// db/migrations/0004_stage_runs.sql runs in one transaction, and it needs empty verdicts and outputs
+// before it adds their not-null round column.
+describe('0004_stage_runs.sql', () => {
+  it('refuses a database whose harness.verdicts has rows, and leaves no table of 0004', async () => {
+    const filled = await freshDatabase({ migrate: false })
+    try {
+      await applyMigrations(filled.url, ['0001_harness_tables.sql', '0002_mastra_schema.sql', '0003_harness_role.sql'])
+      const pool = filled.pool()
+      await pool.query(`insert into harness.nodes (id, level, path, label) values ('skincare', 'domain', 'skincare', 'Skincare');
+        insert into harness.stage_runs (run_id, stage, node_id, rule_set_hash) values ('old', 'define_criteria', 'skincare', repeat('a', 64));
+        insert into harness.verdicts (run_id, rule_id, rule_version, rule_hash, binding, target, verdict, decider, reason)
+          values ('old', 'a.b', 1, repeat('a', 64), 'strict', 't', 'pass', '{"by": "code"}', 'r')`)
+      await expect(applyMigrations(filled.url, ['0004_stage_runs.sql'])).rejects.toThrow(/harness migration 0004: harness.verdicts has rows/)
+      const { rows } = await pool.query(`select to_regclass('harness.drafts') as drafts,
+        exists (select 1 from information_schema.columns where table_schema = 'harness' and table_name = 'verdicts' and column_name = 'round') as round`)
+      expect(rows).toEqual([{ drafts: null, round: false }])
+    } finally {
+      await filled.drop()
+    }
+  })
+
+  it('applies twice to an empty database', async () => {
+    const empty = await freshDatabase()
+    try {
+      await applyMigrations(empty.url, ['0004_stage_runs.sql'])
+      const { rows } = await empty.pool().query(`select count(*)::int as n from pg_class where relnamespace = 'harness'::regnamespace and relname in ('drafts', 'judge_claims', 'person_decisions', 'run_ends')`)
+      expect(rows).toEqual([{ n: 4 }])
+    } finally {
+      await empty.drop()
+    }
+  })
+})
+
 // Supabase makes the roles anon, authenticated and service_role. A default privilege of the
 // database can give them, or PUBLIC, a right on each new object.
 describe('on a database with the roles and default privileges of Supabase', () => {

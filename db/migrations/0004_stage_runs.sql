@@ -10,6 +10,29 @@
 -- Each new table only grows, has row level security with a policy for harness_app, and gives
 -- PUBLIC, anon and authenticated no right (store.safety). The last block repeats the guard of
 -- 0003_harness_role.sql, so that it also covers the new tables and functions.
+-- The file runs in one transaction, so a stop never leaves a new table with no row level security.
+
+begin;
+
+-- The precondition: harness.verdicts and harness.outputs get a not-null round column with no
+-- default, so they must be empty before that column exists. A second run, after the column
+-- exists, skips this check.
+do $$
+declare
+  t text;
+  filled boolean;
+begin
+  foreach t in array array['verdicts', 'outputs'] loop
+    if not exists (select 1 from information_schema.columns where table_schema = 'harness' and table_name = t and column_name = 'round') then
+      execute format('select exists (select 1 from harness.%I)', t) into filled;
+      if filled then
+        raise exception 'harness migration 0004: harness.% has rows, and 0004 adds a not-null round column with no default. Ask Rohan what to do with the rows before this migration.', t
+          using errcode = 'check_violation';
+      end if;
+    end if;
+  end loop;
+end
+$$;
 
 -- stage.reply_lossless: the jsonb value of a reply text, or null when jsonb refuses it (NUL, a lone surrogate).
 create or replace function harness.try_jsonb(t text) returns jsonb
@@ -89,6 +112,9 @@ exception when duplicate_object then null; end $$;
 -- stage.round_closed: no verdict row after the run ended.
 create or replace function harness.check_verdict_open() returns trigger language plpgsql set search_path = '' as $$
 begin
+  -- One lock for each run, held to the end of the transaction, so that an end and a late row of
+  -- two open transactions cannot pass each other's check.
+  perform pg_advisory_xact_lock(hashtext(new.run_id));
   if exists (select 1 from harness.run_ends e where e.run_id = new.run_id) then
     raise exception 'harness.verdicts: run % has ended, so it takes no verdict row', new.run_id using errcode = 'check_violation';
   end if;
@@ -99,6 +125,7 @@ create or replace trigger verdicts_open before insert on harness.verdicts for ea
 -- stage.decision_closed: no decision of a person after the run ended.
 create or replace function harness.check_decision_open() returns trigger language plpgsql set search_path = '' as $$
 begin
+  perform pg_advisory_xact_lock(hashtext(new.run_id));
   if exists (select 1 from harness.run_ends e where e.run_id = new.run_id) then
     raise exception 'harness.person_decisions: run % has ended, so it takes no decision', new.run_id using errcode = 'check_violation';
   end if;
@@ -109,6 +136,7 @@ create or replace trigger person_decisions_open before insert on harness.person_
 -- stage.loop_on_outcome, stage.decision_first: what each end needs.
 create or replace function harness.check_run_end() returns trigger language plpgsql set search_path = '' as $$
 begin
+  perform pg_advisory_xact_lock(hashtext(new.run_id));
   if new."end" = 'accepted' then
     -- The database holds only "at least one strict row, and each strict row passes". "Each rule has a row" is in code (judge.outcome_total).
     if not exists (select 1 from harness.verdicts v where v.run_id = new.run_id and v.round = new.round and v.binding = 'strict') then
@@ -209,3 +237,5 @@ begin
   end if;
 end
 $$;
+
+commit;

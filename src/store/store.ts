@@ -115,6 +115,10 @@ export interface GraphStore {
   // stage.store: the calls of the stage workflow.
   stageRun(runId: string): Promise<Pick<StageRun, 'runId' | 'stage' | 'nodeId' | 'ruleSetHash'> | undefined>
   addDraft(row: DraftRow): Promise<void>
+  // stage.draft_claim: runs draft while this caller holds the draft lock of the round, a session
+  // advisory lock on one connection. A crash ends the connection, so the lock ends with it. It waits
+  // up to waitMs for the lock, and it throws when another caller still holds it.
+  withDraftLock<T>(runId: string, round: number, waitMs: number, pollMs: number, draft: () => Promise<T>): Promise<T>
   draftOf(runId: string, round: number): Promise<DraftRow | undefined>
   verdictsOf(runId: string, round: number): Promise<VerdictInput[]>
   // stage.judge_claim, stage.claim_lease: the new attempt number, or null. It inserts attempt
@@ -183,9 +187,17 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
       return row!
     },
 
+    // An equal row that exists is not an error, so two starts of one run id at the same time both
+    // go on (stage.rerun_reuses). A row with another stage, node, or hash throws.
     async recordStageRun(input) {
-      const [row] = await db.insert(stageRuns).values(StageRunInput.parse(input)).returning()
-      return row!
+      const r = StageRunInput.parse(input)
+      const [row] = await db.insert(stageRuns).values(r).onConflictDoNothing({ target: stageRuns.runId }).returning()
+      if (row) return row
+      const [stored] = await db.select().from(stageRuns).where(eq(stageRuns.runId, r.runId))
+      if (!stored || stored.stage !== r.stage || stored.nodeId !== r.nodeId || stored.ruleSetHash !== r.ruleSetHash) {
+        throw new Error(`Stage run ${r.runId} exists with another stage, node, or rule set hash. Start a new run.`)
+      }
+      return stored
     },
 
     // The stage, node and rule set hash come from the run, so an output cannot disagree with it.
@@ -281,6 +293,30 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
       await pool.query('insert into harness.drafts (run_id, round, reply_text, reply, drafter) values ($1, $2, $3, harness.try_jsonb($3), $4)', [d.runId, d.round, text, d.drafter])
     },
 
+    async withDraftLock(runId, round, waitMs, pollMs, draft) {
+      const client = await pool.connect()
+      const key = [runId, Round.parse(round)]
+      let held = false
+      try {
+        const take = async () => (await client.query('select pg_try_advisory_lock(hashtext($1), $2) as ok', key)).rows[0].ok as boolean
+        held = await take()
+        for (const until = Date.now() + waitMs; !held && Date.now() < until; ) {
+          await new Promise(resolve => setTimeout(resolve, pollMs))
+          held = await take()
+        }
+        if (!held) throw new Error(`Another process drafts round ${round} of run ${runId}. Start the run id again later.`)
+        try {
+          return await draft()
+        } finally {
+          await client.query('select pg_advisory_unlock(hashtext($1), $2)', key)
+          held = false
+        }
+      } finally {
+        // A client that may still hold the lock never goes back to the pool: release(true) ends it.
+        client.release(held)
+      }
+    },
+
     async draftOf(runId, round) {
       const [d] = await db
         .select({ runId: drafts.runId, round: drafts.round, replyText: drafts.replyText, drafter: drafts.drafter })
@@ -342,6 +378,8 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
       const client = await pool.connect()
       try {
         await client.query('begin')
+        // stage.round_closed: the lock of the run, as the triggers of 0004 take it, to the commit.
+        await client.query('select pg_advisory_xact_lock(hashtext($1))', [e.runId])
         await client.query('insert into harness.run_ends (run_id, round, "end", reviewer, note) values ($1, $2, $3, $4, $5)', [
           e.runId,
           Round.parse(e.round),

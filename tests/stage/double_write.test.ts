@@ -85,6 +85,28 @@ describe('double_write', () => {
     expect(payloadOf(again)).toEqual(payloadOf(first))
   })
 
+  // stage.rerun_reuses, stage.draft_claim: two starts of a new run id at the same time. No start
+  // crashes first, so the draft and the stage run row do not exist yet.
+  it('double_write.concurrent_start_one_draft: two starts of a new run id at the same time give no failed run and one drafter call', async () => {
+    const env = db.env()
+    const runs = await Promise.all([1, 2].map(() => env.workflow().createRun({ runId: 'twin-start' })))
+    const results = await Promise.all(runs.map(r => r.start({ inputData: { nodeId: 'sunscreen' } })))
+    expect(results.map(r => r.status)).toEqual(['success', 'success'])
+    expect([env.spies.drafter.calls, env.spies.judge.calls]).toEqual([1, 1])
+    expect([await env.count('stage_runs', 'twin-start'), await env.count('drafts', 'twin-start'), await env.count('run_ends', 'twin-start'), await env.count('outputs', 'twin-start')]).toEqual([1, 1, 1, 1])
+  })
+
+  it('double_write.concurrent_start_one_draft: two starts of a new run id on two Mastra instances give no failed run and one drafter call', async () => {
+    const a = db.env()
+    const b = db.env()
+    const runs = await Promise.all([a, b].map(e => e.workflow().createRun({ runId: 'twin-instances' })))
+    const results = await Promise.all(runs.map(r => r.start({ inputData: { nodeId: 'sunscreen' } })))
+    expect(results.map(r => r.status)).toEqual(['success', 'success'])
+    expect(a.spies.drafter.calls + b.spies.drafter.calls).toBe(1)
+    expect(a.spies.judge.calls + b.spies.judge.calls).toBe(1)
+    expect([await a.count('drafts', 'twin-instances'), await a.count('run_ends', 'twin-instances')]).toEqual([1, 1])
+  })
+
   it('double_write.start_on_ended_run: a second start on an ended run id gives the stored end, with no research and no drafter call', async () => {
     const env = db.env()
     const first = await start(env)

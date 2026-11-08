@@ -109,6 +109,7 @@ export type StageStore = Pick<
   | 'siblings'
   | 'stageRun'
   | 'addDraft'
+  | 'withDraftLock'
   | 'draftOf'
   | 'writeVerdicts'
   | 'verdictsOf'

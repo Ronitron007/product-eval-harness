@@ -3,7 +3,7 @@ import { createStep, createWorkflow } from '@mastra/core/workflows'
 import { judgeStep, JudgeStepInput, type StagePlan } from '../judge'
 import { RunEvidence } from '../rules/checks/define'
 import type { NodeId, Stage } from '../rules/schema'
-import { PersonDecision, PersonPayload, REPAIR_BUDGET, Round, StageInput, StageResult, StageRunResult, type StageDeps } from './types'
+import { PersonDecision, PersonPayload, REPAIR_BUDGET, Round, StageInput, StageResult, StageRunResult, TIMING, type StageDeps } from './types'
 
 // The stage workflow (docs/design/stage-workflow.md, stage.workflow): one Mastra workflow for each
 // stage. context, research, the repair loop of draft_and_judge, person, assimilate. Each top-level
@@ -95,10 +95,21 @@ export function stageSteps(stage: Stage, deps: StageDeps) {
       const round = inputData.round + 1
       if (round > REPAIR_BUDGET) throw new Error('The repair budget is spent. The loop must not start another round.')
       const plan = await planOrThrow(deps, inputData)
-      const kept = await deps.store.draftOf(inputData.runId, round)
       const errors = inputData.last?.kind === 'repair' ? inputData.last.errors : []
-      const reply = kept !== undefined ? kept.reply : await deps.drafter.draft({ runId: inputData.runId, round, plan, evidence: inputData.evidence, context: inputData.context, errors })
-      if (kept === undefined) await deps.store.addDraft({ runId: inputData.runId, round, reply, drafter: deps.drafter.id })
+      // stage.draft_claim: only the holder of the draft lock calls the drafter. A caller that waited
+      // for the lock reads the draft of the holder.
+      const t = deps.timing ?? TIMING
+      const stored = await deps.store.draftOf(inputData.runId, round)
+      const reply =
+        stored !== undefined
+          ? stored.reply
+          : await deps.store.withDraftLock(inputData.runId, round, t.claimLeaseMs, t.pollMs, async () => {
+              const kept = await deps.store.draftOf(inputData.runId, round)
+              if (kept !== undefined) return kept.reply
+              const drafted = await deps.drafter.draft({ runId: inputData.runId, round, plan, evidence: inputData.evidence, context: inputData.context, errors })
+              await deps.store.addDraft({ runId: inputData.runId, round, reply: drafted, drafter: deps.drafter.id })
+              return drafted
+            })
       return { runId: inputData.runId, stage: inputData.stage, nodeId: inputData.nodeId, ruleSetHash: inputData.ruleSetHash, round, reply, evidence: inputData.evidence }
     },
   })
