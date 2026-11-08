@@ -515,7 +515,7 @@ The new migration `db/migrations/0004_stage_runs.sql` adds five tables and chang
 
 | Table | Change | Key columns and checks |
 |---|---|---|
-| `harness.drafts` | New | `run_id` (references `stage_runs`), `round` (1 to 3), `reply_text` (text, not null), `reply` (JSON, may be null), `drafter` (`provider/model`), `created_at`. Primary key `(run_id, round)`. |
+| `harness.drafts` | New | `run_id` (references `stage_runs`), `round` (1 to 3), `reply_text` (text, null only with an error), `reply` (JSON, may be null), `error` (such as `drafter deadline`, not blank), `drafter` (`provider/model`), `created_at`. Primary key `(run_id, round)`. |
 | `harness.draft_claims` | New | `run_id` (references `stage_runs`), `round` (1 to 3), `attempt` (1 or more), `claimed_at`. Primary key `(run_id, round, attempt)`. |
 | `harness.judge_claims` | New | `run_id`, `round`, `attempt` (1 or more), `claimed_at`. Primary key `(run_id, round, attempt)`. `(run_id, round)` references `drafts`. |
 | `harness.person_decisions` | New | `run_id` (primary key), `round`, `decision` (`accept`, `reject`), `reviewer`, `note`, `created_at`. `(run_id, round)` references `drafts`. The reviewer and a note are not blank after a trim. A reject needs a note. |
@@ -864,9 +864,25 @@ Mechanism:
 
 - When `addDraft` of a winner fails and the round has a draft, a later attempt wrote first. The step reuses that draft.
 
-- A holder that stops loses its claim after one lease. The next caller then drafts. Only a claim that stays live for the whole wait gives `busy`.
+- No code renews a claim. A claim stays live for one lease from its insert. A holder that stops loses its claim after one lease, and the next caller then drafts. A caller gets `busy` only when new claims keep the round claimed for its whole wait, as the test `busy_loser.draft_claim_live_gives_busy` does with a second process.
+
+- The drafter call ends at `draftDeadlineMs`, inside the lease (`stage.draft_deadline`). So a live winner always writes the draft row before its claim expires, and no other attempt calls the drafter for that round. Only a crash of the winner lets a later attempt call the drafter again.
 
 Tests: `double_write.concurrent_start_one_draft`, `double_write.pool_twelve_runs`, `busy_loser.draft_claim_live_gives_busy`, `busy_loser.draft_claim_expired_takes_over`.
+
+### Drafter deadline `stage.draft_deadline`
+
+Decision. The drafter has a hard deadline, `draftDeadlineMs` in `TIMING`, shorter than the claim lease. It is 10 minutes inside a lease of 15 minutes, as for the judge. The draft step aborts the call at the deadline with an `AbortSignal`. It keeps the round, and it writes a draft row with no reply and the error `drafter deadline`. The round then fails the decode, so the loop repairs it within the budget. The step never calls the drafter twice for one round.
+
+Why. The verify of `0a540a9` ran a drafter of 2.5 seconds with a lease of 1 second. The claim expired during the call, a second caller took attempt 2, and the drafter ran twice for one round.
+
+Mechanism:
+
+- `DraftInput` gets `abortSignal`. `agentDrafter` gives it to `agent.generate`. The step also stops at the deadline when a drafter does not read the signal. It keeps no late reply.
+
+- `harness.drafts` gets the column `error`. A check needs `reply_text` null exactly when `error` is set. `draftOf` gives `reply` undefined and the error.
+
+Tests: `double_write.drafter_deadline_one_call`.
 
 ### Claim lease `stage.claim_lease`
 
@@ -875,6 +891,7 @@ Decision. A judge claim has a lease. A new attempt can claim a round only when t
 | Time | Value | Use |
 |---|---|---|
 | `judgeDeadlineMs` | 10 minutes | A winner that judged for longer writes nothing, and its step fails. |
+| `draftDeadlineMs` | 10 minutes | The draft step aborts the drafter call at this time, and it writes a draft row with the error `drafter deadline` (`stage.draft_deadline`). |
 | `claimLeaseMs` | 15 minutes | A new attempt can take a claim older than this. A loser waits at most this long. |
 | `pollMs` | 2 seconds | A loser reads the rows at this interval. |
 
@@ -1350,6 +1367,7 @@ A fresh reviewer read PR [Ronitron007/product-eval-harness#29](https://github.co
 | Item | Spec | Code | Why |
 |---|---|---|---|
 | Two starts of a new run id at the same time | `stage.rerun_reuses` | `recordStageRun` inserts with `on conflict do nothing`, then compares the stage, the node, and the hash. Only the winner of the draft claim of the round calls the drafter (`stage.draft_claim`). A loser reuses the draft, or gives `busy`. | One start gave `failed` on the primary key of `stage_runs` or `drafts`, and the drafter got 2 calls. The test `double_write.concurrent_start_one_draft` checks it. |
+| The drafter deadline | Not in the spec | `draftDeadlineMs` in `TIMING`, an `AbortSignal`, and a draft row with the error `drafter deadline` (`stage.draft_deadline`) | A claim that expired during a slow drafter call let a second caller call the drafter for the same round. No code renews a claim. |
 | The draft claim | Not in the spec | A claim row in `harness.draft_claims`, with the lease and the wait of the judge claim (`stage.draft_claim`). A first fix used a session advisory lock. | The lock held a connection across the drafter call, and 12 runs on a pool of 10 connections hung. A claim row holds no connection. |
 | The closed-run triggers | `stage.round_closed`, `stage.decision_closed` | `check_verdict_open`, `check_decision_open`, and `check_run_end` take `pg_advisory_xact_lock(hashtext(run_id))`. `endRun` takes the same lock. | Two open transactions passed each other's checks. The test `late_row.open_transactions_serialized` checks it. |
 | The precondition of 0004 | Not in the spec | 0004 stops with a clear message when `harness.verdicts` or `harness.outputs` has rows and no `round` column. | The new column is not null and has no default. A second run, after the column exists, skips the check, so a second run changes nothing. |
