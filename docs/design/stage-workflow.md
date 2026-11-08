@@ -1296,3 +1296,27 @@ Claude wrote `opus/run-d1.ts`, `opus/make-db.ts`, `sonnet/p14_registry.ts`, `son
 - The person payload holds the whole last draft. Mastra keeps it in the snapshot until the run ends.
 
 - The new migration needs Rohan's yes. It comes after [Ronitron007/RealDose#470](https://github.com/Ronitron007/RealDose/pull/470).
+
+## Reconciliation `stage.reconciliation`
+
+The code of `plan.stage_workflow` differs from this spec in the items below. Each item keeps the meaning of the spec. Commits `4855ac0`, `7504b27`, and `9284bfd` hold the code.
+
+| Item | Spec | Code | Why |
+|---|---|---|---|
+| The place of `Timing`, `TIMING`, `Busy`, `RoundOutcome`, and `judgeRound` | `stage.types` and the sketch of `stage.workflow` | `src/judge/mastra.ts`. `src/stage/types.ts` exports them again. | The judge step owns the claim (`stage.modules`). `src/judge/` must not import `src/stage/`. |
+| `outcomeOf` | `outcomeOf(plan, input, rows)` | `outcomeOf(deps, plan, input, rows)` | `decideOutcome` needs the statement of each judgement rule (`judge.fail_fix`). The judge scorers give it, and they need the judge model. No model call occurs. |
+| The row types and `StageStore` | `src/stage/types.ts` | `DraftRow`, `DecisionRow`, `RunEndInput`, and `RunEndRow` are in `src/store/store.ts`. `StageStore` is a `Pick` of `GraphStore`. | The store must not import the stage code. `src/stage/types.ts` exports the types again. |
+| `stageRun(runId)` | It gives the run id and the hash. | It also gives the stage and the node. | `scripts/finish-run.ts` needs them for `finishRun`. |
+| `RulesRefused` and `planFor` | The spec names `RulesRefused` and no file. | `src/stage/ports.ts` holds `RulesRefused` and `compilingPlanFor`. | The `planFor` of `compile.usage.calls` needs a home. Tests give a changeable rule library to it. |
+| `tests/compiler/boundary.test.ts` | Not in `stage.modules` | Its list of files that import the compiler adds `src/stage/ports.ts`. | `compilingPlanFor` calls `compileStage` through `src/compiler/index.ts`. |
+| The real drafter | `agentDrafter` with a `ClaudeSDKAgent` | `stageDepsFromEnv` makes a Mastra `Agent` on the model router, on the first draft only. | The `Agent` constructor throws on an empty model id. A run with no model must fail in the context step (`stage.registered`). `@mastra/claude` is not pinned yet. |
+| `stageSteps(stage, deps)` | Not in the spec | `src/stage/workflow.ts` exports the steps. `stageWorkflow` composes them. | `budget_overrun.draft_refuses_round_four` runs the draft step alone. |
+| `scripts/finish-run.ts` | It calls `finishRun`. | It exports `finishRunById(deps, runId)`. It refuses a run with no decision row. | A test calls it with test deps. The script ends only a run with a decision row (`stage.decision_first`). |
+| `addDraft` of a reply that JSON cannot write | Not in the spec | It throws, and it names the run and the round. | `JSON.stringify(undefined)` gives no text, and `reply_text` is not null. |
+| The guard of `0004_stage_runs.sql` | The prototype guard | The full guard of `0003_harness_role.sql`, with the schema checks and the checks of `harness_app` | The guard must cover each case that the guard of 0003 covers. |
+| The functions test of `tests/store/migrations.test.ts` | Not in the spec | `harness_app` can execute `harness.try_jsonb(text)` only. | `stage.store` grants that right. |
+| `VerdictLog.tla` | The model gets the new store calls. | The model gets drafts, decisions, run ends, and the round of each row. `AcceptedAfterPassOrPerson` now reads the round of the output. | The model has no `latest` or `person` variable now. The tables hold both. |
+| The run of TLC | `npm run formal` | Nobody ran TLC on the changed model before the push. This machine has no Java. CI runs it. | `formal:sql` needs TLC too, for the sweep. The replays ran (15 passed). |
+| The crash tests | Separate tests | `double_write.restart_after_end_commit` and `double_write.boot_sweep_after_end_commit` are one test, on two databases. | Each case waits for the Mastra lease. The lease is the constant `WORKFLOW_RUN_LEASE_TTL_MS` (15 seconds) of `@mastra/core` 1.79.0, and no option changes it. |
+| `double_write.concurrent_resume_one_end` | Two resumes at the same time | The test makes both run objects first, then starts the two resumes. | With `createRun` inside the race, the second resume sometimes came after the first claim, and it got `WORKFLOW_RUN_NOT_SUSPENDED`. |
+| Drafters in the tests | `agentDrafter` with `createMockModel` | Most tests use it. `lost_draft` also uses a drafter with no model. | A mock model cannot give a reply with a NUL character or a plain text reply. |
