@@ -23,7 +23,7 @@ CONSTANT Budget  \* REPAIR_BUDGET, the number of drafts that one run may make
 
 Bindings == {"strict", "soft"}
 Answers == {"yes", "no", "unknown", "call_fails"}
-Terminal == {"accepted", "accepted_by_reviewer", "rejected", "refused"}
+Terminal == {"accepted", "accepted_by_reviewer", "rejected", "refused", "rules_refused"}
 
 VARIABLES
   phase,         \* "context", "draft", "judge", "decide", "suspended", or a Terminal phase
@@ -58,6 +58,13 @@ Init ==
 RecordRun ==
   /\ phase = "context"
   /\ phase' = "draft"
+  /\ UNCHANGED <<round, judgeBinding, shapeOk, extraKey, fits, shapeRow, judgeRow, judged, quoteFound, errors, rulesChanged>>
+
+\* compileStage refuses the rules (a lint, scope, weaken, or shape problem): planFor throws
+\* RulesRefused, before any model call and before the run records a hash.
+CompileRefused ==
+  /\ phase = "context"
+  /\ phase' = "rules_refused"
   /\ UNCHANGED <<round, judgeBinding, shapeOk, extraKey, fits, shapeRow, judgeRow, judged, quoteFound, errors, rulesChanged>>
 
 \* The draft step compiles again. planFor throws when the hash differs from the hash of the run.
@@ -142,13 +149,14 @@ ChangeRules ==
 Done == phase \in Terminal /\ UNCHANGED vars
 
 Next ==
-  \/ RecordRun \/ DraftRefused \/ Draft \/ JudgeRefused \/ Check
+  \/ RecordRun \/ CompileRefused \/ DraftRefused \/ Draft \/ JudgeRefused \/ Check
   \/ Repair \/ Suspend \/ Accept \/ ReviewerAccepts \/ ReviewerRejects
   \/ ChangeRules \/ Done
 
 Spec == Init /\ [][Next]_vars
 
 \* The rules that the design states.
+NoModelCallOnRefusedRules == phase = "rules_refused" => round = 0      \* compile.usage.calls
 RepairBudget == round <= Budget                                       \* enforce.repair
 JudgeOnlyAfterCode == judged => (fits /\ shapeRow = "pass")           \* enforce.deciders
 EveryRuleHasARow == phase = "decide" => (shapeRow # "none" /\ judgeRow # "none")  \* mastra.stage_workflow

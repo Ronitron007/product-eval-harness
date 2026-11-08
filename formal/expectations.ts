@@ -57,6 +57,7 @@ export const MODEL_RULES: ModelRule[] = [
     ['StopRollsBack', 'breaks', 'migration.per_file_stop'],
   ]),
   ...rows('HarnessRun', 'HarnessRun', 'INVARIANT', [
+    ['NoModelCallOnRefusedRules', 'holds'],
     ['RepairBudget', 'holds'],
     ['JudgeOnlyAfterCode', 'holds'],
     ['EveryRuleHasARow', 'holds'],

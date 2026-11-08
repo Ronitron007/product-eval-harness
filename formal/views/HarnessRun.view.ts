@@ -23,6 +23,7 @@ function run(v: Value): string {
     case 'accepted_by_reviewer': return v.fits ? 'Accepted by the reviewer' : 'Accepted by the reviewer, draft breaks the schema'
     case 'rejected': return 'Rejected by the reviewer'
     case 'refused': return 'Stopped: the rules changed'
+    case 'rules_refused': return 'Stopped: the compiler refuses the rules'
   }
   return v.phase
 }
@@ -33,8 +34,9 @@ export function state(v: Value) {
 
 export function step(action: string, from: Value, to: Value): string | null {
   switch (action) {
-    case 'RecordRun': return 'the run compiles its rules and records their hash'
+    case 'RecordRun': return 'the compiler accepts the rules, and the run records their hash'
     case 'Draft': return 'the drafter replies'
+    case 'CompileRefused': return 'the compiler finds a problem in the rules'
     case 'DraftRefused': return 'the step compiles again and finds another hash'
     case 'JudgeRefused': return null
     case 'Check':
@@ -58,7 +60,7 @@ export function step(action: string, from: Value, to: Value): string | null {
 
 export function group(v: Value): string {
   if (['accepted', 'accepted_by_reviewer'].includes(v.phase)) return 'landed'
-  if (['rejected', 'refused'].includes(v.phase)) return 'stopped'
+  if (['rejected', 'refused', 'rules_refused'].includes(v.phase)) return 'stopped'
   if (v.phase === 'suspended') return 'person'
   return 'working'
 }
