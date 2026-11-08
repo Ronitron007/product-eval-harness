@@ -511,11 +511,12 @@ Mastra runs the boot sweep `restartAllActiveWorkflowRuns()` by default. `MastraR
 
 ## The store changes `stage.store`
 
-The new migration `db/migrations/0004_stage_runs.sql` adds four tables and changes two tables, in schema `harness`. Like each migration, it lives in RealDose and Rohan applies it. It is a live-system change and needs his yes (`rules.gates`). The prototype [0004_stage_runs.sql](../research/2026-11-08-stage-workflow-probes/0004_stage_runs.sql) holds the text. The probe `migration.ts` applies it twice and then `0003_harness_role.sql` again, and tests each rule below as `harness_app`, verified (ran, exit code 0).
+The new migration `db/migrations/0004_stage_runs.sql` adds five tables and changes two tables, in schema `harness`. Like each migration, it lives in RealDose and Rohan applies it. It is a live-system change and needs his yes (`rules.gates`). The prototype [0004_stage_runs.sql](../research/2026-11-08-stage-workflow-probes/0004_stage_runs.sql) holds the text. The probe `migration.ts` applies it twice and then `0003_harness_role.sql` again, and tests each rule below as `harness_app`, verified (ran, exit code 0).
 
 | Table | Change | Key columns and checks |
 |---|---|---|
 | `harness.drafts` | New | `run_id` (references `stage_runs`), `round` (1 to 3), `reply_text` (text, not null), `reply` (JSON, may be null), `drafter` (`provider/model`), `created_at`. Primary key `(run_id, round)`. |
+| `harness.draft_claims` | New | `run_id` (references `stage_runs`), `round` (1 to 3), `attempt` (1 or more), `claimed_at`. Primary key `(run_id, round, attempt)`. |
 | `harness.judge_claims` | New | `run_id`, `round`, `attempt` (1 or more), `claimed_at`. Primary key `(run_id, round, attempt)`. `(run_id, round)` references `drafts`. |
 | `harness.person_decisions` | New | `run_id` (primary key), `round`, `decision` (`accept`, `reject`), `reviewer`, `note`, `created_at`. `(run_id, round)` references `drafts`. The reviewer and a note are not blank after a trim. A reject needs a note. |
 | `harness.run_ends` | New | `run_id` (primary key, references `stage_runs`), `round`, `end` (`accepted`, `person_accepted`, `person_rejected`), `reviewer`, `note`, `created_at`. `(run_id, round)` references `drafts`, and it is unique, so that `outputs` can reference it. Only a person end has a `reviewer`. `person_rejected` needs a `note`. |
@@ -545,6 +546,7 @@ The store gets these calls:
 | `stageRun(runId)` | New | Reads one stage run, or `undefined` |
 | `addDraft(row)` | New | Inserts one draft row: `reply_text` is `JSON.stringify(reply)`, and `reply` is `harness.try_jsonb(reply_text)`. A second row for one round fails on the primary key. |
 | `draftOf(runId, round)` | New | Reads one draft row. `reply` is `JSON.parse(reply_text)`, so it equals the reply of the drafter. |
+| `claimDraft(runId, round, leaseMs)` | New | Inserts the draft claim of attempt max + 1 in one statement, as `claimJudge`. It inserts only when the latest claim is older than `leaseMs` and the round has no draft row. It gives the attempt number, or `null` (`stage.draft_claim`). |
 | `claimJudge(runId, round, leaseMs)` | New | Inserts the claim of attempt max + 1 in one statement. It inserts only when the latest claim is older than `leaseMs` and the round has no verdict row. It gives the attempt number, or `null`. The SQL is in `pg-env.ts`. |
 | `writeVerdicts(rows, round)` | Changed | Adds `round` to each row. One statement, all rows or none. |
 | `verdictsOf(runId, round)` | New | Reads the rows of one round, as `VerdictInput` |
@@ -704,7 +706,7 @@ Mechanism:
 
 - Context. `stageRun(runId)` returns the stored run. The same hash reuses it. Another hash refuses.
 
-- Draft. `draftOf(runId, round)` returns the stored reply. The drafter is not called.
+- Draft. `draftOf(runId, round)` returns the stored reply. The drafter is not called. Two draft steps of one round at the same time are `stage.draft_claim`.
 
 - Judge. `judgeStep` reads `verdictsOf(runId, round)` first. If rows exist, it runs `plan.decode` on the reply and `decideOutcome` on the stored rows. It calls no judge and writes nothing. Two judge steps of one round at the same time are `stage.judge_claim`.
 
@@ -846,6 +848,26 @@ Mechanism:
 
 Tests: `double_write.concurrent_judge_one_call`, `double_write.verdict_row_unique`.
 
+### Draft claim `stage.draft_claim`
+
+Decision. Before it calls the drafter, the draft step writes a claim row into the new append-only table `harness.draft_claims`, with the key `(run_id, round, attempt)`. Only the caller whose insert wins calls the drafter. The claim has the lease of `stage.claim_lease`.
+
+A caller that loses waits up to one lease. It reuses the stored draft, takes a new attempt when the claim expires, or gives `busy`. The run then ends with `StageBusy`, as `stage.judge_wait` says. A loser never ends as `failed`.
+
+Why. The review of `885eb99` ran two starts of a new run id at the same time. One start failed on a primary key, and the drafter got 2 calls. A first fix held a session advisory lock across the drafter call. It held one connection while the draft needed a second connection. 12 runs at the same time on a pool of 10 connections then hung.
+
+Mechanism:
+
+- `claimDraft` is one statement, as `claimJudge`. It inserts nothing while the latest claim is younger than the lease, or when the round has a draft row.
+
+- No connection stays open across the model call. Each claim is a row, not a session lock. So a transaction pooler works for the claims.
+
+- When `addDraft` of a winner fails and the round has a draft, a later attempt wrote first. The step reuses that draft.
+
+- A holder that stops loses its claim after one lease. The next caller then drafts. Only a claim that stays live for the whole wait gives `busy`.
+
+Tests: `double_write.concurrent_start_one_draft`, `double_write.pool_twelve_runs`, `busy_loser.draft_claim_live_gives_busy`, `busy_loser.draft_claim_expired_takes_over`.
+
 ### Claim lease `stage.claim_lease`
 
 Decision. A judge claim has a lease. A new attempt can claim a round only when the latest claim is older than the lease and the round has no verdict row. The lease is longer than the judge deadline. The times are in `TIMING`:
@@ -965,7 +987,7 @@ Each hazard has a mechanism and tests that fail when the mechanism breaks. The n
 | `flow`. A run ends in the wrong state | The workflow of `stage.workflow` | `flow.first_round_accepts`, `flow.repair_then_accepts`, `flow.budget_spent_suspends`, `flow.cannot_verify_suspends`, `flow.resume_accept_writes_output`, `flow.resume_reject_ends`, `flow.registered_four_stages`, `flow.registry_needs_no_db` |
 | `lost_draft`. A draft is lost or overwritten | `stage.draft_log`, `stage.reply_lossless` | `lost_draft.each_round_kept`, `lost_draft.verdict_needs_draft`, `lost_draft.no_overwrite`, `lost_draft.broken_reply_kept`, `lost_draft.nul_and_surrogate_kept`, `lost_draft.unparsed_reply_kept` |
 | `lost_accept`. A decision of a person is lost after a failure | `stage.decision_first` | `lost_accept.decision_kept_on_store_error`, `lost_accept.finish_run_ends_it`, `lost_accept.finish_run_twice_one_end`, `lost_accept.person_end_needs_decision` |
-| `double_write`. A resume, a second start, a restart, or a step that runs again writes twice, calls a model twice, or turns an end into `failed` | `stage.end_once`, `stage.rerun_reuses`, `stage.reuse_end`, `stage.judge_claim` | `double_write.second_resume_refused`, `double_write.concurrent_resume_one_end`, `double_write.end_run_twice_one_end`, `double_write.person_body_one_decision`, `double_write.context_rerun_one_run_row`, `double_write.draft_reused_on_rerun`, `double_write.judge_reused_on_rerun`, `double_write.start_on_ended_run`, `double_write.restart_after_end_commit`, `double_write.boot_sweep_after_end_commit`, `double_write.concurrent_judge_one_call`, `double_write.verdict_row_unique` |
+| `double_write`. A resume, a second start, a restart, or a step that runs again writes twice, calls a model twice, or turns an end into `failed` | `stage.end_once`, `stage.rerun_reuses`, `stage.reuse_end`, `stage.judge_claim`, `stage.draft_claim` | `double_write.second_resume_refused`, `double_write.concurrent_resume_one_end`, `double_write.end_run_twice_one_end`, `double_write.person_body_one_decision`, `double_write.context_rerun_one_run_row`, `double_write.draft_reused_on_rerun`, `double_write.judge_reused_on_rerun`, `double_write.start_on_ended_run`, `double_write.restart_after_end_commit`, `double_write.boot_sweep_after_end_commit`, `double_write.concurrent_judge_one_call`, `double_write.verdict_row_unique` |
 | `late_row`. A verdict row or a decision arrives after the run end | `stage.round_closed`, `stage.decision_closed` | `late_row.verdict_after_end_refused`, `late_row.decision_after_end_refused` |
 | `stuck_claim`. A crash after a judge claim blocks the run | `stage.claim_lease` | `stuck_claim.sweep_finishes_after_lease`, `stuck_claim.no_claim_while_live`, `stuck_claim.no_claim_with_rows`, `stuck_claim.late_winner_writes_nothing` |
 | `busy_loser`. A judge step that loses the claim ends as `failed` | `stage.judge_wait` | `busy_loser.slow_judge_reused`, `busy_loser.live_claim_gives_busy`, `busy_loser.never_failed` |
@@ -1327,8 +1349,8 @@ A fresh reviewer read PR [Ronitron007/product-eval-harness#29](https://github.co
 
 | Item | Spec | Code | Why |
 |---|---|---|---|
-| Two starts of a new run id at the same time | `stage.rerun_reuses` | `recordStageRun` inserts with `on conflict do nothing`, then compares the stage, the node, and the hash. The draft step takes the draft lock of the round before it calls the drafter, and the holder writes the draft. A caller that waited reads that draft. | One start gave `failed` on the primary key of `stage_runs` or `drafts`, and the drafter got 2 calls. The test `double_write.concurrent_start_one_draft` checks it. |
-| The draft lock | `stage.judge_claim` takes a claim row with a lease. | `withDraftLock` takes a session advisory lock on one connection. It waits up to `claimLeaseMs`, and then it throws. | A crash ends the connection, so the lock ends with it, and no lease is necessary. The judge claim stays as the spec says. |
+| Two starts of a new run id at the same time | `stage.rerun_reuses` | `recordStageRun` inserts with `on conflict do nothing`, then compares the stage, the node, and the hash. Only the winner of the draft claim of the round calls the drafter (`stage.draft_claim`). A loser reuses the draft, or gives `busy`. | One start gave `failed` on the primary key of `stage_runs` or `drafts`, and the drafter got 2 calls. The test `double_write.concurrent_start_one_draft` checks it. |
+| The draft claim | Not in the spec | A claim row in `harness.draft_claims`, with the lease and the wait of the judge claim (`stage.draft_claim`). A first fix used a session advisory lock. | The lock held a connection across the drafter call, and 12 runs on a pool of 10 connections hung. A claim row holds no connection. |
 | The closed-run triggers | `stage.round_closed`, `stage.decision_closed` | `check_verdict_open`, `check_decision_open`, and `check_run_end` take `pg_advisory_xact_lock(hashtext(run_id))`. `endRun` takes the same lock. | Two open transactions passed each other's checks. The test `late_row.open_transactions_serialized` checks it. |
 | The precondition of 0004 | Not in the spec | 0004 stops with a clear message when `harness.verdicts` or `harness.outputs` has rows and no `round` column. | The new column is not null and has no default. A second run, after the column exists, skips the check, so a second run changes nothing. |
 | The transaction of 0004 | Not in the spec | `begin` and `commit` wrap the file. | A stop never leaves a new table with no row level security. |

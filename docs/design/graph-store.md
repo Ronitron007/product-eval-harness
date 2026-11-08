@@ -81,7 +81,7 @@ The formal checks cover the migrations and the store too ([formal-checks.md](for
 
 - Whether Mastra's own writes can join our transactions. Not verified.
 
-- The Supabase connection mode. The transaction pooler can break some clients. The harness probably needs the session pooler or a direct connection (inferred).
+- The Supabase connection mode. The transaction pooler can break some clients. The harness probably needs the session pooler or a direct connection (inferred). The claims of the stage workflow (`harness.draft_claims`, `harness.judge_claims`) are rows, not session locks, so they work through the transaction pooler. The advisory locks of the closed-run triggers are transaction locks, which the transaction pooler keeps ([stage-workflow.md](stage-workflow.md), `stage.draft_claim`).
 
 - The store of Mastra traces.
 
