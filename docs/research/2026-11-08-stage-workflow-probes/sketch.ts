@@ -4,6 +4,7 @@ import { Mastra } from '@mastra/core/mastra'
 import { createStep, createWorkflow } from '@mastra/core/workflows'
 import { z } from 'zod'
 import type { JudgeModel, StagePlan } from '../../../src/compiler'
+import { parseModelString } from '@mastra/core/llm'
 import { JudgeStepOutput, type PlanFor } from '../../../src/judge'
 import { RunEvidence } from '../../../src/rules/checks/define'
 import { NodeId, Stage } from '../../../src/rules/schema'
@@ -53,14 +54,17 @@ export const PersonPayload = z.object({
 }).strict()
 export type PersonPayload = z.infer<typeof PersonPayload>
 
+// stage.person_payload: a reviewer or a note that is blank after a trim is refused.
+const Filled = z.string().trim().min(1)
 export const PersonDecision = z.discriminatedUnion('decision', [
-  z.object({ decision: z.literal('accept'), reviewer: z.string().min(1), note: z.string().optional() }).strict(),
-  z.object({ decision: z.literal('reject'), reviewer: z.string().min(1), note: z.string().min(1) }).strict(),
+  z.object({ decision: z.literal('accept'), reviewer: Filled, note: Filled.optional() }).strict(),
+  z.object({ decision: z.literal('reject'), reviewer: Filled, note: Filled }).strict(),
 ])
 export type PersonDecision = z.infer<typeof PersonDecision>
 
 export const RunEnd = z.enum(['accepted', 'person_accepted', 'person_rejected'])
 export const StageResult = z.object({ runId: z.string(), end: RunEnd, round: z.number().int().min(1), outputId: z.string().nullable() }).strict()
+export type StageResult = z.infer<typeof StageResult>
 
 // ---- ports ----
 export interface ResearchInput {
@@ -88,7 +92,9 @@ export type RunEndInput =
   | { readonly runId: string; readonly round: number; readonly end: 'accepted'; readonly output: unknown }
   | { readonly runId: string; readonly round: number; readonly end: 'person_accepted'; readonly reviewer: string; readonly note?: string; readonly output: unknown }
   | { readonly runId: string; readonly round: number; readonly end: 'person_rejected'; readonly reviewer: string; readonly note: string }
-export interface DraftRow { runId: string; round: number; reply: unknown; drafter: string }
+export interface DraftRow { runId: string; round: number; reply: unknown; drafter: string } // reply: JSON.parse of reply_text (stage.reply_lossless)
+// stage.decision_first: one row for each run, written before assimilate runs.
+export type DecisionRow = { readonly runId: string; readonly round: number } & PersonDecision
 export interface StageStore extends Pick<GraphStore, 'recordStageRun' | 'pathToRoot' | 'siblings'> {
   stageRun(runId: string): Promise<{ runId: string; ruleSetHash: string } | undefined>
   addDraft(row: DraftRow): Promise<void>
@@ -96,8 +102,16 @@ export interface StageStore extends Pick<GraphStore, 'recordStageRun' | 'pathToR
   // The judge step: the rows of one round. writeVerdicts of GraphStore gets the round (stage.round_rows).
   writeVerdicts(rows: readonly VerdictInput[], round: number): Promise<unknown>
   verdictsOf(runId: string, round: number): Promise<readonly VerdictInput[]>
+  // stage.judge_claim: true for the one caller whose insert of (run_id, round) wins.
+  claimJudge(runId: string, round: number): Promise<boolean>
+  // stage.decision_first: an equal row again is a no-op. Another row for the run throws.
+  addDecision(row: DecisionRow): Promise<void>
+  decisionOf(runId: string): Promise<DecisionRow | undefined>
+  // stage.reuse_end: the stored end of a run, or undefined.
+  runEndOf(runId: string): Promise<StageResult | undefined>
   // One transaction: the run_ends row, then the output for an accepting end (stage.end_once).
-  endRun(input: RunEndInput): Promise<{ outputId: string | null }>
+  // An equal end that is stored already returns the stored result. Another end throws.
+  endRun(input: RunEndInput): Promise<StageResult>
 }
 
 export interface StageDeps {
@@ -122,8 +136,15 @@ export function agentDrafter(agent: Agent, id: string): Drafter {
 
 // ---- the workflow (src/stage/workflow.ts) ----
 declare function planOrThrow(deps: StageDeps, run: { runId: string; stage: Stage; nodeId: NodeId; ruleSetHash?: string }): Promise<StagePlan>
-// stage.models_injected: each id is provider/model, and the two providers differ. An unset id refuses.
-declare function checkModels(drafterId: string, judgeId: string): void
+// stage.models_by_vendor: the vendor behind a model id. A gateway id, such as openrouter/anthropic/x, names its vendor first in the model part.
+export function vendorOf(id: string): string {
+  const { provider, modelId } = parseModelString(id)
+  if (!provider || !modelId) throw new Error(`The model id ${JSON.stringify(id)} is not provider/model. Set HARNESS_DRAFTER_MODEL and HARNESS_JUDGE_MODEL.`)
+  return modelId.includes('/') ? modelId.split('/')[0]! : provider
+}
+export function checkModels(drafterId: string, judgeId: string): void {
+  if (vendorOf(drafterId) === vendorOf(judgeId)) throw new Error(`The judge ${judgeId} and the drafter ${drafterId} have one vendor. Use a judge from another vendor (mastra.models).`)
+}
 
 // judgeStep with the round in its input (src/judge/mastra.ts, changed): the shape of the changed step.
 export const JudgeStepInput = z.object({ runId: z.string().min(1), stage: Stage, nodeId: NodeId, ruleSetHash: Sha256, round: z.number().int().min(1), reply: z.unknown(), evidence: z.unknown() })
@@ -132,12 +153,31 @@ function judgeStep(deps: StageDeps) {
   return createStep({ id: 'judge', inputSchema: JudgeStepInput, outputSchema: JudgeStepOutput, execute: async ({ inputData }) => judgeRound(deps, inputData) })
 }
 
+// stage.decision_first: the body of assimilate, and the operator path of scripts/finish-run.ts.
+// It is idempotent: a stored end comes back unchanged.
+export async function finishRun(deps: StageDeps, run: { runId: string; stage: Stage; nodeId: NodeId; ruleSetHash: string; round: number }): Promise<StageResult> {
+  const ended = await deps.store.runEndOf(run.runId)
+  if (ended !== undefined) return ended
+  const plan = await planOrThrow(deps, run)
+  const kept = await deps.store.draftOf(run.runId, run.round)
+  const d = await deps.store.decisionOf(run.runId)
+  if (d !== undefined && d.round !== run.round) throw new Error(`The decision of run ${run.runId} is for round ${d.round}, not ${run.round}.`)
+  if (d?.decision === 'reject') return deps.store.endRun({ runId: run.runId, round: run.round, end: 'person_rejected', reviewer: d.reviewer, note: d.note })
+  const decoded = plan.decode(kept?.reply)
+  if (!decoded.ok) throw new Error('The draft breaks the output schema. It never reaches acceptOutput.')
+  return d === undefined
+    ? deps.store.endRun({ runId: run.runId, round: run.round, end: 'accepted', output: decoded.output })
+    : deps.store.endRun({ runId: run.runId, round: run.round, end: 'person_accepted', reviewer: d.reviewer, note: d.note, output: decoded.output })
+}
+
 export function stageWorkflow(stage: Stage, deps: StageDeps) {
   const context = createStep({
     id: 'context',
     inputSchema: StageInput,
     outputSchema: Round.pick({ runId: true, stage: true, nodeId: true, ruleSetHash: true, context: true }),
-    execute: async ({ inputData, runId }) => {
+    execute: async ({ inputData, runId, bail }) => {
+      const ended = await deps.store.runEndOf(runId) // stage.reuse_end: a second start, a restart, or the boot sweep
+      if (ended !== undefined) return bail(ended)
       checkModels(deps.drafter.id, deps.judgeModel.id) // before any compile, write, or model call
       const plan = await planOrThrow(deps, { runId, stage, nodeId: inputData.nodeId })
       const known = await deps.store.stageRun(runId)
@@ -154,7 +194,9 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
     id: 'research',
     inputSchema: context.outputSchema,
     outputSchema: Round,
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, bail }) => {
+      const ended = await deps.store.runEndOf(inputData.runId)
+      if (ended !== undefined) return bail(ended)
       const evidence = RunEvidence.parse(await deps.research(inputData))
       return { ...inputData, evidence, round: 0, last: null }
     },
@@ -191,7 +233,9 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
     outputSchema: Round.omit({ context: true, evidence: true, last: true }).extend({ decision: PersonDecision.nullable() }),
     suspendSchema: PersonPayload,
     resumeSchema: PersonDecision,
-    execute: async ({ inputData, resumeData, suspend }) => {
+    execute: async ({ inputData, resumeData, suspend, bail }) => {
+      const ended = await deps.store.runEndOf(inputData.runId)
+      if (ended !== undefined) return bail(ended)
       const last = inputData.last
       if (last === null) throw new Error('The loop ended with no round.')
       const { context: _c, evidence: _e, last: _l, ...run } = inputData
@@ -208,6 +252,7 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
       if (resumeData.decision === 'accept' && !payload.canAccept) {
         return await suspend({ ...payload, refusal: 'The last draft breaks the output schema, so a person cannot accept it. Reject it.' })
       }
+      await deps.store.addDecision({ runId: inputData.runId, round: inputData.round, ...resumeData }) // stage.decision_first
       return { ...run, decision: resumeData }
     },
   })
@@ -216,21 +261,8 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
     id: 'assimilate',
     inputSchema: person.outputSchema,
     outputSchema: StageResult,
-    execute: async ({ inputData }) => {
-      const plan = await planOrThrow(deps, inputData)
-      const kept = await deps.store.draftOf(inputData.runId, inputData.round)
-      const d = inputData.decision
-      if (d?.decision === 'reject') {
-        await deps.store.endRun({ runId: inputData.runId, round: inputData.round, end: 'person_rejected', reviewer: d.reviewer, note: d.note })
-        return { runId: inputData.runId, end: 'person_rejected' as const, round: inputData.round, outputId: null }
-      }
-      const decoded = plan.decode(kept?.reply)
-      if (!decoded.ok) throw new Error('The draft breaks the output schema. It never reaches acceptOutput.')
-      const ended = d === null
-        ? await deps.store.endRun({ runId: inputData.runId, round: inputData.round, end: 'accepted', output: decoded.output })
-        : await deps.store.endRun({ runId: inputData.runId, round: inputData.round, end: 'person_accepted', reviewer: d.reviewer, note: d.note, output: decoded.output })
-      return { runId: inputData.runId, end: d === null ? ('accepted' as const) : ('person_accepted' as const), round: inputData.round, outputId: ended.outputId }
-    },
+    // It reads the decision row, not its input, so a retry gives the same end (stage.decision_first).
+    execute: async ({ inputData }) => finishRun(deps, inputData),
   })
 
   return createWorkflow({ id: stage, description: `The stage ${stage} at one node (graph.stage).`, inputSchema: StageInput, outputSchema: StageResult })
@@ -242,16 +274,20 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
     .commit()
 }
 
-// ---- registration (src/mastra/index.ts) ----
-declare const deps: StageDeps
-export const mastra = new Mastra({
-  workflows: {
+// ---- the registry (src/stage/registry.ts): no database, no environment (stage.registry_no_db) ----
+export const STAGE_WORKFLOWS = ['define_criteria', 'create_node', 'create_pack', 'create_layout'] as const
+export function stageWorkflows(deps: StageDeps) {
+  return {
     define_criteria: stageWorkflow('define_criteria', deps),
     create_node: stageWorkflow('create_node', deps),
     create_pack: stageWorkflow('create_pack', deps),
     create_layout: stageWorkflow('create_layout', deps),
-  },
-})
+  }
+}
+
+// ---- registration (src/mastra/index.ts): it imports the registry ----
+declare const deps: StageDeps
+export const mastra = new Mastra({ workflows: stageWorkflows(deps) })
 async function use(runId: string) {
   // Call site: an operator, a test, or Studio. The Mastra run id is the stage run id.
   const workflow = mastra.getWorkflow('create_node')

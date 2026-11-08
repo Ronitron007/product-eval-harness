@@ -38,6 +38,7 @@ Each term has one definition. Docs link here at the first use of a term.
 | Inner node | A node of the rule graph between a domain node and a leaf node. |
 | Judge (LLM judge) | A model call that answers one rule question about one output, with an "unknown" answer. |
 | Judge outcome | What the ruleset judge returns for one draft: `accept`, `repair` with all strict errors, or `person` with the open strict rows. The stage workflow acts on it. |
+| Judge claim | The one row in `harness.judge_claims` for one judged round of a stage run. Only the caller whose insert wins calls the judge. |
 | Lane | One sequence of items in the improvement stream. Each domain has one lane, and its items run in a fixed order. |
 | Layout | The rules for how an evaluation shows a product at a leaf node. |
 | Manifest | The compiled artifacts of one stage run, as plain JSON. The rule-set hash covers exactly the manifest. |
@@ -59,14 +60,14 @@ Each term has one definition. Docs link here at the first use of a term.
 | Rule | One instruction, with an id, a version, a statement, a reason, a kind, a scope, a binding, golden examples, and provenance. A rule and an instruction are the same thing. |
 | Rule library | Every rule that the loader read and checked, with its hash. The compiler takes the rules in scope of one stage run from it. |
 | Rule-set hash | The sha256 of the manifest of one compile. The stage run and its output keep it. Equal artifacts give one hash. |
-| Run end | The one row in `harness.run_ends` that ends a stage run: `accepted`, `person_accepted`, or `person_rejected`. A failed run has no run end. |
+| Run end | The one row in `harness.run_ends` that ends a stage run: `accepted`, `person_accepted`, or `person_rejected`. A failed run has no run end. A second start, a restart, or the boot sweep of an ended run gives the stored run end. |
 | Rule graph | The graph of nodes that projects the category tree. Each node holds its criteria, attributes, records, rules, and, at a leaf, its pack and layout. |
 | Ruleset | The rules in scope of one stage run at one node. |
 | Ruleset judge | The part of a stage that runs each rule in scope on the output, with code checks and LLM judges. Its code is the judge step (`plan.judge_step`). It returns the judge outcome. |
 | Scope | The nodes, the stages, and the output fields where a rule applies. |
 | Pre-state | The state of a database before a migration runs, such as a role or a schema that already exists. |
 | Person payload | What the person step shows when it suspends: the run, the reason, the last draft, the strict errors, the open strict rows, the warnings, and whether a person can accept the draft. |
-| Person decision | What a person sends back to the person step: accept or reject, with a reviewer handle and a note. A reject needs the note. |
+| Person decision | What a person sends back to the person step: accept or reject, with a reviewer handle and a note. A reject needs the note. The person step keeps it in `harness.person_decisions` before assimilate runs. |
 | Slot | What two rules check together. Two shape rules share a slot when they have one type on one field. Two code checks share a slot when they have one template and equal identity parameters on one field. |
 | Stage | One kind of work at one node: `define_criteria`, `create_node`, `create_pack`, or `create_layout`. |
 | Stage rule | A rule that governs how a stage works and the shape of its output. Rohan approves it. It lives in git. |

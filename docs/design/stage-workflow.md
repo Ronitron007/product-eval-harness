@@ -1,6 +1,8 @@
 # The stage workflow `stage`
 
-Status. Spec of 2026-11-08 for the unit `plan.stage_workflow` ([the plan](../plans/2026-10-24-harness-plan.md)). No code builds it yet. Written against `main` at `2821755`. An adversarial review runs before the merge. Terms are in [glossary.md](../glossary.md).
+Status. Spec of 2026-11-08 for the unit `plan.stage_workflow` ([the plan](../plans/2026-10-24-harness-plan.md)). No code builds it yet. Written against `main` at `2821755`. Terms are in [glossary.md](../glossary.md).
+
+Review. Two adversaries interrogated this spec at `7fb8f87` on 2026-11-08. Claude ran each repro again on a local Postgres 18, with no model call. The spec folds in each fix whose repro reproduced. `stage.interrogate` lists each finding and its result. The repros are in [the interrogate folder](../research/2026-11-08-stage-interrogate/README.md).
 
 Source. This spec builds on these docs:
 
@@ -40,6 +42,10 @@ Version. Each Mastra claim is for `@mastra/core` 1.79.0 and `@mastra/pg` 1.32.0.
 
 - `reference-workflows-workflow-state-reader.md`
 
+- `docs-workflows-overview.md` (`restartAllActiveWorkflowRuns`, `autoRestartActiveRuns`)
+
+Claude also read the type `MastraRecoveryConfig` in `dist/mastra/index.d.ts`. It ran the function `parseModelString` of `@mastra/core/llm`.
+
 The probes are in [the probe folder](../research/2026-11-08-stage-workflow-probes/README.md).
 
 ## The idea `stage.idea`
@@ -52,27 +58,21 @@ The stage workflow runs one stage at one node. It is one Mastra workflow for eac
 
 3. The repair loop runs the nested workflow `draft_and_judge` with `.dountil`. Each round writes one draft row, then the judge step writes the verdict rows of that round.
 
-4. `person` passes an accepted draft on. Otherwise it suspends with the person payload, and it waits for accept or reject.
+4. `person` passes an accepted draft on. Otherwise it suspends with the person payload, and it waits for accept or reject. A valid resume writes the person decision first.
 
-5. `assimilate` writes the run end and, for an accept, the output, in one transaction.
+5. `assimilate` reads the decision row and writes the run end and, for an accept, the output, in one transaction. It can run again with the same result.
+
+Each top-level step reads the run end first. If the run ended, the step returns the stored end (`stage.reuse_end`).
 
 The judge step decides the judge outcome (`judge.idea`). The stage workflow acts on the outcome kind, and on nothing else.
 
 ## Usage `stage.usage`
 
 ```ts
-import { stageWorkflow, type StageDeps } from '../stage'
-// Call site: src/mastra/index.ts registers one workflow for each stage (stage.registered).
+import { stageWorkflows, type StageDeps } from '../stage'
+// Call site: src/mastra/index.ts. The registry needs no database (stage.registry_no_db).
 const deps: StageDeps = { store, planFor, research, drafter, judgeModel }
-export const mastra = new Mastra({
-  storage,
-  workflows: {
-    define_criteria: stageWorkflow('define_criteria', deps),
-    create_node: stageWorkflow('create_node', deps),
-    create_pack: stageWorkflow('create_pack', deps),
-    create_layout: stageWorkflow('create_layout', deps),
-  },
-})
+export const mastra = new Mastra({ storage, workflows: stageWorkflows(deps) })
 
 // Call site: an operator, a test, or Studio. The Mastra run id is the stage run id.
 const workflow = mastra.getWorkflow('create_node')
@@ -91,14 +91,19 @@ if (state?.status === 'suspended') {
   })
   if (ended.status === 'success') void ended.result.end // person_rejected, with outputId null
 }
+
+// Call site: the operator script, for a run with a decision row and no run end (stage.decision_first).
+await finishRun(deps, { runId, stage: 'create_node', nodeId: 'sunscreen', ruleSetHash, round })
 ```
 
 | Call site | Call | What it gets |
 |---|---|---|
-| `src/mastra/index.ts` | `stageWorkflow(stage, deps)` for the four stages | Four registered workflows. Studio shows them. A run with no model set fails before any call (`stage.registered`). |
-| An operator, a test, Studio | `run.start({ inputData: { nodeId } })` | `success` with a `StageResult`, `suspended` with a `PersonPayload`, or `failed` |
+| `src/mastra/index.ts` | `stageWorkflows(deps)` of `src/stage/registry.ts` | Four registered workflows. Studio shows them. A run with no model set fails before any call (`stage.registered`). |
+| An operator, a test, Studio | `run.start({ inputData: { nodeId } })` | `success` with a `StageResult`, `suspended` with a `PersonPayload`, or `failed`. A start on an ended run id gives the stored end (`stage.reuse_end`). |
 | A person | `run.resume({ step: 'person', resumeData })` | `success` with a `StageResult`, `suspended` again with a `refusal`, or `failed` after a rule change |
 | A recovery script | `workflow.getWorkflowRunById(runId)` | The status and the suspend payload, from Mastra storage |
+| `run.restart()`, the boot sweep | `restartAllActiveWorkflowRuns()` | The last active step runs again. A stored end comes back as `success` (`stage.reuse_end`). |
+| `scripts/finish-run.ts` | `finishRun(deps, run)` | The run end of a run that has a decision row and no run end (`stage.decision_first`) |
 
 The result of `run.start` and `run.resume` has one of these Mastra statuses:
 
@@ -106,18 +111,19 @@ The result of `run.start` and `run.resume` has one of these Mastra statuses:
 |---|---|
 | `success` | The run ended. `result.end` is `accepted`, `person_accepted`, or `person_rejected`. |
 | `suspended` | The person step waits for a person. |
-| `failed` | The rules refused, the models are not set, the rules changed, the drafter or the store threw, or a bug. No run end row exists. |
+| `failed` | The rules refused, the models are not set, the rules changed, the drafter or the store threw, or a bug. No run end row exists. A decision row can exist: `scripts/finish-run.ts` ends that run. |
 
-The stage workflow uses no `bail`, no sleep, and no processor tripwire. So it never gives `bailed` or `tripwire`, inferred (read `reference-workflows-run.md`). A second resume throws `WORKFLOW_RUN_NOT_SUSPENDED` or `WORKFLOW_RESUME_ALREADY_CLAIMED` (`stage.end_once`).
+The stage workflow uses `bail` only to return a stored end. `bail` gives `success`, verified (ran `mastra-semantics.ts`). It uses no sleep and no processor tripwire, so it never gives `tripwire`, inferred (read `reference-workflows-run.md`). A second resume throws `WORKFLOW_RUN_NOT_SUSPENDED` or `WORKFLOW_RESUME_ALREADY_CLAIMED` (`stage.end_once`).
 
 ## Types `stage.types`
 
 The probe `sketch.ts` type-checks these types against the real types in `src/` (exit code 0).
 
 ```ts
-// src/stage/types.ts (new)
+// src/stage/types.ts (new), src/stage/drafter.ts (new)
 export const REPAIR_BUDGET = 3 // rounds: one draft and two repairs (mastra.stage_workflow)
 export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/)
+
 export const StageInput = z.object({ nodeId: NodeId }).strict()
 
 // The context bundle of graph.traversal that exists today. Records come with plan.research_tools.
@@ -126,6 +132,7 @@ export const NodeContext = z.object({
   siblings: z.array(z.object({ id: NodeId, label: z.string() })),
   instructions: z.string(), // plan.instructions: the strict and soft rules in scope
 })
+export type NodeContext = z.infer<typeof NodeContext>
 
 // The loop state. Each field is JSON, so the snapshot holds it (compile.limits).
 export const Round = z.object({
@@ -138,8 +145,8 @@ export const Round = z.object({
   round: z.number().int().min(0).max(REPAIR_BUDGET), // the rounds so far
   last: JudgeStepOutput.nullable(), // the outcome of the last round
 })
+export type Round = z.infer<typeof Round>
 
-// What a person sees (stage.person_payload).
 export const PersonPayload = z.object({
   runId: z.string().min(1),
   stage: Stage,
@@ -155,56 +162,77 @@ export const PersonPayload = z.object({
   warnings: z.array(z.object({ rule: z.string(), target: z.string(), kind: z.enum(['warning', 'note']), text: z.string() })),
   refusal: z.string().optional(), // set when a resume asked for what the payload forbids
 }).strict()
+export type PersonPayload = z.infer<typeof PersonPayload>
 
-// What a person sends back.
+// stage.person_payload: a reviewer or a note that is blank after a trim is refused.
+const Filled = z.string().trim().min(1)
 export const PersonDecision = z.discriminatedUnion('decision', [
-  z.object({ decision: z.literal('accept'), reviewer: z.string().min(1), note: z.string().optional() }).strict(),
-  z.object({ decision: z.literal('reject'), reviewer: z.string().min(1), note: z.string().min(1) }).strict(),
+  z.object({ decision: z.literal('accept'), reviewer: Filled, note: Filled.optional() }).strict(),
+  z.object({ decision: z.literal('reject'), reviewer: Filled, note: Filled }).strict(),
 ])
+export type PersonDecision = z.infer<typeof PersonDecision>
 
 export const RunEnd = z.enum(['accepted', 'person_accepted', 'person_rejected'])
 export const StageResult = z.object({ runId: z.string(), end: RunEnd, round: z.number().int().min(1), outputId: z.string().nullable() }).strict()
+export type StageResult = z.infer<typeof StageResult>
 
-// The ports (stage.research_port, stage.models_injected).
-export interface ResearchInput { readonly runId: string; readonly stage: Stage; readonly nodeId: NodeId; readonly context: NodeContext }
+// ---- ports ----
+export interface ResearchInput {
+  readonly runId: string
+  readonly stage: Stage
+  readonly nodeId: NodeId
+  readonly context: NodeContext
+}
 export type ResearchPort = (input: ResearchInput) => Promise<RunEvidence>
+
 export interface DraftInput {
   readonly runId: string
   readonly round: number
   readonly plan: StagePlan
   readonly evidence: RunEvidence
   readonly context: NodeContext
-  readonly errors: Extract<JudgeStepOutput, { kind: 'repair' }>['errors'] // the strict errors of the last round
+  readonly errors: Extract<JudgeStepOutput, { kind: 'repair' }>['errors'] // the strict errors of the last round, as JSON
 }
 export interface Drafter {
   readonly id: string // provider/model, kept on each draft row
   draft(input: DraftInput): Promise<unknown> // the raw reply: draft.object, else draft.text
 }
 
-// The store calls of the stage workflow (stage.draft_log, stage.round_rows, stage.end_once).
 export type RunEndInput =
   | { readonly runId: string; readonly round: number; readonly end: 'accepted'; readonly output: unknown }
   | { readonly runId: string; readonly round: number; readonly end: 'person_accepted'; readonly reviewer: string; readonly note?: string; readonly output: unknown }
   | { readonly runId: string; readonly round: number; readonly end: 'person_rejected'; readonly reviewer: string; readonly note: string }
-export interface DraftRow { runId: string; round: number; reply: unknown; drafter: string }
+export interface DraftRow { runId: string; round: number; reply: unknown; drafter: string } // reply: JSON.parse of reply_text (stage.reply_lossless)
+// stage.decision_first: one row for each run, written before assimilate runs.
+export type DecisionRow = { readonly runId: string; readonly round: number } & PersonDecision
 export interface StageStore extends Pick<GraphStore, 'recordStageRun' | 'pathToRoot' | 'siblings'> {
   stageRun(runId: string): Promise<{ runId: string; ruleSetHash: string } | undefined>
   addDraft(row: DraftRow): Promise<void>
   draftOf(runId: string, round: number): Promise<DraftRow | undefined>
+  // The judge step: the rows of one round. writeVerdicts of GraphStore gets the round (stage.round_rows).
   writeVerdicts(rows: readonly VerdictInput[], round: number): Promise<unknown>
   verdictsOf(runId: string, round: number): Promise<readonly VerdictInput[]>
-  endRun(input: RunEndInput): Promise<{ outputId: string | null }> // one transaction
+  // stage.judge_claim: true for the one caller whose insert of (run_id, round) wins.
+  claimJudge(runId: string, round: number): Promise<boolean>
+  // stage.decision_first: an equal row again is a no-op. Another row for the run throws.
+  addDecision(row: DecisionRow): Promise<void>
+  decisionOf(runId: string): Promise<DecisionRow | undefined>
+  // stage.reuse_end: the stored end of a run, or undefined.
+  runEndOf(runId: string): Promise<StageResult | undefined>
+  // One transaction: the run_ends row, then the output for an accepting end (stage.end_once).
+  // An equal end that is stored already returns the stored result. Another end throws.
+  endRun(input: RunEndInput): Promise<StageResult>
 }
 
 export interface StageDeps {
   readonly store: StageStore
-  readonly planFor: PlanFor // compile.usage.calls: compiles again, refuses another hash
+  readonly planFor: PlanFor
   readonly research: ResearchPort
   readonly drafter: Drafter
   readonly judgeModel: JudgeModel
 }
 
-// src/stage/drafter.ts (new): the adapter for a real drafter. errorStrategy warn keeps a bad reply.
+// The agent adapter for a real drafter (plan.stage_workflow). errorStrategy warn keeps a bad reply.
 export function agentDrafter(agent: Agent, id: string): Drafter {
   return {
     id,
@@ -219,16 +247,54 @@ export function agentDrafter(agent: Agent, id: string): Drafter {
 
 ## The workflow `stage.workflow`
 
-The probe `sketch.ts` type-checks this sketch (exit code 0). The probe `run-sketch.ts` runs a copy of it with fake ports. The declared functions `planOrThrow`, `checkModels`, and `judgeRound` are the parts that `stage.decisions` defines.
+The probe `sketch.ts` type-checks this sketch (exit code 0). The probe `run-sketch.ts` runs a copy of it with fake ports. The declared functions `planOrThrow` and `judgeRound` are the parts that `stage.decisions` defines.
 
 ```ts
-// src/stage/workflow.ts (new)
+// src/stage/workflow.ts (new), src/stage/registry.ts (new)
+// ---- the workflow (src/stage/workflow.ts) ----
+declare function planOrThrow(deps: StageDeps, run: { runId: string; stage: Stage; nodeId: NodeId; ruleSetHash?: string }): Promise<StagePlan>
+// stage.models_by_vendor: the vendor behind a model id. A gateway id, such as openrouter/anthropic/x, names its vendor first in the model part.
+export function vendorOf(id: string): string {
+  const { provider, modelId } = parseModelString(id)
+  if (!provider || !modelId) throw new Error(`The model id ${JSON.stringify(id)} is not provider/model. Set HARNESS_DRAFTER_MODEL and HARNESS_JUDGE_MODEL.`)
+  return modelId.includes('/') ? modelId.split('/')[0]! : provider
+}
+export function checkModels(drafterId: string, judgeId: string): void {
+  if (vendorOf(drafterId) === vendorOf(judgeId)) throw new Error(`The judge ${judgeId} and the drafter ${drafterId} have one vendor. Use a judge from another vendor (mastra.models).`)
+}
+
+// judgeStep with the round in its input (src/judge/mastra.ts, changed): the shape of the changed step.
+export const JudgeStepInput = z.object({ runId: z.string().min(1), stage: Stage, nodeId: NodeId, ruleSetHash: Sha256, round: z.number().int().min(1), reply: z.unknown(), evidence: z.unknown() })
+declare function judgeRound(deps: StageDeps, input: z.infer<typeof JudgeStepInput>): Promise<JudgeStepOutput>
+function judgeStep(deps: StageDeps) {
+  return createStep({ id: 'judge', inputSchema: JudgeStepInput, outputSchema: JudgeStepOutput, execute: async ({ inputData }) => judgeRound(deps, inputData) })
+}
+
+// stage.decision_first: the body of assimilate, and the operator path of scripts/finish-run.ts.
+// It is idempotent: a stored end comes back unchanged.
+export async function finishRun(deps: StageDeps, run: { runId: string; stage: Stage; nodeId: NodeId; ruleSetHash: string; round: number }): Promise<StageResult> {
+  const ended = await deps.store.runEndOf(run.runId)
+  if (ended !== undefined) return ended
+  const plan = await planOrThrow(deps, run)
+  const kept = await deps.store.draftOf(run.runId, run.round)
+  const d = await deps.store.decisionOf(run.runId)
+  if (d !== undefined && d.round !== run.round) throw new Error(`The decision of run ${run.runId} is for round ${d.round}, not ${run.round}.`)
+  if (d?.decision === 'reject') return deps.store.endRun({ runId: run.runId, round: run.round, end: 'person_rejected', reviewer: d.reviewer, note: d.note })
+  const decoded = plan.decode(kept?.reply)
+  if (!decoded.ok) throw new Error('The draft breaks the output schema. It never reaches acceptOutput.')
+  return d === undefined
+    ? deps.store.endRun({ runId: run.runId, round: run.round, end: 'accepted', output: decoded.output })
+    : deps.store.endRun({ runId: run.runId, round: run.round, end: 'person_accepted', reviewer: d.reviewer, note: d.note, output: decoded.output })
+}
+
 export function stageWorkflow(stage: Stage, deps: StageDeps) {
   const context = createStep({
     id: 'context',
     inputSchema: StageInput,
     outputSchema: Round.pick({ runId: true, stage: true, nodeId: true, ruleSetHash: true, context: true }),
-    execute: async ({ inputData, runId }) => {
+    execute: async ({ inputData, runId, bail }) => {
+      const ended = await deps.store.runEndOf(runId) // stage.reuse_end: a second start, a restart, or the boot sweep
+      if (ended !== undefined) return bail(ended)
       checkModels(deps.drafter.id, deps.judgeModel.id) // before any compile, write, or model call
       const plan = await planOrThrow(deps, { runId, stage, nodeId: inputData.nodeId })
       const known = await deps.store.stageRun(runId)
@@ -245,7 +311,9 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
     id: 'research',
     inputSchema: context.outputSchema,
     outputSchema: Round,
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, bail }) => {
+      const ended = await deps.store.runEndOf(inputData.runId)
+      if (ended !== undefined) return bail(ended)
       const evidence = RunEvidence.parse(await deps.research(inputData))
       return { ...inputData, evidence, round: 0, last: null }
     },
@@ -254,22 +322,22 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
   const draft = createStep({
     id: 'draft',
     inputSchema: Round,
-    outputSchema: JudgeStepInput, // JudgeStepInput gets round (stage.round_rows)
+    outputSchema: JudgeStepInput,
     execute: async ({ inputData }) => {
       const round = inputData.round + 1
       if (round > REPAIR_BUDGET) throw new Error('The repair budget is spent. The loop must not start another round.')
       const plan = await planOrThrow(deps, inputData)
-      const kept = await deps.store.draftOf(inputData.runId, round) // stage.rerun_reuses
+      const kept = await deps.store.draftOf(inputData.runId, round)
       const errors = inputData.last?.kind === 'repair' ? inputData.last.errors : []
       const reply = kept !== undefined ? kept.reply : await deps.drafter.draft({ runId: inputData.runId, round, plan, evidence: inputData.evidence, context: inputData.context, errors })
-      if (kept === undefined) await deps.store.addDraft({ runId: inputData.runId, round, reply, drafter: deps.drafter.id }) // stage.draft_log
+      if (kept === undefined) await deps.store.addDraft({ runId: inputData.runId, round, reply, drafter: deps.drafter.id })
       return { runId: inputData.runId, stage: inputData.stage, nodeId: inputData.nodeId, ruleSetHash: inputData.ruleSetHash, round, reply, evidence: inputData.evidence }
     },
   })
 
   const draftAndJudge = createWorkflow({ id: `${stage}.draft_and_judge`, inputSchema: Round, outputSchema: Round })
     .then(draft)
-    .then(judgeStep(deps)) // src/judge/mastra.ts: writes the rows of the round (stage.round_rows)
+    .then(judgeStep(deps))
     .map(async ({ inputData, getInitData }) => {
       const before = getInitData<Round>()
       return { ...before, round: before.round + 1, last: inputData }
@@ -282,11 +350,13 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
     outputSchema: Round.omit({ context: true, evidence: true, last: true }).extend({ decision: PersonDecision.nullable() }),
     suspendSchema: PersonPayload,
     resumeSchema: PersonDecision,
-    execute: async ({ inputData, resumeData, suspend }) => {
+    execute: async ({ inputData, resumeData, suspend, bail }) => {
+      const ended = await deps.store.runEndOf(inputData.runId)
+      if (ended !== undefined) return bail(ended)
       const last = inputData.last
       if (last === null) throw new Error('The loop ended with no round.')
       const { context: _c, evidence: _e, last: _l, ...run } = inputData
-      if (last.kind === 'accept') return { ...run, decision: null } // stage.loop_on_outcome
+      if (last.kind === 'accept') return { ...run, decision: null }
       const plan = await planOrThrow(deps, inputData) // stage.hash_on_resume: also on the first pass
       const kept = await deps.store.draftOf(inputData.runId, inputData.round)
       const payload: PersonPayload = {
@@ -299,6 +369,7 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
       if (resumeData.decision === 'accept' && !payload.canAccept) {
         return await suspend({ ...payload, refusal: 'The last draft breaks the output schema, so a person cannot accept it. Reject it.' })
       }
+      await deps.store.addDecision({ runId: inputData.runId, round: inputData.round, ...resumeData }) // stage.decision_first
       return { ...run, decision: resumeData }
     },
   })
@@ -307,21 +378,8 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
     id: 'assimilate',
     inputSchema: person.outputSchema,
     outputSchema: StageResult,
-    execute: async ({ inputData }) => {
-      const plan = await planOrThrow(deps, inputData)
-      const kept = await deps.store.draftOf(inputData.runId, inputData.round)
-      const d = inputData.decision
-      if (d?.decision === 'reject') {
-        await deps.store.endRun({ runId: inputData.runId, round: inputData.round, end: 'person_rejected', reviewer: d.reviewer, note: d.note })
-        return { runId: inputData.runId, end: 'person_rejected' as const, round: inputData.round, outputId: null }
-      }
-      const decoded = plan.decode(kept?.reply)
-      if (!decoded.ok) throw new Error('The draft breaks the output schema. It never reaches acceptOutput.')
-      const ended = d === null
-        ? await deps.store.endRun({ runId: inputData.runId, round: inputData.round, end: 'accepted', output: decoded.output })
-        : await deps.store.endRun({ runId: inputData.runId, round: inputData.round, end: 'person_accepted', reviewer: d.reviewer, note: d.note, output: decoded.output })
-      return { runId: inputData.runId, end: d === null ? ('accepted' as const) : ('person_accepted' as const), round: inputData.round, outputId: ended.outputId }
-    },
+    // It reads the decision row, not its input, so a retry gives the same end (stage.decision_first).
+    execute: async ({ inputData }) => finishRun(deps, inputData),
   })
 
   return createWorkflow({ id: stage, description: `The stage ${stage} at one node (graph.stage).`, inputSchema: StageInput, outputSchema: StageResult })
@@ -332,21 +390,31 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
     .then(assimilate)
     .commit()
 }
+
+// ---- the registry (src/stage/registry.ts): no database, no environment (stage.registry_no_db) ----
+export const STAGE_WORKFLOWS = ['define_criteria', 'create_node', 'create_pack', 'create_layout'] as const
+export function stageWorkflows(deps: StageDeps) {
+  return {
+    define_criteria: stageWorkflow('define_criteria', deps),
+    create_node: stageWorkflow('create_node', deps),
+    create_pack: stageWorkflow('create_pack', deps),
+    create_layout: stageWorkflow('create_layout', deps),
+  }
+}
 ```
 
 The parts that the sketch declares:
 
 - `planOrThrow(deps, run)` calls `deps.planFor`. It throws `RulesRefused` with all problems when the compile refuses. It throws "The rules changed during run" when the run has a hash and the plan has another hash.
 
-- `checkModels(drafterId, judgeId)` throws when an id is not `provider/model`, or when the two providers are equal (`stage.models_injected`).
-
-- `judgeStep(deps)` is the shipped step of `src/judge/mastra.ts`, with the changes of `stage.round_rows` and `stage.rerun_reuses`.
+- `judgeRound(deps, input)` is the body of the shipped step of `src/judge/mastra.ts`, with the changes of `stage.round_rows`, `stage.rerun_reuses`, and `stage.judge_claim`. The copy in `sketch-run.ts` shows its order: reuse the stored rows, else claim the round, else wait.
 
 ## States `stage.states`
 
 ```mermaid
 stateDiagram-v2
   [*] --> context
+  context --> ended: a run end is stored, bail with it
   context --> failed: rules refused, models not set, stage at a wrong level
   context --> research
   research --> draft: round 0
@@ -354,58 +422,76 @@ stateDiagram-v2
   judge --> draft: repair and round below 3
   judge --> person: accept, person, or repair at round 3
   draft --> failed: rule change, drafter error
-  judge --> failed: rule change
+  judge --> failed: rule change, a claimed round with no rows
   person --> assimilate: accept outcome, no suspend
   person --> suspended: repair at round 3, or person
   suspended --> person: resume
   person --> failed: rule change on resume
   suspended --> suspended: accept of a draft that breaks the schema
-  assimilate --> accepted: run end and output
-  assimilate --> person_accepted: run end and output
-  assimilate --> person_rejected: run end, no output
-  accepted --> [*]
-  person_accepted --> [*]
-  person_rejected --> [*]
-  failed --> [*]
+  person --> decided: decision row written
+  decided --> assimilate
+  assimilate --> ended: run end, and the output on an accept
+  assimilate --> failed: the store throws, the decision row stays
+  failed --> ended: scripts/finish-run.ts, for a run with a decision row
+  failed --> assimilate: restart or boot sweep, while Mastra holds the status running
+  ended --> [*]
 ```
+
+`ended` is one of the run ends `accepted`, `person_accepted`, and `person_rejected`.
 
 | State | Mastra status | Rows in the store |
 |---|---|---|
 | `failed` before `context` writes | `failed` | None |
-| `failed` after `context` | `failed` | The stage run, each draft, and the verdicts of each judged round. No run end. |
+| `failed` after `context` | `failed` | The stage run, each draft, the judge claim and the verdicts of each judged round. No run end. |
 | `suspended` | `suspended` | The stage run, each draft, and the verdicts of each round |
+| `decided`, then a crash or a store error | `running` or `failed` | Also one decision row. A restart, the boot sweep, or `scripts/finish-run.ts` ends the run. |
 | `accepted`, `person_accepted` | `success` | Also one run end row and one output |
-| `person_rejected` | `success` | Also one run end row. No output. |
+| `person_rejected` | `success` | Also one decision row and one run end row. No output. |
+| A second start, a restart, or the boot sweep after an end | `success` | No new row. The result is the stored end. |
+
+Mastra runs the boot sweep `restartAllActiveWorkflowRuns()` by default. `MastraRecoveryConfig.workflows` has the default `auto`, verified (read `dist/mastra/index.d.ts`). The sweep restarts each run with the status `running` or `waiting`, after the lease of its process lapses. The lease was 15 seconds in the repros (`stage.interrogate`).
 
 ## The store changes `stage.store`
 
-The new migration `db/migrations/0004_stage_runs.sql` adds two tables and changes two tables, in schema `harness`. Like each migration, it lives in RealDose and Rohan applies it. It is a live-system change and needs his yes (`rules.gates`).
+The new migration `db/migrations/0004_stage_runs.sql` adds four tables and changes two tables, in schema `harness`. Like each migration, it lives in RealDose and Rohan applies it. It is a live-system change and needs his yes (`rules.gates`). The prototype [0004_stage_runs.sql](../research/2026-11-08-stage-workflow-probes/0004_stage_runs.sql) holds the text. The probe `migration.ts` applies it twice and then `0003_harness_role.sql` again, and tests each rule below as `harness_app`, verified (ran, exit code 0).
 
 | Table | Change | Key columns and checks |
 |---|---|---|
-| `harness.drafts` | New | `run_id` (references `stage_runs`), `round` (1 or more), `reply` (JSON, not null), `drafter` (`provider/model`), `created_at`. Primary key `(run_id, round)`. |
-| `harness.run_ends` | New | `run_id` (primary key, references `stage_runs`), `round`, `end` (`accepted`, `person_accepted`, `person_rejected`), `reviewer`, `note`, `created_at`. `(run_id, round)` references `drafts`, and it is unique, so that `outputs` can reference it. A person end needs a `reviewer`. `person_rejected` needs a `note`. |
-| `harness.verdicts` | Adds `round` (not null) | `(run_id, round)` references `drafts`. |
+| `harness.drafts` | New | `run_id` (references `stage_runs`), `round` (1 to 3), `reply_text` (text, not null), `reply` (JSON, may be null), `drafter` (`provider/model`), `created_at`. Primary key `(run_id, round)`. |
+| `harness.judge_claims` | New | `run_id`, `round`, `created_at`. Primary key `(run_id, round)`, which references `drafts`. |
+| `harness.person_decisions` | New | `run_id` (primary key), `round`, `decision` (`accept`, `reject`), `reviewer`, `note`, `created_at`. `(run_id, round)` references `drafts`. The reviewer and a note are not blank after a trim. A reject needs a note. |
+| `harness.run_ends` | New | `run_id` (primary key, references `stage_runs`), `round`, `end` (`accepted`, `person_accepted`, `person_rejected`), `reviewer`, `note`, `created_at`. `(run_id, round)` references `drafts`, and it is unique, so that `outputs` can reference it. Only a person end has a `reviewer`. `person_rejected` needs a `note`. |
+| `harness.verdicts` | Adds `round` (not null, 1 to 3) and a unique key | `(run_id, round)` references `drafts`. The unique key is `(run_id, round, rule_id, rule_version, target)`. |
 | `harness.outputs` | Adds `round` (not null) and a unique key on `run_id` | `(run_id, round)` references `run_ends`. |
 
-Two triggers hold the accept rules in the database:
+Three triggers and one function hold the other rules in the database:
 
-- An insert of a `run_ends` row with `end` `accepted` needs at least one verdict row of that run and round. It also needs each `strict` row of that round to be `pass`.
+- An insert of a `verdicts` row fails when the run has a run end (`stage.round_closed`).
+
+- An insert of a `run_ends` row with `end` `accepted` needs at least one `strict` verdict row of that run and round. Each `strict` row of that round must be `pass`. The run must have no decision row. A person end needs the equal decision row: the same round, decision, reviewer, and note.
 
 - An insert of an `outputs` row needs a `run_ends` row of the same run and round, with `end` `accepted` or `person_accepted`.
 
-The migration follows `store.safety`. It adds the append-only triggers, row level security with a policy for `harness_app` (select and insert), and the revokes from `PUBLIC`, `anon`, and `authenticated`. It ends with the guard block of `0003_harness_role.sql`, so the guard also covers the new tables. Each statement is idempotent. Before the first stage run, `verdicts` and `outputs` are empty. So the new not-null columns need no default. Inferred: nobody applied the #12 migration yet.
+- `harness.try_jsonb(text)` gives the JSON value of a text, or null when JSON refuses it (`stage.reply_lossless`). `harness_app` has the right to run it.
+
+The database cannot know the plan. So it cannot check that each rule of the plan has a row. Only code holds that rule (`judge.outcome_total`). The database holds only "at least one strict row, and each strict row is pass".
+
+The migration follows `store.safety`. It adds the append-only triggers, row level security with a policy for `harness_app` (select and insert), and the revokes from `PUBLIC`, `anon`, and `authenticated`. It ends with the guard block of `0003_harness_role.sql`, so the guard also covers the new tables and functions. Each statement is idempotent. Before the first stage run, `verdicts` and `outputs` are empty. So the new not-null columns need no default. Inferred: nobody applied the #12 migration yet.
 
 The store gets these calls:
 
 | Call | Status | What it does |
 |---|---|---|
 | `stageRun(runId)` | New | Reads one stage run, or `undefined` |
-| `addDraft(row)` | New | Inserts one draft row. A second row for one round fails on the primary key. |
-| `draftOf(runId, round)` | New | Reads one draft row, or `undefined` |
+| `addDraft(row)` | New | Inserts one draft row: `reply_text` is `JSON.stringify(reply)`, and `reply` is `harness.try_jsonb(reply_text)`. A second row for one round fails on the primary key. |
+| `draftOf(runId, round)` | New | Reads one draft row. `reply` is `JSON.parse(reply_text)`, so it equals the reply of the drafter. |
+| `claimJudge(runId, round)` | New | Inserts one claim row. It gives `true` when the insert wins, and `false` on the primary key. |
 | `writeVerdicts(rows, round)` | Changed | Adds `round` to each row. One statement, all rows or none. |
 | `verdictsOf(runId, round)` | New | Reads the rows of one round, as `VerdictInput` |
-| `endRun(input)` | New | One transaction: the `run_ends` row, then the output for an accepting end. It returns the output id, or `null`. |
+| `addDecision(row)` | New | Inserts the decision row. An equal row that exists is not an error. Another row for the run fails. |
+| `decisionOf(runId)` | New | Reads the decision row, or `undefined` |
+| `runEndOf(runId)` | New | Reads the run end as a `StageResult`, or `undefined` |
+| `endRun(input)` | New | One transaction: the `run_ends` row, then the output for an accepting end. An equal end that exists gives the stored result. Another end fails. |
 | `acceptOutput(input)` | Changed | It takes `round`. Only `endRun` calls it, inside the transaction. |
 
 ## Decisions `stage.decisions`
@@ -490,13 +576,13 @@ How a real run picks them (`mastra.models`):
 
 Mechanism:
 
-- `checkModels` runs first in the context step. It refuses an id that is not `provider/model`, and two ids with one provider. An unset variable gives an empty id, so the run fails before any compile, write, or model call.
+- `checkModels` runs in the context step, before any compile, write, or model call. It refuses an id that is not `provider/model`, and two ids with one vendor (`stage.models_by_vendor`). An unset variable gives an empty id, so the run fails.
 
 - Tests build the drafter as `agentDrafter(new Agent({ model: createMockModel(...) }), 'drafter/mock')`. The judge model is `mockModel` of `tests/judge/helpers.ts`, with the id `mock/judge`. The two providers differ.
 
 - The setup file `tests/setup/no-network.ts` fails each test that calls `fetch` (`judge.no_network`).
 
-Tests: `model_call.stage_zero_fetch`, `model_call.mock_drafter_only`, `model_call.unset_model_refuses`, `self_judge.same_provider_refused`.
+Tests: `model_call.stage_zero_fetch`, `model_call.mock_drafter_only`, `model_call.unset_model_refuses`, `self_judge.same_provider_refused`, `self_judge.gateway_same_vendor_refused`.
 
 ### Hash on resume `stage.hash_on_resume`
 
@@ -518,21 +604,23 @@ Tests: `rule_drift.resume_accept_refused`, `rule_drift.resume_reject_refused`, `
 
 Decision. A reject writes one `harness.run_ends` row with `end` `person_rejected`, the reviewer, and the note. It writes no output. The run ends at the assimilate step, with the Mastra status `success` and `result.end` `person_rejected`.
 
-Why. A reject is a decision of a person, so the log must keep it (`enforce.audit`). A run that ends with no row would look like a run that is still open. The run does not use `bail`, so that each write of a run end happens in one step.
+Why. A reject is a decision of a person, so the log must keep it (`enforce.audit`). A run that ends with no row would look like a run that is still open. The person step does not `bail` on a reject, so that one function, `finishRun`, writes each run end.
 
 Mechanism:
 
-- `PersonDecision` needs a non-empty `note` for a reject. Mastra refuses other resume data and keeps the run suspended, verified (ran `suspend-schemas.ts`).
+- `PersonDecision` needs a `note` for a reject that is not blank after a trim. Mastra refuses other resume data and keeps the run suspended, verified (ran `suspend-schemas.ts`).
+
+- The person step writes the decision row first (`stage.decision_first`). Then assimilate writes the run end from that row.
 
 - `endRun` writes no output for `person_rejected`. The outputs trigger refuses an output without an accepting run end.
 
 - The drafts and the verdicts of each round stay.
 
-Tests: `reject_writes.no_output`, `reject_writes.end_row_with_note`, `reject_writes.note_required`, `reject_writes.output_trigger_refuses`.
+Tests: `reject_writes.no_output`, `reject_writes.end_row_with_note`, `reject_writes.note_required`, `reject_writes.blank_note_refused`, `reject_writes.output_trigger_refuses`.
 
 ### One end `stage.end_once`
 
-Decision. A run ends once. A second resume writes nothing, and the database refuses a second run end or a second output.
+Decision. A run ends once. A second resume writes nothing, and the database refuses a second decision, a second run end, or a second output.
 
 Why. The same run id can come back twice, for example from a button that a person presses twice. Two writes of one output would break `verdicts.outputs_per_run`.
 
@@ -540,17 +628,17 @@ Mechanism, in three layers:
 
 - Mastra. A resume claims the run by an atomic move from `suspended` to `running`. A second caller at the same time gets `WORKFLOW_RESUME_ALREADY_CLAIMED`, and a later caller gets `WORKFLOW_RUN_NOT_SUSPENDED`. Verified (ran `mastra-semantics.ts` on `InMemoryStore`). `@mastra/pg` 1.32.0 reports `supportsConcurrentUpdates()` as true, verified (read `dist/index.js`).
 
-- The person step writes nothing. It only reads and suspends. So a body that runs again has no effect in the store.
+- The person step writes only the decision row, and only on a valid resume. An equal row again is not an error, so a body that runs again changes nothing.
 
-- The database. `run_ends.run_id` is a primary key, and `outputs.run_id` is unique. `endRun` writes both in one transaction. So a second call fails, and it leaves no row.
+- The database. `person_decisions.run_id` and `run_ends.run_id` are primary keys, and `outputs.run_id` is unique. `endRun` writes the run end and the output in one transaction. A second equal call gives the stored end (`stage.reuse_end`). Another end fails and leaves no row.
 
-Tests: `double_write.second_resume_refused`, `double_write.concurrent_resume_one_end`, `double_write.end_run_twice_refused`, `double_write.person_body_writes_nothing`.
+Tests: `double_write.second_resume_refused`, `double_write.concurrent_resume_one_end`, `double_write.end_run_twice_one_end`, `double_write.person_body_one_decision`.
 
 ### A step that runs again `stage.rerun_reuses`
 
 Decision. A step that runs again for the same run reuses what the store holds. It never calls a model again for a stored round.
 
-Why. Mastra runs a suspended step from its top on resume. `run.restart()` runs the last active step again after a lost connection. `timeTravel` runs a step again from a snapshot. A second model call costs money, and a second row would break the log.
+Why. Mastra runs a suspended step from its top on resume. `run.restart()` and the boot sweep run the last active step again after a crash (`stage.states`). `timeTravel` runs a step again from a snapshot. A second model call costs money, and a second row would break the log.
 
 Mechanism:
 
@@ -558,11 +646,11 @@ Mechanism:
 
 - Draft. `draftOf(runId, round)` returns the stored reply. The drafter is not called.
 
-- Judge. `judgeStep` reads `verdictsOf(runId, round)` first. If rows exist, it runs `plan.decode` on the reply and `decideOutcome` on the stored rows. It calls no judge and writes nothing.
+- Judge. `judgeStep` reads `verdictsOf(runId, round)` first. If rows exist, it runs `plan.decode` on the reply and `decideOutcome` on the stored rows. It calls no judge and writes nothing. Two judge steps of one round at the same time are `stage.judge_claim`.
 
-- Person. It writes nothing (`stage.end_once`).
+- Person. It writes one decision row at most (`stage.end_once`).
 
-- Assimilate. `endRun` fails on the second call (`stage.end_once`).
+- Assimilate. `finishRun` gives the stored end (`stage.reuse_end`).
 
 Tests: `double_write.context_rerun_one_run_row`, `double_write.draft_reused_on_rerun`, `double_write.judge_reused_on_rerun`.
 
@@ -596,7 +684,7 @@ What a person sends back:
 
 - `{ decision: 'reject', reviewer, note }`.
 
-`reviewer` is a handle of the operator. It goes into the database only, never into this repo.
+`reviewer` is a handle of the operator. It goes into the database only, never into this repo. `PersonDecision` and the checks of `person_decisions` and `run_ends` refuse a reviewer or a note that is blank after a trim. The interrogate run showed that `z.string().min(1)` took a single space (`stage.interrogate`).
 
 Mechanism:
 
@@ -608,7 +696,7 @@ Mechanism:
 
 - A person can accept a draft that decodes but has strict fails. A person decides when the budget is spent (`enforce.binding`). The run end `person_accepted` records that decision.
 
-Tests: `empty_payload.schema_refuses`, `empty_payload.payload_holds_draft`, `broken_accept.resuspends_with_refusal`, `broken_accept.never_reaches_store`.
+Tests: `empty_payload.schema_refuses`, `empty_payload.payload_holds_draft`, `empty_payload.blank_reviewer_refused`, `broken_accept.resuspends_with_refusal`, `broken_accept.never_reaches_store`.
 
 ### Loop on the outcome `stage.loop_on_outcome`
 
@@ -622,11 +710,11 @@ Mechanism:
 
 - The person step passes only `accept` through. `repair` at round 3 and `person` suspend.
 
-- The draft step refuses round 4. `Round.round` has the maximum `REPAIR_BUDGET`.
+- The draft step refuses round 4. `Round.round` has the maximum `REPAIR_BUDGET`. The database also refuses round 4 (`stage.budget_in_db`).
 
-- The `run_ends` trigger refuses `accepted` when a strict row of the round is not pass. So the database also holds `verdicts.accept_without_pass`.
+- The `run_ends` trigger refuses `accepted` with no strict row, or with a strict row that is not pass. This holds only part of `verdicts.accept_without_pass`. The database cannot know the plan, so only code checks that each rule of the plan has a row (`judge.outcome_total`). An earlier text of this spec said that the database holds the whole rule. That was wrong (`stage.interrogate`).
 
-Tests: `extra_key.budget_spent_suspends`, `watch_block.fail_accepts`, `watch_block.cannot_verify_accepts`, `budget_overrun.three_drafts_max`, `budget_overrun.draft_refuses_round_four`, `budget_overrun.accepted_end_needs_pass`.
+Tests: `extra_key.budget_spent_suspends`, `watch_block.fail_accepts`, `watch_block.cannot_verify_accepts`, `budget_overrun.three_drafts_max`, `budget_overrun.draft_refuses_round_four`, `budget_overrun.accepted_end_needs_pass`, `budget_overrun.accepted_end_needs_strict_row`.
 
 ### Registration `stage.registered`
 
@@ -634,7 +722,7 @@ Decision. `src/mastra/index.ts` registers one workflow for each stage: `define_c
 
 Mechanism:
 
-- The deps come from the environment, as `stage.models_injected` says. With no model set, Studio shows each workflow, and a run fails in the context step before any call.
+- `src/stage/registry.ts` builds the four workflows from given deps (`stage.registry_no_db`). `src/mastra/index.ts` gives it the deps from the environment, as `stage.models_injected` says. With no model set, Studio shows each workflow, and a run fails in the context step before any call.
 
 - The workflow id is the stage name. The nested workflow id is `<stage>.draft_and_judge`.
 
@@ -642,25 +730,139 @@ Mechanism:
 
 Tests: `wrong_level.refused_before_any_call`, `flow.registered_four_stages`.
 
+### Decision first `stage.decision_first`
+
+Decision. A valid resume first writes the decision of the person into the new append-only table `harness.person_decisions`, one row for each run. Only then does assimilate run. Assimilate reads that row, and it can always run again with the same result. The operator script `scripts/finish-run.ts` ends a run that has a decision row and no run end. So no accept or reject is lost.
+
+Why. The repro `opus/probe-a.ts` (A1) made `endRun` fail once after a resume with accept. The run became `failed`. A second resume threw `WORKFLOW_RUN_NOT_SUSPENDED`, and no row kept the accept. Reproduced (ran).
+
+Mechanism:
+
+- The person step calls `addDecision` after the checks of `stage.person_payload` and before it returns.
+
+- `finishRun(deps, run)` is the body of assimilate. It reads the run end first, and gives it back when it exists. Else it compiles with the hash of the run, reads the draft and the decision row, and calls `endRun`.
+
+- `scripts/finish-run.ts <runId>` reads the stage run and the decision row, and calls `finishRun`. A rule change since the decision makes it refuse, as `stage.hash_on_resume` says.
+
+- The `run_ends` trigger needs the equal decision row for a person end.
+
+Tests: `lost_accept.decision_kept_on_store_error`, `lost_accept.finish_run_ends_it`, `lost_accept.finish_run_twice_one_end`, `lost_accept.person_end_needs_decision`.
+
+### Reuse the end `stage.reuse_end`
+
+Decision. Each top-level step reads the run end first. When a run end exists, the step returns it with `bail`, and the run gives `success`. A second `start()` on an ended run id, a restart, and the boot sweep get the stored end. They never call research or the drafter again, and they never give `failed`.
+
+Why. Two repros reproduced (ran):
+
+- `opus/probe-a.ts` (A2). A second `start()` on an ended run id called research again, and then failed on the primary key of `run_ends`. The stored Mastra status changed from `success` to `failed`.
+
+- `sonnet/p9_lease.ts` and `sonnet/p9b_lease.ts`. A process died after `endRun` committed. After the lease of 15 seconds lapsed, `run.restart()` and the boot sweep `restartAllActiveWorkflowRuns()` ran assimilate again. Each gave `failed` on the primary key of `run_ends`.
+
+Mechanism:
+
+- `context`, `research`, and `person` call `runEndOf(runId)` first, and `bail` with the stored `StageResult` when it exists.
+
+- `finishRun` gives the stored end when it exists. `endRun` gives the stored end for an equal end.
+
+- The nested steps reuse the stored draft and rows (`stage.rerun_reuses`).
+
+Tests: `double_write.start_on_ended_run`, `double_write.restart_after_end_commit`, `double_write.boot_sweep_after_end_commit`.
+
+### Judge claim `stage.judge_claim`
+
+Decision. Before it calls a judge, the judge step writes a claim row into the new append-only table `harness.judge_claims`. Its primary key is `(run_id, round)`. Only the caller whose insert wins calls the judge. A caller that loses waits, and then reuses the rows of the round. `harness.verdicts` gets the unique key `(run_id, round, rule_id, rule_version, target)`.
+
+Why. The repro `sonnet/p10_dup.ts` ran two recoveries of one round at the same time. The judge ran twice, and round 1 got 20 rows for 10 rules. Reproduced (ran). The repro `sonnet/p2_migration.ts` wrote two equal rows for one rule, target, and round. Reproduced (ran).
+
+Mechanism:
+
+- `judgeStep` reads `verdictsOf(runId, round)`. Rows that exist give the outcome with no call.
+
+- Else it calls `claimJudge(runId, round)`. The winner calls the judges and writes the rows.
+
+- A loser reads `verdictsOf` again at a short interval. It fails the step when no rows come within the wait.
+
+- The unique key refuses a second row for one rule and target in one round. A scorer that gives two rows for one target is a bug, and the write fails.
+
+Tests: `double_write.concurrent_judge_one_call`, `double_write.verdict_row_unique`.
+
+### Round closed `stage.round_closed`
+
+Decision. A trigger refuses each insert into `harness.verdicts` for a run that has a run end.
+
+Why. The repro `opus/run-d1.ts` (D1) wrote a strict fail row for the accepted round after the run end. The store then showed an accepted output with a strict fail in its round. Reproduced (ran).
+
+Mechanism. The trigger `verdicts_open` reads `run_ends` before each insert.
+
+Tests: `late_row.verdict_after_end_refused`.
+
+### Budget in the database `stage.budget_in_db`
+
+Decision. `harness.drafts.round` and `harness.verdicts.round` have the check "between 1 and 3".
+
+Why. The repro `opus/run-d1.ts` (D2) stored a draft at round 4. Reproduced (ran).
+
+Mechanism. The two checks. `REPAIR_BUDGET` and the checks must change together. A change of the budget needs a new migration.
+
+Tests: `budget_overrun.db_refuses_round_four`.
+
+### Lossless reply `stage.reply_lossless`
+
+Decision. The draft log keeps the raw reply as `JSON.stringify(reply)` in the text column `reply_text`. The JSON column `reply` holds the parsed value, or null when JSON refuses it. The store keeps a reply that JSON refuses.
+
+Why. The repro `sonnet/p2_migration.ts` stored a reply with a NUL character and a reply with a lone surrogate. JSON refused both, so the reply was lost. Reproduced (ran).
+
+Mechanism:
+
+- `JSON.stringify` writes NUL and a lone surrogate as escapes, so a text column takes them.
+
+- `harness.try_jsonb(reply_text)` fills `reply`. It gives null when the cast fails.
+
+- `draftOf` gives `JSON.parse(reply_text)`. The probe `migration.ts` read both replies back unchanged, verified (ran).
+
+Tests: `lost_draft.nul_and_surrogate_kept`, `lost_draft.unparsed_reply_kept`.
+
+### Registry with no database `stage.registry_no_db`
+
+Decision. `src/stage/registry.ts` holds `stageWorkflows(deps)` and `STAGE_WORKFLOWS`. It needs no database and no environment variable. `src/mastra/index.ts` imports it. A test imports the registry, never `index.ts`.
+
+Why. The repro `sonnet/p14_registry.ts` imported `src/mastra/index.ts` with no `HARNESS_DATABASE_URL`. The import threw. Reproduced (ran).
+
+Mechanism. The registry takes the deps as an argument. The test gives fake deps.
+
+Tests: `flow.registry_needs_no_db`, `flow.registered_four_stages`.
+
+### Models by vendor `stage.models_by_vendor`
+
+Decision. `checkModels` compares the vendor behind each model id, not the first segment. It parses each id with `parseModelString` of `@mastra/core/llm`. When the model part holds a slash, as in a gateway id, its first segment is the vendor. So `openrouter/anthropic/claude-sonnet` counts as `anthropic`.
+
+Why. The repro `sonnet/p13_models.ts` accepted `anthropic/claude-opus` as the drafter with `openrouter/anthropic/claude-sonnet` as the judge. Reproduced (ran).
+
+Mechanism. `vendorOf(id)` in `src/stage/workflow.ts`. An id with no provider or no model part throws. `parseModelString` gives `{ provider: 'openrouter', modelId: 'anthropic/claude-opus-4-5' }` for a gateway id, verified (ran).
+
+Tests: `self_judge.gateway_same_vendor_refused`, `self_judge.unknown_id_refused`.
+
 ## Hazards `stage.hazards`
 
 Each hazard has a mechanism and tests that fail when the mechanism breaks. The name of each test starts with the name of its hazard, as in `judge.hazards`. The tests live in `tests/stage/`, one file for each hazard. They run on the test Postgres of CI, with Mastra storage on the same pool. Each model is a `createMockModel`.
 
 | Hazard | Mechanism | Tests |
 |---|---|---|
-| `flow`. A run ends in the wrong state | The workflow of `stage.workflow` | `flow.first_round_accepts`, `flow.repair_then_accepts`, `flow.budget_spent_suspends`, `flow.cannot_verify_suspends`, `flow.resume_accept_writes_output`, `flow.resume_reject_ends`, `flow.registered_four_stages` |
-| `lost_draft`. A draft is lost or overwritten | `stage.draft_log` | `lost_draft.each_round_kept`, `lost_draft.verdict_needs_draft`, `lost_draft.no_overwrite`, `lost_draft.broken_reply_kept` |
-| `double_write`. A resume or a step that runs again writes twice, or calls a model twice | `stage.end_once`, `stage.rerun_reuses` | `double_write.second_resume_refused`, `double_write.concurrent_resume_one_end`, `double_write.end_run_twice_refused`, `double_write.person_body_writes_nothing`, `double_write.context_rerun_one_run_row`, `double_write.draft_reused_on_rerun`, `double_write.judge_reused_on_rerun` |
+| `flow`. A run ends in the wrong state | The workflow of `stage.workflow` | `flow.first_round_accepts`, `flow.repair_then_accepts`, `flow.budget_spent_suspends`, `flow.cannot_verify_suspends`, `flow.resume_accept_writes_output`, `flow.resume_reject_ends`, `flow.registered_four_stages`, `flow.registry_needs_no_db` |
+| `lost_draft`. A draft is lost or overwritten | `stage.draft_log`, `stage.reply_lossless` | `lost_draft.each_round_kept`, `lost_draft.verdict_needs_draft`, `lost_draft.no_overwrite`, `lost_draft.broken_reply_kept`, `lost_draft.nul_and_surrogate_kept`, `lost_draft.unparsed_reply_kept` |
+| `lost_accept`. A decision of a person is lost after a failure | `stage.decision_first` | `lost_accept.decision_kept_on_store_error`, `lost_accept.finish_run_ends_it`, `lost_accept.finish_run_twice_one_end`, `lost_accept.person_end_needs_decision` |
+| `double_write`. A resume, a second start, a restart, or a step that runs again writes twice, calls a model twice, or turns an end into `failed` | `stage.end_once`, `stage.rerun_reuses`, `stage.reuse_end`, `stage.judge_claim` | `double_write.second_resume_refused`, `double_write.concurrent_resume_one_end`, `double_write.end_run_twice_one_end`, `double_write.person_body_one_decision`, `double_write.context_rerun_one_run_row`, `double_write.draft_reused_on_rerun`, `double_write.judge_reused_on_rerun`, `double_write.start_on_ended_run`, `double_write.restart_after_end_commit`, `double_write.boot_sweep_after_end_commit`, `double_write.concurrent_judge_one_call`, `double_write.verdict_row_unique` |
+| `late_row`. A verdict row arrives after the run end | `stage.round_closed` | `late_row.verdict_after_end_refused` |
 | `rule_drift`. A resume after a rule change writes an end | `stage.hash_on_resume` | `rule_drift.resume_accept_refused`, `rule_drift.resume_reject_refused`, `rule_drift.context_rerun_refused` |
-| `budget_overrun`. A run makes more than 3 rounds, or an auto accept skips a strict row | `stage.loop_on_outcome` | `budget_overrun.three_drafts_max`, `budget_overrun.draft_refuses_round_four`, `budget_overrun.accepted_end_needs_pass` |
-| `reject_writes`. A reject writes an output | `stage.reject_end` | `reject_writes.no_output`, `reject_writes.end_row_with_note`, `reject_writes.note_required`, `reject_writes.output_trigger_refuses` |
+| `budget_overrun`. A run makes more than 3 rounds, or an auto accept skips a strict row | `stage.loop_on_outcome`, `stage.budget_in_db` | `budget_overrun.three_drafts_max`, `budget_overrun.draft_refuses_round_four`, `budget_overrun.db_refuses_round_four`, `budget_overrun.accepted_end_needs_pass`, `budget_overrun.accepted_end_needs_strict_row` |
+| `reject_writes`. A reject writes an output | `stage.reject_end` | `reject_writes.no_output`, `reject_writes.end_row_with_note`, `reject_writes.note_required`, `reject_writes.blank_note_refused`, `reject_writes.output_trigger_refuses` |
 | `watch_block`. A watch rule blocks a run | `stage.loop_on_outcome` | `watch_block.fail_accepts`, `watch_block.cannot_verify_accepts` |
 | `model_call`. A test calls a real model | `stage.models_injected`, `stage.research_port` | `model_call.stage_zero_fetch`, `model_call.mock_drafter_only`, `model_call.unset_model_refuses`, `model_call.stub_research_only`, `model_call.unbuilt_research_stops` |
-| `empty_payload`. A run suspends with no person payload | `stage.person_payload` | `empty_payload.schema_refuses`, `empty_payload.payload_holds_draft` |
+| `empty_payload`. A run suspends with no person payload | `stage.person_payload` | `empty_payload.schema_refuses`, `empty_payload.payload_holds_draft`, `empty_payload.blank_reviewer_refused` |
 | `wrong_level`. A stage runs at a level where it must not | `stage.registered` | `wrong_level.refused_before_any_call` |
 | `broken_accept`. A person accepts a draft that breaks the schema | `stage.person_payload` | `broken_accept.resuspends_with_refusal`, `broken_accept.never_reaches_store` |
 | `extra_key`. A draft with an extra key passes at a spent budget | `stage.loop_on_outcome` | `extra_key.budget_spent_suspends` |
-| `self_judge`. The judge comes from the provider of the drafter | `stage.models_injected` | `self_judge.same_provider_refused` |
+| `self_judge`. The judge comes from the vendor of the drafter | `stage.models_injected`, `stage.models_by_vendor` | `self_judge.same_provider_refused`, `self_judge.gateway_same_vendor_refused`, `self_judge.unknown_id_refused` |
 | `no_round`. A verdict row does not name its round | `stage.round_rows` | `no_round.rows_name_round`, `no_round.output_finds_its_rows` |
 
 ### What each test asserts `stage.tests`
@@ -679,7 +881,9 @@ The fixture is the library of `tests/compiler/rules.ts`, with `GOOD_OUTPUT` and 
 
 - `flow.resume_reject_ends`. A resume with reject gives `person_rejected` and `outputId` `null`.
 
-- `flow.registered_four_stages`. The Mastra instance in `src/mastra/index.ts` lists the four stage workflows, and no `evaluate_product`.
+- `flow.registered_four_stages`. `stageWorkflows(fakeDeps)` of `src/stage/registry.ts` gives the four stage workflows, and no `evaluate_product`.
+
+- `flow.registry_needs_no_db`. With no `HARNESS_DATABASE_URL`, an import of `src/stage/registry.ts` does not throw. No test imports `src/mastra/index.ts`.
 
 - `lost_draft.each_round_kept`. After three rounds, `harness.drafts` holds rounds 1, 2, and 3, each with its reply.
 
@@ -689,13 +893,37 @@ The fixture is the library of `tests/compiler/rules.ts`, with `GOOD_OUTPUT` and 
 
 - `lost_draft.broken_reply_kept`. The store keeps a reply that is text, not JSON, as that text.
 
+- `lost_draft.nul_and_surrogate_kept`. A reply with a NUL character and a reply with a lone surrogate come back from `draftOf` unchanged. Their `reply` column is null.
+
+- `lost_draft.unparsed_reply_kept`. A reply that JSON refuses still gets a draft row, and its round still gets verdict rows.
+
+- `lost_accept.decision_kept_on_store_error`. Make `endRun` fail once after a resume with accept. The run gives `failed`, and the decision row exists.
+
+- `lost_accept.finish_run_ends_it`. `scripts/finish-run.ts` on that run writes `person_accepted` and one output.
+
+- `lost_accept.finish_run_twice_one_end`. A second `finishRun` gives the same end and writes no row.
+
+- `lost_accept.person_end_needs_decision`. A direct insert of `person_accepted` with no decision row fails on the trigger.
+
 - `double_write.second_resume_refused`. A second resume after `success` throws `WORKFLOW_RUN_NOT_SUSPENDED`. The store holds one run end.
 
 - `double_write.concurrent_resume_one_end`. Two resumes at the same time give one `success` and one `WORKFLOW_RESUME_ALREADY_CLAIMED`. The store holds one run end and one output.
 
-- `double_write.end_run_twice_refused`. A second `endRun` for one run fails. The store holds one run end and one output.
+- `double_write.end_run_twice_one_end`. A second equal `endRun` gives the stored end. Another end fails. The store holds one run end and one output.
 
-- `double_write.person_body_writes_nothing`. A store spy counts zero writes from the person step over a suspend and two resumes.
+- `double_write.person_body_one_decision`. Run a suspend, a refused accept, and a valid resume. A store spy counts one decision write from the person step.
+
+- `double_write.start_on_ended_run`. A second `start()` on an ended run id gives `success` with the stored end. The research stub and the drafter get no call. The stored Mastra status stays `success`.
+
+- `double_write.restart_after_end_commit`. A child process dies after `endRun` commits. After the lease lapses, `run.restart()` gives `success` with the stored end.
+
+- `double_write.boot_sweep_after_end_commit`. The same with `mastra.restartAllActiveWorkflowRuns()` leaves the status `success`.
+
+- `double_write.concurrent_judge_one_call`. Two judge steps of one round at the same time make one judge call and write one set of rows. Both give the same outcome.
+
+- `double_write.verdict_row_unique`. A second row for one rule, target, and round fails on the unique key.
+
+- `late_row.verdict_after_end_refused`. A verdict insert for a run with a run end fails on the trigger.
 
 - `double_write.context_rerun_one_run_row`. The context step that runs twice for one run id leaves one stage run row.
 
@@ -715,11 +943,17 @@ The fixture is the library of `tests/compiler/rules.ts`, with `GOOD_OUTPUT` and 
 
 - `budget_overrun.accepted_end_needs_pass`. An `endRun` with `accepted` for a round with a strict fail row fails on the trigger.
 
+- `budget_overrun.accepted_end_needs_strict_row`. An `endRun` with `accepted` for a round with only soft rows fails on the trigger.
+
+- `budget_overrun.db_refuses_round_four`. A draft row and a verdict row at round 4 fail on the checks.
+
 - `reject_writes.no_output`. After a reject, `harness.outputs` has no row for the run.
 
 - `reject_writes.end_row_with_note`. The run end row holds `person_rejected`, the reviewer, and the note.
 
 - `reject_writes.note_required`. A reject with no note throws `WORKFLOW_SCHEMA_VALIDATION_FAILED`, and the run stays suspended.
+
+- `reject_writes.blank_note_refused`. A reject with the note " " throws `WORKFLOW_SCHEMA_VALIDATION_FAILED`. A direct insert of that note fails on the check.
 
 - `reject_writes.output_trigger_refuses`. A direct insert of an output for a run with `person_rejected` fails.
 
@@ -741,6 +975,8 @@ The fixture is the library of `tests/compiler/rules.ts`, with `GOOD_OUTPUT` and 
 
 - `empty_payload.payload_holds_draft`. The payload of a suspended run parses with `PersonPayload`. Its `reply` equals the stored draft of its round.
 
+- `empty_payload.blank_reviewer_refused`. A resume with the reviewer " " throws `WORKFLOW_SCHEMA_VALIDATION_FAILED`, and the run stays suspended.
+
 - `wrong_level.refused_before_any_call`. `create_pack` at the inner node `sunscreen` gives `failed`, with no stage run row and no drafter call.
 
 - `broken_accept.resuspends_with_refusal`. A last draft that breaks the schema gives `canAccept` `false`. An accept gives `suspended` again, with a `refusal`.
@@ -750,6 +986,10 @@ The fixture is the library of `tests/compiler/rules.ts`, with `GOOD_OUTPUT` and 
 - `extra_key.budget_spent_suspends`. Three drafts with an extra key, whose code rows all pass, give `suspended`, never `accepted`.
 
 - `self_judge.same_provider_refused`. A drafter `anthropic/a` and a judge `anthropic/b` give `failed` in the context step.
+
+- `self_judge.gateway_same_vendor_refused`. A drafter `anthropic/a` and a judge `openrouter/anthropic/b` give `failed` in the context step.
+
+- `self_judge.unknown_id_refused`. A judge id with no model part gives `failed` in the context step.
 
 - `no_round.rows_name_round`. After two rounds, each verdict row has round 1 or 2. The rows of each round cover the rules of the plan (`judge.outcome_total`).
 
@@ -772,15 +1012,17 @@ The plan names these checks for `plan.stage_workflow` ([the plan](../plans/2026-
 | File | Status | What it owns |
 |---|---|---|
 | `src/stage/types.ts` | new | The schemas and the ports of `stage.types` |
-| `src/stage/workflow.ts` | new | `stageWorkflow`, the five steps, the nested `draft_and_judge`, `planOrThrow`, `checkModels` |
+| `src/stage/workflow.ts` | new | `stageWorkflow`, the five steps, the nested `draft_and_judge`, `finishRun`, `planOrThrow`, `checkModels`, `vendorOf` |
+| `src/stage/registry.ts` | new | `stageWorkflows`, `STAGE_WORKFLOWS`. It needs no database. |
+| `scripts/finish-run.ts` | new | The operator path of `stage.decision_first` |
 | `src/stage/drafter.ts` | new | `agentDrafter` |
 | `src/stage/ports.ts` | new | `unbuiltResearch`, and `stageDepsFromEnv` for `src/mastra/index.ts` |
 | `src/stage/index.ts` | new | The public surface of the stage workflow |
-| `src/judge/mastra.ts` | changed | `round` in `JudgeStepInput`, `writeVerdicts(rows, round)`, and the reuse of stored rows |
+| `src/judge/mastra.ts` | changed | `round` in `JudgeStepInput`, `writeVerdicts(rows, round)`, the reuse of stored rows, and the judge claim |
 | `src/store/store.ts` | changed | The calls of `stage.store` |
-| `src/store/schema.ts` | changed | `drafts`, `runEnds`, and the new columns |
+| `src/store/schema.ts` | changed | `drafts`, `judgeClaims`, `personDecisions`, `runEnds`, and the new columns |
 | `db/migrations/0004_stage_runs.sql` | new | The tables, keys, triggers, security, and guard of `stage.store` |
-| `src/mastra/index.ts` | changed | The four registered workflows |
+| `src/mastra/index.ts` | changed | The deps from the environment, given to `stageWorkflows` |
 | `tests/stage/` | new | One test file for each hazard, and `helpers.ts` |
 | `tests/judge/mastra_step.test.ts` | changed | `round` in the input, and the rows that the store gets with it |
 | `tests/store/store.test.ts`, `tests/store/migrations.test.ts` | changed | A draft before each verdict, and the new tables in the migration checks |
@@ -800,6 +1042,8 @@ Each fact is for `@mastra/core` 1.79.0, verified (ran the probes on `InMemorySto
 | A step can suspend again after a resume. | `resume bad -> suspended` |
 | Two resumes at the same time give one run. | `concurrent fulfilled success`, and `rejected WORKFLOW_RESUME_ALREADY_CLAIMED` |
 | A resume of a run that is not suspended throws. | `WORKFLOW_RUN_NOT_SUSPENDED This workflow run was not suspended` |
+| On `@mastra/pg` 1.32.0, two resumes from two instances give one run. | `opus/probe-b.ts`: `fulfilled success`, `rejected WORKFLOW_RESUME_ALREADY_CLAIMED` |
+| After a crash, `restart` and the boot sweep run the last active step again, after a lease of 15 seconds. Before that, `restart` throws `WORKFLOW_RESTART_RUN_OWNED`. | `sonnet/p9_crash.ts` (3.5 seconds) and `sonnet/p9_lease.ts` (17 seconds) |
 | `bail` ends with `success`, and `getWorkflowRunById` stores `success`. | `reject via bail -> success`, `bailed stored status success` |
 | A suspend payload that breaks `suspendSchema` fails the run. | `Step suspend data validation failed` |
 | Resume data that breaks `resumeSchema` throws, and the run stays suspended. | `WORKFLOW_SCHEMA_VALIDATION_FAILED`, then `stored status suspended` |
@@ -810,9 +1054,10 @@ Each fact is for `@mastra/core` 1.79.0, verified (ran the probes on `InMemorySto
 | Part | Why the stage workflow does not use it |
 |---|---|
 | The snapshot as the draft store | It is mutable, one row for each run (`stage.draft_log`). |
-| `bail` for a reject | The store must keep the run end. One step writes each run end (`stage.reject_end`). |
+| `bail` for a reject | The store must keep the run end. One function writes each run end (`stage.reject_end`). `bail` returns only a stored end (`stage.reuse_end`). |
 | The `retries` option of a step | A retry calls the drafter or each judge again, which costs money (`judge.not_used`). |
-| `run.restart()` and `timeTravel` as normal paths | They run a step again. `stage.rerun_reuses` makes that safe, but no operator path uses them. |
+| `autoRestartActiveRuns: false` | The boot sweep is a recovery path. `stage.reuse_end` and `stage.rerun_reuses` make it safe, so the stage workflows keep it. |
+| `timeTravel` as a normal path | It runs a step again from a snapshot. `stage.rerun_reuses` makes that safe, but no operator path uses it. |
 | Workflow state (`stateSchema`) for the evidence | `Round` carries the evidence. A nested workflow then needs no shared state. |
 | `.dowhile` | `.dountil` runs the body once before the condition, as the first draft needs. |
 
@@ -834,6 +1079,32 @@ PR [#24](https://github.com/Ronitron007/product-eval-harness/pull/24) holds `Har
 
 The research notes of Look Before You Build are in the scratchpad of the session, as `rules.agents` asks. No outside package gives an append-only draft log with verdict rounds on Postgres. The tables follow `store.safety`.
 
+## The interrogate run `stage.interrogate`
+
+Two adversaries, Opus and Sonnet, interrogated this spec at `7fb8f87` on 2026-11-08. Claude ran each repro again on a local Postgres 18 (`scripts/test-db.sh`), with no model call. The repros are in [the interrogate folder](../research/2026-11-08-stage-interrogate/README.md).
+
+| Finding | Repro | Result | Fix |
+|---|---|---|---|
+| An accept is lost when assimilate fails once | `opus/probe-a.ts` (A1) | Reproduced | `stage.decision_first` |
+| A second start on an ended run calls research and gives `failed` | `opus/probe-a.ts` (A2) | Reproduced | `stage.reuse_end` |
+| A restart or the boot sweep after the end commit gives `failed` | `sonnet/p9_crash.ts`, `sonnet/p9b_crash.ts` | Not reproduced as written: after 3.5 seconds the lease still held, and `restart` threw `WORKFLOW_RESTART_RUN_OWNED` | None from these files |
+| The same, after the lease lapses | `sonnet/p9_lease.ts`, `sonnet/p9b_lease.ts` (17 seconds) | Reproduced | `stage.reuse_end` |
+| Two recoveries of one round call the judge twice | `sonnet/p10_dup.ts` | Reproduced: 2 calls, 20 rows for 10 rules | `stage.judge_claim` |
+| Two equal verdict rows for one rule, target, and round | `sonnet/p2_migration.ts` (P2a) | Reproduced | `stage.judge_claim` |
+| A strict fail row after an accepted end | `opus/run-d1.ts` (D1) | Reproduced | `stage.round_closed` |
+| A draft at round 4 | `opus/run-d1.ts` (D2) | Reproduced | `stage.budget_in_db` |
+| JSON refuses a reply with NUL or a lone surrogate | `sonnet/p2_migration.ts` (P2b) | Reproduced | `stage.reply_lossless` |
+| A test that imports `src/mastra/index.ts` needs a database | `sonnet/p14_registry.ts` | Reproduced | `stage.registry_no_db` |
+| A gateway id hides one vendor for the drafter and the judge | `sonnet/p13_models.ts` | Reproduced | `stage.models_by_vendor` |
+| A blank reviewer or note passes | `sonnet/p15_blank.ts` | Reproduced | `stage.person_payload` |
+| The database cannot check that each rule has a row | `sonnet/p11_sql.ts` (S13) | Reproduced | `stage.store`, `stage.loop_on_outcome`: the text now says what the database holds |
+| Two resumes on `@mastra/pg` | `opus/probe-b.ts`, `sonnet/p1_pg_resume.ts` | No finding: one resume wins | None |
+| A crash inside the judge, then `restart` | `opus/probe-c.ts` | No finding: the run suspended at round 3 with 3 drafter calls | None |
+| A crash before `endRun`, then a resume | `sonnet/p8_crash.ts` | Reproduced only while the lease holds: the status stays `running` | `stage.decision_first` keeps the decision. No repro ran after the lease. |
+| An accept of a draft that breaks the schema | `sonnet/p12_broken.ts` | No finding: the run suspended again with a refusal | None |
+
+Claude wrote `opus/run-d1.ts`, `opus/make-db.ts`, `sonnet/p14_registry.ts`, `sonnet/p15_blank.ts`, and the two `_lease` copies. The other files are as the adversaries wrote them, with relative paths.
+
 ## Conflicts `stage.conflicts`
 
 - The brief of this spec said that the store writes verdicts only with an accepted output. The code differs. `judgeStep` writes the rows of each round, verified (read `src/judge/mastra.ts`). This spec keeps that and adds the round (`stage.round_rows`).
@@ -846,19 +1117,29 @@ The research notes of Look Before You Build are in the scratchpad of the session
 
 - `judge.limits` says that the rows of each round share one run id. `stage.round_rows` closes that limit.
 
+- The first text of this spec said that the database holds `verdicts.accept_without_pass`, and that no operator path uses `restart`. Both were wrong (`stage.interrogate`).
+
 - No row of `decisions.tsv` conflicts with this spec, verified (read each row to 2026-11-08).
 
 ## Limits `stage.limits`
 
 - The budget is 3 rounds for each stage. A stage rule cannot set a lower budget yet.
 
-- The research step runs again after `run.restart()`. When `plan.research_tools` ships, that is a second paid call. That unit stores research records and can reuse them.
+- The research step runs again after `run.restart()`, and after a second start on a suspended run id, verified (ran `opus/probe-a.ts`, A3). When `plan.research_tools` ships, that is a second paid call. That unit stores research records and can reuse them.
+
+- A judge claim whose winner dies before it writes the rows blocks that round. A loser fails after its wait, and the run needs a new run. The claim table is append-only, so no code takes the claim over.
+
+- `scripts/finish-run.ts` refuses after a rule change. The decision row then stays with no run end.
+
+- The boot sweep restarts a run only after the lease of its process lapses (15 seconds in the repros).
 
 - If the store fails after the drafter returns, the step fails and the harness loses the reply. The window is one insert.
 
 - The database keeps each reply as JSON. A very large reply belongs in object storage (`data.artifacts`), with its hash in the row.
 
-- A run that fails has no run end row. Its stage run row stays open in the store. Mastra keeps the status `failed`.
+- A run that fails has no run end row. Its stage run row stays open in the store. Mastra keeps the status `failed`. A run with a decision row ends through `scripts/finish-run.ts`.
+
+- The database checks only part of `verdicts.accept_without_pass`: at least one strict row, and each strict row is pass. Code checks that each rule of the plan has a row.
 
 - The judge step does not check `round` against the draft that it judges. The draft step gives both, and the foreign key refuses a round with no draft.
 

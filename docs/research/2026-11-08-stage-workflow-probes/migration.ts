@@ -1,0 +1,41 @@
+// Applies 0001 to 0003 and the 0004 prototype on a fresh test database, then again with 0003 last.
+// Then it tests the rules of stage.store as harness_app. Needs HARNESS_TEST_DATABASE_URL (scripts/test-db.sh).
+import { readFileSync } from 'node:fs'
+import pg from 'pg'
+import { applyMigrations, freshDatabase, withUser } from '../../../tests/db'
+const H = 'a'.repeat(64)
+const db = await freshDatabase({ migrate: false })
+const p4 = readFileSync(new URL('./0004_stage_runs.sql', import.meta.url), 'utf8')
+const admin = new pg.Client({ connectionString: db.url }); await admin.connect()
+await applyMigrations(db.url); await admin.query(p4)
+await applyMigrations(db.url); await admin.query(p4); await applyMigrations(db.url, ['0003_harness_role.sql'])
+console.log('M0 apply 0001-0004, then 0001-0004 and 0003 again -> ok')
+const app = new pg.Client({ connectionString: withUser(db.url, 'harness_app') }); await app.connect()
+const t = async (label: string, q: string, p: unknown[] = []) => { try { const r = await app.query(q, p); console.log(label, '-> ok', r.rows[0] ? JSON.stringify(r.rows[0]) : '') } catch (e: any) { console.log(label, '-> refused:', String(e.message).slice(0, 90)) } }
+const draft = (run: string, round: number, reply: unknown) => app.query(`insert into harness.drafts(run_id, round, reply_text, reply, drafter) values ($1, $2, $3, harness.try_jsonb($3), 'drafter/mock')`, [run, round, JSON.stringify(reply)])
+const verdict = (run: string, round: number, verdict = 'pass', target = 't') => app.query(`insert into harness.verdicts(run_id, round, rule_id, rule_version, rule_hash, binding, target, verdict, decider, reason) values ($1,$2,'a.b',1,$3,'strict',$4,$5,'{"by":"code"}','why')`, [run, round, H, target, verdict])
+await app.query(`insert into harness.nodes(id, level, path, label) values ('skincare','domain','skincare','S')`)
+for (const r of ['r1', 'r2', 'r3']) await app.query(`insert into harness.stage_runs(run_id, stage, node_id, rule_set_hash) values ($1,'define_criteria','skincare',$2)`, [r, H])
+await draft('r1', 1, 'abc\u0000def'); await draft('r1', 2, 'x\ud800y')
+const back = (await app.query(`select round, reply_text, reply from harness.drafts where run_id='r1' order by round`)).rows
+console.log('M1 NUL and lone surrogate kept ->', back.map(r => JSON.parse(r.reply_text) === (r.round === 1 ? 'abc\u0000def' : 'x\ud800y') && r.reply === null).join(','))
+await t('M2 draft round 4', `insert into harness.drafts(run_id, round, reply_text, drafter) values ('r1', 4, '{}', 'drafter/mock')`)
+await t('M3 verdict round 4', `insert into harness.verdicts(run_id, round, rule_id, rule_version, rule_hash, binding, target, verdict, decider, reason) values ('r1',4,'a.b',1,'${H}','strict','t','pass','{"by":"code"}','why')`)
+await verdict('r1', 1)
+await t('M4 second row for one rule, target and round', `insert into harness.verdicts(run_id, round, rule_id, rule_version, rule_hash, binding, target, verdict, decider, reason) values ('r1',1,'a.b',1,'${H}','strict','t','pass','{"by":"code"}','why')`)
+await t('M5 judge claim', `insert into harness.judge_claims(run_id, round) values ('r1', 1)`)
+await t('M6 second judge claim', `insert into harness.judge_claims(run_id, round) values ('r1', 1)`)
+await t('M7 accepted end', `insert into harness.run_ends(run_id, round, "end") values ('r1', 1, 'accepted')`)
+await t('M8 strict fail row after the end', `insert into harness.verdicts(run_id, round, rule_id, rule_version, rule_hash, binding, target, verdict, decider, reason) values ('r1',1,'a.b',1,'${H}','strict','u','fail','{"by":"code"}','late')`)
+await draft('r2', 1, { a: 1 }); await verdict('r2', 1, 'fail')
+await t('M9 blank reviewer', `insert into harness.person_decisions(run_id, round, decision, reviewer, note) values ('r2', 1, 'reject', '  ', 'n')`)
+await t('M10 blank note', `insert into harness.person_decisions(run_id, round, decision, reviewer, note) values ('r2', 1, 'reject', 'op', ' ')`)
+await t('M11 person end with no decision', `insert into harness.run_ends(run_id, round, "end", reviewer) values ('r2', 1, 'person_accepted', 'op')`)
+await t('M12 decision accept', `insert into harness.person_decisions(run_id, round, decision, reviewer) values ('r2', 1, 'accept', 'op')`)
+await t('M13 second decision', `insert into harness.person_decisions(run_id, round, decision, reviewer, note) values ('r2', 1, 'reject', 'op', 'n')`)
+await t('M14 reject end against an accept decision', `insert into harness.run_ends(run_id, round, "end", reviewer, note) values ('r2', 1, 'person_rejected', 'op', 'n')`)
+await t('M15 person accepted end', `insert into harness.run_ends(run_id, round, "end", reviewer) values ('r2', 1, 'person_accepted', 'op')`)
+await draft('r3', 1, { a: 1 }); await app.query(`insert into harness.verdicts(run_id, round, rule_id, rule_version, rule_hash, binding, target, verdict, decider, reason) values ('r3',1,'a.b',1,'${H}','soft','t','pass','{"by":"code"}','why')`)
+await t('M16 accepted end with no strict row', `insert into harness.run_ends(run_id, round, "end") values ('r3', 1, 'accepted')`)
+await t('M17 update a decision', `update harness.person_decisions set note = 'x'`)
+await app.end(); await admin.end(); await db.drop()

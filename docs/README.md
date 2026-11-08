@@ -63,3 +63,4 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [research/2026-10-28-mastra-cli-spike/README.md](research/2026-10-28-mastra-cli-spike/README.md) | Mastra with the Claude CLI and the Cursor CLI: SDK agents, one MCP tool server, and its traps |
 | [research/2026-11-02-compiler-architect/README.md](research/2026-11-02-compiler-architect/README.md) | The architect run behind the compiler spec: two designs, their probes, and the synthesis |
 | [research/2026-11-08-stage-workflow-probes/README.md](research/2026-11-08-stage-workflow-probes/README.md) | The Mastra probes behind the stage workflow spec: the sketch type check, and the suspend, resume, and loop facts |
+| [research/2026-11-08-stage-interrogate/README.md](research/2026-11-08-stage-interrogate/README.md) | The interrogate run of the stage workflow spec: the repros of two adversaries, and which ones reproduced |
