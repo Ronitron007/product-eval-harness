@@ -1,6 +1,6 @@
 # Formal checks `formal`
 
-Status. Evergreen. Verified against `main` at `edaa9d5` on 2026-11-02, by [#17](https://github.com/Ronitron007/product-eval-harness/pull/17). Code paths: `formal/`, `.claude/skills/harness-invariants/`, and the formal step of `.github/workflows/ci.yml`. Terms are in [glossary.md](../glossary.md).
+Status. Evergreen. Verified against `main` at `edaa9d5` on 2026-11-02, by [#17](https://github.com/Ronitron007/product-eval-harness/pull/17). The section `formal.harness_run` is verified against [#24](https://github.com/Ronitron007/product-eval-harness/pull/24) at `3d474a0` on 2026-11-08. Code paths: `formal/`, `.claude/skills/harness-invariants/`, and the formal step of `.github/workflows/ci.yml`. Terms are in [glossary.md](../glossary.md).
 
 A test checks the cases that a person wrote. A formal check covers each case in a stated scope. This doc says what the formal checks of the harness cover, and how they run. The procedure for an agent is in the project skill `harness-invariants`. The findings of the first run are in [the formal check of 2026-11-02](../research/2026-11-02-formal-check.md).
 
@@ -32,8 +32,144 @@ The checks cover the code where a bug costs the most and where tests reach least
 | `VerdictLog` | `VerdictLog` | `harness.stage_runs`, `harness.outputs`, `harness.verdicts`. `recordStageRun()`, `writeVerdicts()`, `acceptOutput()`. |
 | `RuleVersions` | `RuleVersions`, `RuleVersions_derived` | The rule schema, `ruleHash()`, the loader, the lock, `rules:check` in CI, `harness.derived_rules`, and `addDerivedRule()`. |
 | `MigrationApply` | `MigrationApply` | The three migration files, the guard of `0003_harness_role.sql`, and the two ways to run the files. |
+| `HarnessRun` | `HarnessRun` | The design of one stage run, not code: the draft step, the decode gate, the code checks, the judges, the repair loop, the person step, and a rule change during the run. |
 
 Each action of a model is one SQL statement or one call of the store. The models do not cover two transactions at the same time.
+
+## One stage run `formal.harness_run`
+
+`HarnessRun` is the only model of a design that has no code yet. It follows the stage workflow in [mastra-mapping.md](mastra-mapping.md) (`mastra.stage_workflow`) and the call site in [compiler.md](compiler.md) (`compile.usage.calls`). It also uses the judge scorer in `src/compiler/scorers.ts`, which exists in code. The model has one strict shape rule and one judgement rule. The judgement rule is strict in some runs and soft in others.
+
+| Rule | Result | Finding |
+|---|---|---|
+| `RepairBudget` | holds | |
+| `JudgeOnlyAfterCode` | holds | |
+| `EveryRuleHasARow` | holds | |
+| `SoftNeverBlocks` | holds | |
+| `AutoAcceptOnlyWhenStrictPass` | holds | |
+| `BrokenSchemaNeverAccepted` | breaks | `harness_run.extra_key_accepted` |
+| `BrokenSchemaNeverLandsByReviewer` | breaks | `harness_run.reviewer_lands_broken_schema` |
+| `JudgeVerdictRestsOnQuote` | breaks | `harness_run.quote_unchecked` |
+| `ResumeAfterRuleChangeRefuses` | breaks | `harness_run.resume_after_rule_change` |
+
+The findings:
+
+- `harness_run.extra_key_accepted`. A draft with a key that no rule owns fails the decode gate, but it gives no `fail` row. After the last repair round, the person step looks only at the verdict rows. So it does not stop the run, and assimilate writes the draft.
+
+- `harness_run.reviewer_lands_broken_schema`. A reviewer can accept a draft that fails the decode gate. The compiler spec says that such a draft never reaches `acceptOutput`.
+
+- `harness_run.quote_unchecked`. The judge scorer puts the quote of the judge in the reason text. No code looks for the quote in the sources. A replay with a mock judge model shows that a "yes" with a quote that no source holds gives `pass`.
+
+- `harness_run.resume_after_rule_change`. A step compiles the rules again only when it needs the plan. The person step and assimilate do not need the plan. So a reviewer can accept a run after a rule change, and no step refuses it.
+
+The chart hides two kinds of steps. The first kind is the steps that stay in an end state. The second kind is the refusal in the judge step after a rule change, because the draft step shows the same refusal.
+
+```mermaid
+---
+title: "One stage run of the harness, in the design"
+---
+stateDiagram-v2
+  direction LR
+  state "Legend" as legend {
+    lg0: working
+    lg1: person
+    lg2: landed
+    lg3: stopped
+    lg4: Breaks BrokenSchemaNeverAccepted or BrokenSchemaNeverLandsByReviewer or JudgeVerdictRestsOnQuote or ResumeAfterRuleChangeRefuses
+    lg5: Breaks BrokenSchemaNeverAccepted or BrokenSchemaNeverLandsByReviewer or JudgeVerdictRestsOnQuote or ResumeAfterRuleChangeRefuses in some cases
+    lg6: Path to the BrokenSchemaNeverAccepted or BrokenSchemaNeverLandsByReviewer or JudgeVerdictRestsOnQuote or ResumeAfterRuleChangeRefuses bug
+  }
+  class lg0 teal
+  class lg1 yellow
+  class lg2 blue
+  class lg3 tan
+  class lg4 breaks
+  class lg5 mayBreak
+  class lg6 bugPath
+  state "At the same time" as all {
+    state "Run" as r0 {
+      s0: Run starts
+      s1: Drafting
+      s2: Checking the draft
+      s3: A strict rule fails
+      s4: Draft breaks the schema, no rule fails
+      s5: Every strict rule passes
+      s6: A strict rule cannot be verified
+      s7: Judge answer quotes text not in the sources
+      s8: Stopped: the rules changed
+      s9: Accepted
+      s10: Waiting for a reviewer
+      s11: Accepted by the reviewer
+      s12: Rejected by the reviewer
+      s13: Accepted, draft breaks the schema
+      s14: Accepted by the reviewer, draft breaks the schema
+      [*] --> s0
+      s0 --> s1: the run compiles its rules and records their hash
+      s1 --> s2: the drafter replies [when Rules as the run recorded them]
+      s1 --> s8: the step compiles again and finds another hash [when Rules changed since the run started]
+      s2 --> s3: the draft fails the decode gate, so no judge runs or the strict judge says no [when Rules as the run recorded them]
+      s2 --> s5: the soft judge says no or cannot tell or the judge says yes [when Rules as the run recorded them]
+      s2 --> s7: the judge answers with a quote not in the sources [when Rules as the run recorded them]
+      s2 --> s6: the strict judge says unknown, or its call fails [when Rules as the run recorded them]
+      s2 --> s4: the draft fails the decode gate, so no judge runs [when Rules as the run recorded them]
+      s3 --> s1: the errors go back for a repair [budget left]
+      s4 --> s1: the errors go back for a repair [budget left]
+      s5 --> s9: the harness accepts
+      s6 --> s10: the run suspends
+      s7 --> s9: the harness accepts
+      s7 --> s1: the errors go back for a repair [budget left]
+      s10 --> s11: the reviewer accepts
+      s10 --> s12: the reviewer rejects
+      s3 --> s10: the budget ends, the run suspends
+      s4 --> s13: the budget ends, the harness accepts
+      s4 --> s10: the budget ends, the run suspends
+      s7 --> s10: the budget ends, the run suspends
+      s10 --> s14: the reviewer accepts
+    }
+    --
+    state "Rules" as r1 {
+      s15: Rules as the run recorded them
+      s16: Rules changed since the run started
+      [*] --> s15
+      s15 --> s16: Rohan merges a rule change [unless Accepted or Accepted by the reviewer or Accepted by the reviewer, draft breaks the schema or Accepted, draft breaks the schema or Rejected by the reviewer or Run starts]
+    }
+  }
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  classDef mayBreak fill:#fff3e6,stroke:#e8730c,stroke-width:2.5px,color:#b85a06
+  class s0 teal
+  class s0 bugPath
+  class s1 teal
+  class s1 bugPath
+  class s2 teal
+  class s2 bugPath
+  class s3 teal
+  class s3 bugPath
+  class s4 teal
+  class s4 bugPath
+  class s5 teal
+  class s6 teal
+  class s6 bugPath
+  class s7 teal
+  class s7 breaks
+  class s7 bugPath
+  class s8 tan
+  class s9 blue
+  class s10 yellow
+  class s10 bugPath
+  class s11 blue
+  class s11 mayBreak
+  class s11 bugPath
+  class s12 tan
+  class s13 blue
+  class s13 breaks
+  class s13 bugPath
+  class s14 blue
+  class s14 breaks
+  class s14 bugPath
+  class s15 bugPath
+  class s16 mayBreak
+  class s16 bugPath
+```
 
 ## The two ways to run the migrations `formal.apply_modes`
 
@@ -66,6 +202,8 @@ Some rules of the models hold because the model copies a guard of the code. A co
 A check fails when a result differs from `formal.expectations`. A rule that held and now breaks is a new bug or a wrong model. A finding that no longer breaks needs its expected result changed in the same PR as its fix.
 
 ## Bounds `formal.bounds`
+
+- `HarnessRun` has a budget of 3 drafts, one strict shape rule, and one judgement rule.
 
 - `NodeTree` has 3 node ids. `VerdictLog` has one run, one rule, and two verdict rows. `RuleVersions` has 3 versions of the stage rule and 2 of the derived rule.
 
