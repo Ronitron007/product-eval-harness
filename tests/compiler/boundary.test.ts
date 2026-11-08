@@ -31,7 +31,7 @@ describe('boundary', () => {
     expect(outside.length).toBeGreaterThan(5)
     expect(outside.flatMap(f => internalImports(f, importsOfFile(f)).map(i => `${relative(REPO, f)} -> ${i}`))).toEqual([])
     const users = outside.filter(f => importsOfFile(f).some(m => m.startsWith('.') && resolve(dirname(f), m) === COMPILER))
-    expect(users.map(f => relative(REPO, f)).sort()).toEqual(['scripts/compiler-lock.ts', 'src/judge/step.ts', 'src/rules/cli.ts'])
+    expect(users.map(f => relative(REPO, f)).sort()).toEqual(['scripts/compiler-lock.ts', 'src/judge/step.ts', 'src/rules/cli.ts', 'src/stage/ports.ts'])
   })
 
   it('boundary.internals_unreachable: an import of an internal file fails the test', () => {

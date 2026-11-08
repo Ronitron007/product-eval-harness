@@ -10,16 +10,21 @@ import { ans, judgeOf, planRefs, rowRefs, type Spy } from './helpers'
 
 function harness(items: unknown[], planHash?: string) {
   const written: VerdictInput[][] = []
+  const rounds: number[] = []
   const spy: Spy = { calls: 0 }
   const plan = planOf()
   const deps: JudgeStepDeps = {
-    store: { writeVerdicts: async rows => (written.push([...rows]), []) },
+    store: {
+      writeVerdicts: async (rows, round) => (written.push([...rows]), rounds.push(round), []),
+      verdictsOf: async () => [],
+      claimJudge: async () => 1,
+    },
     planFor: async () => (planHash === undefined ? plan : { ...plan, ruleSetHash: planHash as never }),
     judgeModel: judgeOf(items, spy),
   }
   const workflow = createWorkflow({ id: 'judge-only', inputSchema: JudgeStepInput, outputSchema: JudgeStepOutput }).then(judgeStep(deps)).commit()
   const input = { runId: 'run-step', stage: 'create_node' as const, nodeId: 'sunscreen', ruleSetHash: plan.ruleSetHash, round: 1, reply: JSON.stringify(GOOD_OUTPUT), evidence: GOOD_EVIDENCE }
-  return { workflow, written, plan, input, spy }
+  return { workflow, written, rounds, plan, input, spy }
 }
 
 describe('judge.types', () => {
@@ -41,8 +46,8 @@ describe('judge.types', () => {
     }
   })
 
-  it('judge.types.mastra_step: the step writes all rows in one call, and returns JSON with no rows', async () => {
-    const { workflow, written, plan, input } = harness([ans('no', 'spf')])
+  it('judge.types.mastra_step: the step writes all rows of the round in one call, and returns JSON with no rows', async () => {
+    const { workflow, written, rounds, plan, input } = harness([ans('no', 'spf')])
     const result = await (await workflow.createRun()).start({ inputData: input })
     expect(result.status).toBe('success')
     if (result.status !== 'success') return
@@ -55,6 +60,7 @@ describe('judge.types', () => {
     expect(written).toHaveLength(1)
     expect(rowRefs(written[0]!)).toEqual(planRefs(plan))
     expect(written[0]!.every(r => r.runId === 'run-step')).toBe(true)
+    expect(rounds).toEqual([1])
   })
 
   it('judge.types.mastra_step: a plan whose hash differs from the run fails the step before any model call, and writes nothing', async () => {

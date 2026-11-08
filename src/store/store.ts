@@ -113,7 +113,7 @@ export interface GraphStore {
   subtree(nodeId: string): Promise<GraphNode[]>
   siblings(nodeId: string): Promise<GraphNode[]>
   // stage.store: the calls of the stage workflow.
-  stageRun(runId: string): Promise<{ runId: string; ruleSetHash: string } | undefined>
+  stageRun(runId: string): Promise<Pick<StageRun, 'runId' | 'stage' | 'nodeId' | 'ruleSetHash'> | undefined>
   addDraft(row: DraftRow): Promise<void>
   draftOf(runId: string, round: number): Promise<DraftRow | undefined>
   verdictsOf(runId: string, round: number): Promise<VerdictInput[]>
@@ -265,7 +265,10 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
     },
 
     async stageRun(runId) {
-      const [run] = await db.select({ runId: stageRuns.runId, ruleSetHash: stageRuns.ruleSetHash }).from(stageRuns).where(eq(stageRuns.runId, runId))
+      const [run] = await db
+        .select({ runId: stageRuns.runId, stage: stageRuns.stage, nodeId: stageRuns.nodeId, ruleSetHash: stageRuns.ruleSetHash })
+        .from(stageRuns)
+        .where(eq(stageRuns.runId, runId))
       return run
     },
 
