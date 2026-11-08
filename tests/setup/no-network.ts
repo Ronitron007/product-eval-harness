@@ -1,9 +1,17 @@
+import { PROVIDER_REGISTRY } from '@mastra/core/llm'
 import { afterEach } from 'vitest'
 
 // No test calls a model or another HTTP service (rules.gates). Judge tests use createMockModel.
 // The stub counts each call, and the hook below fails each test that left a call (judge.no_network).
 // So a scorer that catches the throw can no longer hide a call.
 let calls = 0
+
+// Each provider key of the Mastra model router gets a placeholder. With no key, the router throws
+// before fetch, and an unmocked model would pass a test as person. With the placeholder, each
+// unmocked model reaches the stub below, and the hook fails the test. No real key reaches a test.
+for (const provider of Object.values(PROVIDER_REGISTRY)) {
+  for (const name of [provider.apiKeyEnvVar].flat()) process.env[name] = 'placeholder-for-a-test-with-no-network'
+}
 
 globalThis.fetch = (() => {
   calls++
