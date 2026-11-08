@@ -3,7 +3,7 @@ import { createScorer } from '@mastra/core/evals'
 import canonicalize from 'canonicalize'
 import { z } from 'zod'
 import { checkTemplate } from '../rules/checks'
-import type { EvidenceKey, RunEvidence } from '../rules/checks/define'
+import { RunEvidence, type EvidenceKey, type Json } from '../rules/checks/define'
 import type { JudgementRule, Verdict } from '../rules/schema'
 import type { ItemVerdict, JudgeModel, RuleScorer, Sha256 } from './index'
 import { targets, type Target } from './paths'
@@ -11,9 +11,10 @@ import type { AdmittedRule } from './scope'
 import { describe, printShape } from './shape'
 
 // The scorers of a plan (compile.scorers): one for each applied rule, and the outcome policy
-// that no template can bypass. Runtime code: RUNTIME_VERSION covers paths.ts, shape.ts, this
-// file and checks/define.ts. Raise it when one of them changes, and run npm run compiler:lock.
-export const RUNTIME_VERSION = 1
+// that no template can bypass. Runtime code: RUNTIME_VERSION covers RUNTIME_FILES of
+// scripts/compiler-lock.ts (paths.ts, shape.ts, this file, checks/define.ts, compiler/index.ts and
+// judge/step.ts). Raise it when one of them changes, and run npm run compiler:lock.
+export const RUNTIME_VERSION = 2
 
 export const sha256 = (text: string) => createHash('sha256').update(text).digest('hex') as Sha256
 
@@ -34,6 +35,7 @@ interface ItemOutcome {
   readonly verdict: Verdict
   readonly reason: string
   readonly observed?: string // canonical JSON of the value at the target
+  readonly span?: Span // a judged pass or fail: the verified quote, which replaces observed
   readonly by: 'code' | 'judge'
 }
 
@@ -50,9 +52,11 @@ const FITS = { text: (v: unknown) => typeof v === 'string', list: Array.isArray,
 const typeName = (v: unknown) => (v === null ? 'null' : Array.isArray(v) ? 'a list' : typeof v === 'object' ? 'an object' : `a ${typeof v}`)
 
 const scorerId = (r: AdmittedRule) => r.ref
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
 function row(r: AdmittedRule, o: ItemOutcome, decider: ItemVerdict['decider']): ItemVerdict {
   const base = { ruleId: r.rule.id, ruleVersion: r.rule.version, ruleHash: r.hash, binding: r.binding, target: o.target, verdict: o.verdict, decider, reason: o.reason }
+  if (o.span) return { ...base, evidence: { quote: o.span.quote, source: o.span.source } }
   return o.observed === undefined ? base : { ...base, evidence: { quote: o.observed, source: 'output' } }
 }
 
@@ -121,7 +125,7 @@ export function codeScorer(r: AdmittedRule): RuleScorer {
 
   return {
     id: scorerId(r),
-    rule: { id: rule.id, version: rule.version, hash: r.hash, binding: r.binding, kind: rule.kind },
+    rule: { id: rule.id, version: rule.version, hash: r.hash, binding: r.binding, kind: rule.kind, statement: rule.statement },
     decider: { by: 'code' },
     fields,
     scorer,
@@ -158,7 +162,9 @@ export function judgePrompt(rule: JudgementRule, ref: string): { readonly text: 
     ...rule.examples.map(e => `- output ${quote(e.output)} gives ${e.expected}${e.note ? ` (${e.note})` : ''}`),
     '',
     'Answer format: for each item, give its target exactly as written, an answer of yes, no, or unknown,',
-    'a quote from the item or the sources that the answer rests on, and a short reason.',
+    'a quote that the answer rests on, and a short reason.',
+    'For yes, copy the quote word for word from one source. For no, copy the quote word for word from the item or from one source.',
+    'When no text supports an answer, answer unknown.',
   ]
   const text = lines.join('\n')
   return { text, hash: sha256(text) }
@@ -168,7 +174,104 @@ const JudgeAnswer = z.object({
   items: z.array(z.object({ target: z.string(), answer: z.enum(['yes', 'no', 'unknown']), quote: z.string(), reason: z.string() })),
 })
 type JudgeAnswer = z.infer<typeof JudgeAnswer>
-const ANSWER: Record<JudgeAnswer['items'][number]['answer'], Verdict> = { yes: 'pass', no: 'fail', unknown: 'cannot_verify' }
+type Answer = JudgeAnswer['items'][number]
+const ANSWER: Record<Answer['answer'], Verdict> = { yes: 'pass', no: 'fail', unknown: 'cannot_verify' }
+
+// A verified quote: the matched span exactly as it is in the raw text, and where it came from
+// (judge.quote_plain_span): sources.<name>, item, or item.<leaf path>.
+interface Span {
+  readonly quote: string
+  readonly source: string
+}
+
+// The normalize step of judge.quote_rules, with a map back to the raw text (judge.quote_plain_span).
+// Each raw code point is normalized alone, so each normalized code unit maps to exactly one raw
+// code point. NFKC, then no zero-width characters, then one space for each run of white space,
+// with no space at the ends.
+interface Normalized {
+  readonly text: string
+  readonly start: readonly number[] // for each code unit of text: the raw offset where its code point starts
+  readonly end: readonly number[] // and where it ends
+}
+const ZERO_WIDTH = new Set(['​', '‌', '‍', '⁠', '﻿'])
+const WHITE_SPACE = /^\s$/u
+
+function normalizeText(raw: string): Normalized {
+  let text = ''
+  const start: number[] = []
+  const end: number[] = []
+  let space: { start: number; end: number } | undefined // a run of white space that waits for the next character
+  let at = 0
+  for (const point of raw) {
+    const to = at + point.length
+    for (const ch of point.normalize('NFKC')) {
+      if (ZERO_WIDTH.has(ch)) continue
+      if (WHITE_SPACE.test(ch)) {
+        space = { start: space?.start ?? at, end: to }
+        continue
+      }
+      if (space && text !== '') {
+        text += ' '
+        start.push(space.start)
+        end.push(space.end)
+      }
+      space = undefined
+      text += ch
+      for (let k = 0; k < ch.length; k++) {
+        start.push(at)
+        end.push(to)
+      }
+    }
+    at = to
+  }
+  return { text, start, end }
+}
+
+const LETTER_OR_DIGIT = /[\p{L}\p{N}]/gu
+const MIN_QUOTE = 2 // letters or digits in a normalized quote (judge.quote_rules)
+
+interface Searched {
+  readonly source: string
+  readonly raw: string
+}
+
+// The texts that a fail quote may come from in the item (judge.quote_plain_span): a string item as
+// it is, or each string leaf of an object or a list, in path order. Never escaped JSON.
+function itemTexts(value: Json, at = 'item', out: Searched[] = []): Searched[] {
+  if (typeof value === 'string') out.push({ source: at, raw: value })
+  else if (Array.isArray(value)) value.forEach((v, k) => itemTexts(v, `${at}[${k}]`, out))
+  else if (value !== null && typeof value === 'object') for (const key of Object.keys(value).sort(byCodeUnit)) itemTexts(value[key]!, `${at}.${key}`, out)
+  return out
+}
+
+const sourceTexts = (evidence: RunEvidence): Searched[] =>
+  Object.entries(evidence.sources ?? {})
+    .sort(([a], [b]) => byCodeUnit(a, b))
+    .map(([name, raw]) => ({ source: `sources.${name}`, raw }))
+
+// The first permitted text that holds the normalized quote, by an exact, case-sensitive substring
+// test. No fuzzy match (rules.harness).
+function findSpan(quote: string, texts: readonly Searched[]): Span | undefined {
+  for (const t of texts) {
+    const n = normalizeText(t.raw)
+    const i = n.text.indexOf(quote)
+    if (i >= 0) return { quote: t.raw.slice(n.start[i]!, n.end[i + quote.length - 1]!), source: t.source }
+  }
+  return undefined
+}
+
+// judge.one_answer: the answers for one item, with exact copies removed. A copy has the same answer
+// and the same normalized quote. Of two copies, the one with the first canonical form stays, so the
+// order of the answers never decides.
+function distinctAnswers(answers: readonly Answer[]): Answer[] {
+  const kept = new Map<string, Answer>()
+  for (const a of answers) {
+    const key = `${a.answer}\n${normalizeText(a.quote).text}`
+    const other = kept.get(key)
+    if (other === undefined || byCodeUnit(quote(a), quote(other)) < 0) kept.set(key, a)
+  }
+  return [...kept.values()]
+}
 
 // The run part of the judge prompt: the items and the full source texts, never a summary.
 function runPart(items: readonly Target[], evidence: RunEvidence): string {
@@ -201,7 +304,7 @@ export function judgeScorer(r: AdmittedRule, model: JudgeModel, prompt: { readon
 
   return {
     id: scorerId(r),
-    rule: { id: rule.id, version: rule.version, hash: r.hash, binding: r.binding, kind: rule.kind },
+    rule: { id: rule.id, version: rule.version, hash: r.hash, binding: r.binding, kind: rule.kind, statement: rule.statement },
     decider,
     fields,
     scorer,
@@ -215,32 +318,55 @@ export function judgeScorer(r: AdmittedRule, model: JudgeModel, prompt: { readon
       }
       const present = all.filter((t): t is Extract<Target, { state: 'present' }> => t.state === 'present')
       if (present.length === 0) return rows
+      // judge.evidence_parsed: bad evidence never reaches a paid call, and never makes verify throw.
+      const parsed = RunEvidence.safeParse(evidence)
+      if (!parsed.success) {
+        const why = `The run evidence is not valid, so no judge ran: ${parsed.error.issues.map(i => `${i.path.join('.') || '(evidence)'}: ${i.message}`).join(' ')}`
+        for (const t of present) rows.push(row(r, { target: t.path, verdict: 'cannot_verify', reason: why, observed: quote(t.value), by: 'code' }, { by: 'code' }))
+        return rows
+      }
+      const sources = sourceTexts(parsed.data)
       let answers: JudgeAnswer['items'] | undefined
       let failure = ''
       try {
-        const result = await scorer.run({ input: evidence, output })
+        const result = await scorer.run({ input: parsed.data, output })
         answers = JudgeAnswer.parse(result.analyzeStepResult).items
       } catch (e) {
         failure = (e as Error).message
       }
       for (const t of present) {
         const observed = quote(t.value)
-        const mine = answers?.filter(a => a.target === t.path) ?? []
-        const verdicts = new Set(mine.map(a => ANSWER[a.answer]))
+        const mine = distinctAnswers(answers?.filter(a => a.target === t.path) ?? [])
         if (answers === undefined) {
           rows.push(row(r, { target: t.path, verdict: 'cannot_verify', reason: `The judge call failed: ${failure}`, observed, by: 'judge' }, decider))
-        } else if (mine.length === 0 || verdicts.size > 1) {
+        } else if (mine.length !== 1) {
           const why = mine.length === 0 ? 'The judge gave no answer for this item.' : 'The judge gave two answers for this item.'
           rows.push(row(r, { target: t.path, verdict: 'cannot_verify', reason: why, observed, by: 'judge' }, decider))
         } else {
-          const a = mine[0]!
-          const reason = `${a.reason.trim() || `The judge answered ${a.answer}.`}${a.quote.trim() ? ` Quote: "${a.quote.trim()}"` : ''}`
-          rows.push(row(r, { target: t.path, verdict: ANSWER[a.answer], reason, observed, by: 'judge' }, decider))
+          rows.push(row(r, judged(t, mine[0]!, sources), decider))
         }
       }
       return rows
     },
   }
+}
+
+// judge.quote_rules: code verifies the quote of a pass or a fail, and never grades. A quote that
+// no permitted text holds turns the verdict into cannot_verify.
+function judged(t: Extract<Target, { state: 'present' }>, a: Answer, sources: readonly Searched[]): ItemOutcome {
+  const said = `${a.reason.trim() || `The judge answered ${a.answer}.`}${a.quote.trim() ? ` Quote: "${a.quote.trim()}"` : ''}`
+  const observed = quote(t.value)
+  if (a.answer === 'unknown') return { target: t.path, verdict: 'cannot_verify', reason: said, observed, by: 'judge' }
+  const q = normalizeText(a.quote).text
+  if ((q.match(LETTER_OR_DIGIT)?.length ?? 0) < MIN_QUOTE) {
+    return { target: t.path, verdict: 'cannot_verify', reason: `Quote too short. The judge answered ${a.answer}: ${said}`, observed, by: 'judge' }
+  }
+  // A pass rests on a source only, never on the draft. A fail may rest on the item itself.
+  const span = findSpan(q, a.answer === 'no' ? [...itemTexts(t.value), ...sources] : sources)
+  if (span === undefined) {
+    return { target: t.path, verdict: 'cannot_verify', reason: `Quote not found in source. The judge answered ${a.answer}: ${said}`, observed, by: 'judge' }
+  }
+  return { target: t.path, verdict: ANSWER[a.answer], reason: said, span, by: 'judge' }
 }
 
 // One cannot_verify row for each field of each judgement rule, with no model (scorers.skipped_judges).

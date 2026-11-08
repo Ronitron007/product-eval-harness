@@ -16,8 +16,18 @@ import { CHECKS } from '../src/rules/checks'
 
 export const REPO = join(import.meta.dirname, '..')
 export const LOCK_PATH = join(REPO, 'src', 'compiler', 'code.lock.json')
-// The files of RUNTIME_VERSION: the walk, the per-rule shape check, the outcome policy, and the run part of the judge prompt.
-export const RUNTIME_FILES = ['src/compiler/paths.ts', 'src/compiler/shape.ts', 'src/compiler/scorers.ts', 'src/rules/checks/define.ts'] as const
+// The files of RUNTIME_VERSION: the walk, the per-rule shape check, the outcome policy, the run part of
+// the judge prompt, the quote rules, the decode gate, and the binding table of the judge step. From
+// RUNTIME_VERSION 2 the list holds src/compiler/index.ts and src/judge/step.ts (judge.runtime_pinned).
+// The entry of version 1 in code.lock.json is the fingerprint of the first four files.
+export const RUNTIME_FILES = [
+  'src/compiler/paths.ts',
+  'src/compiler/shape.ts',
+  'src/compiler/scorers.ts',
+  'src/rules/checks/define.ts',
+  'src/compiler/index.ts',
+  'src/judge/step.ts',
+] as const
 export const templateFile = (name: string) => `src/rules/checks/${name}.ts`
 
 type Pins = { zod: string; '@mastra/core': string }

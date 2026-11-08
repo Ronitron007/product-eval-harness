@@ -9,7 +9,8 @@ import { GOOD_EVIDENCE, GOOD_OUTPUT } from './rules'
 
 const attribute = GOOD_OUTPUT.criteria[0]!.attributes[0]!
 const THREE = { criteria: [{ name: 'spf', attributes: [attribute, { ...attribute, key: 'trending' }, { ...attribute, key: 'texture' }] }] }
-const answer = (target: string, a: 'yes' | 'no' | 'unknown') => ({ target, answer: a, quote: target, reason: `The judge says ${a}.` })
+// Each answer quotes 500 mg, which GOOD_EVIDENCE holds (judge.quote_rules).
+const answer = (target: string, a: 'yes' | 'no' | 'unknown') => ({ target, answer: a, quote: '500 mg', reason: `The judge says ${a}.` })
 
 function mockJudge(items: unknown[], onCall?: () => void): JudgeModel {
   return { id: 'mock/judge', model: createMockModel({ version: 'v2', objectGenerationMode: 'json', mockText: { items }, spyGenerate: onCall, spyStream: onCall }) as never }
@@ -40,7 +41,7 @@ describe('judge', () => {
     expect(calls).toBe(1)
     const promptHash = plan.manifest.scorers.find(s => s.id === 'criteria.attribute_is_product@1')!.judgePromptHash
     expect(rows[0]!.decider).toEqual({ by: 'judge', model: 'mock/judge', promptHash })
-    expect(rows[1]!.reason).toBe('The judge says no. Quote: "criteria[0].attributes[1]"')
+    expect(rows[1]!.reason).toBe('The judge says no. Quote: "500 mg"')
   })
 
   it('judge.mock_model_verdicts: an absent target and a model error give cannot_verify', async () => {

@@ -66,7 +66,14 @@ export type DecodeResult =
 
 export interface RuleScorer {
   readonly id: `${string}@${number}` // rule.id@version, also the Mastra scorer id
-  readonly rule: { readonly id: string; readonly version: number; readonly hash: Sha256; readonly binding: Binding; readonly kind: RuleRecord['kind'] }
+  readonly rule: {
+    readonly id: string
+    readonly version: number
+    readonly hash: Sha256
+    readonly binding: Binding
+    readonly kind: RuleRecord['kind']
+    readonly statement: string // the fix of a judge fail names it (judge.fail_fix)
+  }
   readonly decider: VerdictInput['decider']
   readonly fields: readonly string[]
   readonly scorer: MastraScorer<string, RunEvidence, unknown, any> // for runEvals and experiments

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { CODE_DEPS, type Manifest } from '../../src/compiler'
+import { CODE_DEPS, RUNTIME_VERSION, type Manifest } from '../../src/compiler'
 import { CHECKS } from '../../src/rules/checks'
 import { ruleHash } from '../../src/rules/hash'
 import { RuleRecord } from '../../src/rules/schema'
@@ -47,7 +47,8 @@ const atStages = (rules: readonly RuleInput[], stages: string[]) => rules.map(r 
 
 // The pinned hash of the fixture library at sunscreen and create_node. It moves when any artifact
 // moves: a rule, the instruction layout, the printer, a declared code version, or a dependency pin.
-const FIXTURE_HASH = '809c1f24843b5abcee2224fe0ee13abf387616b3f16d33cf63b8cfabfa4df078'
+// RUNTIME_VERSION 2 and the new answer-format line of the judge prompt moved it (judge.quote_rules).
+const FIXTURE_HASH = 'd8d0f2df67365ee1f76aa71b51f842afe3d813a681298597260dc104a48ff9c6'
 
 describe('hash, of a compiled plan', () => {
   it('hash.same_inputs: two compiles of the same input give one hash', () => {
@@ -108,7 +109,7 @@ describe('hash, of a compiled plan', () => {
     const ids = (xs: readonly { id: string }[]) => xs.map(x => x.id)
     expect(ids(m.rules)).toEqual([...ids(m.rules)].sort())
     expect(ids(m.scorers)).toEqual([...ids(m.scorers)].sort())
-    expect(m.code).toEqual({ runtime: 1, checks: { key_in_registry: 1, quote_in_source: 1, unique_by: 1 }, deps: CODE_DEPS })
+    expect(m.code).toEqual({ runtime: RUNTIME_VERSION, checks: { key_in_registry: 1, quote_in_source: 1, unique_by: 1 }, deps: CODE_DEPS })
   })
 
   it('hash.code_lock: the lock holds each declared code version with the fingerprint of its code, and the pins of package.json', () => {
@@ -118,16 +119,17 @@ describe('hash, of a compiled plan', () => {
   it('hash.code_lock: a fingerprint that moves under an unchanged version fails the test, and compiler:lock refuses to rewrite it', () => {
     const lockNow = readCodeLock()
     const moved = { ...currentCode(), runtime: { ...currentCode().runtime, fingerprint: '0'.repeat(64) } }
-    expect(lockProblems(lockNow, moved, packagePins())).toEqual([expect.stringMatching(/^The runtime code .* changed under RUNTIME_VERSION 1. Raise RUNTIME_VERSION/)])
+    expect(lockProblems(lockNow, moved, packagePins())).toEqual([expect.stringMatching(new RegExp(`^The runtime code .* changed under RUNTIME_VERSION ${RUNTIME_VERSION}. Raise RUNTIME_VERSION`))])
     const template = currentCode().checks[0]!
     const movedCheck = { ...currentCode(), checks: [{ ...template, fingerprint: '1'.repeat(64) }] }
     expect(lockProblems(lockNow, movedCheck, packagePins())).toEqual([expect.stringMatching(new RegExp(`^The check ${template.name} changed under version 1`))])
     const update = updateLock(lockNow, moved, packagePins())
-    expect(update.refused).toEqual(['runtime@1: its code changed under a locked version. Raise the version.'])
+    expect(update.refused).toEqual([`runtime@${RUNTIME_VERSION}: its code changed under a locked version. Raise the version.`])
     expect(update.lock.runtime).toEqual(lockNow.runtime)
-    const bumped = updateLock(lockNow, { ...moved, runtime: { version: 2, fingerprint: '0'.repeat(64) } }, packagePins())
-    expect(bumped).toMatchObject({ added: ['runtime@2'], refused: [] })
+    const bumped = updateLock(lockNow, { ...moved, runtime: { version: RUNTIME_VERSION + 1, fingerprint: '0'.repeat(64) } }, packagePins())
+    expect(bumped).toMatchObject({ added: [`runtime@${RUNTIME_VERSION + 1}`], refused: [] })
     expect(bumped.lock.runtime['1']).toBe(lockNow.runtime['1'])
+    expect(bumped.lock.runtime[String(RUNTIME_VERSION)]).toBe(lockNow.runtime[String(RUNTIME_VERSION)])
   })
 
   it('hash.code_lock: a pin of zod or @mastra/core that differs from package.json fails the test', () => {
