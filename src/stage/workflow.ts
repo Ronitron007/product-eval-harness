@@ -114,16 +114,27 @@ export function stageSteps(stage: Stage, deps: StageDeps) {
         const kept = await deps.store.draftOf(runId, round) // claimDraft also gives null once the draft exists
         return kept !== undefined ? out(kept.reply) : { busy: { kind: 'busy' as const, retryAfterMs: t.claimLeaseMs }, round }
       }
+      // stage.draft_deadline: the call ends at draftDeadlineMs, inside the claim lease, so no other
+      // attempt calls the drafter for this round. A call past the deadline keeps a draft row with
+      // the error and no reply. The round then fails the decode, and the loop repairs it.
       const errors = inputData.last?.kind === 'repair' ? inputData.last.errors : []
-      const reply = await deps.drafter.draft({ runId, round, plan, evidence: inputData.evidence, context: inputData.context, errors })
+      const abort = new AbortController()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const deadline = new Promise<typeof DRAFTER_DEADLINE>(resolve => {
+        timer = setTimeout(() => (abort.abort(new Error('drafter deadline')), resolve(DRAFTER_DEADLINE)), t.draftDeadlineMs)
+      })
+      const called = deps.drafter.draft({ runId, round, plan, evidence: inputData.evidence, context: inputData.context, errors, abortSignal: abort.signal })
+      const reply = await Promise.race([called, deadline]).finally(() => clearTimeout(timer))
+      if (reply === DRAFTER_DEADLINE) called.catch(() => undefined) // the late call may still settle. Its reply is not kept.
+      const row = reply === DRAFTER_DEADLINE ? { runId, round, reply: undefined, drafter: deps.drafter.id, error: 'drafter deadline' } : { runId, round, reply, drafter: deps.drafter.id }
       try {
-        await deps.store.addDraft({ runId, round, reply, drafter: deps.drafter.id })
+        await deps.store.addDraft(row)
       } catch (e) {
         const kept = await deps.store.draftOf(runId, round) // the primary key: a later attempt wrote first
         if (kept === undefined) throw e
         return out(kept.reply)
       }
-      return out(reply)
+      return out(row.reply)
     },
   })
 
@@ -200,6 +211,7 @@ export function stageSteps(stage: Stage, deps: StageDeps) {
 }
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+const DRAFTER_DEADLINE = Symbol('drafter deadline')
 
 export function stageWorkflow(stage: Stage, deps: StageDeps) {
   const { context, research, draftAndJudge, person, assimilate } = stageSteps(stage, deps)

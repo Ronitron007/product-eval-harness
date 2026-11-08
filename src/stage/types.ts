@@ -97,6 +97,7 @@ export interface DraftInput {
   readonly evidence: RunEvidence
   readonly context: NodeContext
   readonly errors: Extract<JudgeStepOutput, { kind: 'repair' }>['errors'] // the strict errors of the last round, as JSON
+  readonly abortSignal: AbortSignal // stage.draft_deadline: aborts at draftDeadlineMs
 }
 export interface Drafter {
   readonly id: string // provider/model, kept on each draft row

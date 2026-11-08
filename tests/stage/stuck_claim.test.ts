@@ -39,7 +39,7 @@ describe('stuck_claim', () => {
     const env = db.env()
     await draftedRun(env, 'late-winner')
     const spy = { calls: 0 }
-    const deps = { store: env.graph, planFor: compilingPlanFor({ library: () => library(FIXTURE), store: env.graph }), judgeModel: slowJudge(PASS, spy, 600), timing: { claimLeaseMs: 5_000, judgeDeadlineMs: 300, pollMs: 50 } }
+    const deps = { store: env.graph, planFor: compilingPlanFor({ library: () => library(FIXTURE), store: env.graph }), judgeModel: slowJudge(PASS, spy, 600), timing: { claimLeaseMs: 5_000, judgeDeadlineMs: 300, draftDeadlineMs: 300, pollMs: 50 } }
     const input = { runId: 'late-winner', stage: 'create_node' as const, nodeId: 'sunscreen', ruleSetHash: plan.ruleSetHash, round: 1, reply: GOOD_OUTPUT, evidence: GOOD_EVIDENCE }
     await expect(judgeRound(deps, input)).rejects.toThrow(/passed its deadline/)
     expect(spy.calls).toBe(1)

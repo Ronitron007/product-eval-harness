@@ -16,7 +16,7 @@ import { ans, mockModel, type Spy } from '../judge/helpers'
 export const LABELS: Record<string, string> = { skincare: 'Skincare', sunscreen: 'Sunscreen', moisturizer: 'Moisturizer', mineral_sunscreen: 'Mineral sunscreen' }
 
 // Short times for the tests (stage.claim_lease): the lease is longer than the deadline.
-export const FAST: Timing = { claimLeaseMs: 5_000, judgeDeadlineMs: 4_000, pollMs: 100 }
+export const FAST: Timing = { claimLeaseMs: 5_000, judgeDeadlineMs: 4_000, draftDeadlineMs: 4_000, pollMs: 100 }
 
 // A bad draft: GOOD_OUTPUT with a quote that the strict code check quotes.from_label fails.
 export const BAD_OUTPUT = { criteria: [{ name: 'spf', attributes: [{ ...GOOD_OUTPUT.criteria[0]!.attributes[0]!, quote: '600 mg' }] }] }

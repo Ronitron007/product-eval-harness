@@ -6,9 +6,9 @@ import type { Drafter } from './types'
 export function agentDrafter(agent: Agent, id: string): Drafter {
   return {
     id,
-    async draft({ plan, evidence, context, errors }) {
+    async draft({ plan, evidence, context, errors, abortSignal }) {
       const prompt = JSON.stringify({ context, evidence, errors })
-      const out = await agent.generate(prompt, { structuredOutput: { schema: plan.schema, errorStrategy: 'warn' } })
+      const out = await agent.generate(prompt, { structuredOutput: { schema: plan.schema, errorStrategy: 'warn' }, abortSignal })
       return out.object !== undefined ? out.object : out.text
     },
   }

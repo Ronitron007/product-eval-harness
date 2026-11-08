@@ -17,7 +17,7 @@ const statuses: string[] = []
 
 describe('busy_loser', { timeout: 30_000 }, () => {
   it('busy_loser.slow_judge_reused: two starts of one round, with a judge of about 3 seconds, both give success, and the judge gets one call', async () => {
-    const env = db.env({ judgeDelayMs: 3_000, timing: { claimLeaseMs: 8_000, judgeDeadlineMs: 6_000, pollMs: 200 } })
+    const env = db.env({ judgeDelayMs: 3_000, timing: { claimLeaseMs: 8_000, judgeDeadlineMs: 6_000, draftDeadlineMs: 6_000, pollMs: 200 } })
     const runId = 'slow-judge'
     await drafted(env, runId)
     const both = await Promise.all([start(env, runId), start(env, runId)])
@@ -31,7 +31,7 @@ describe('busy_loser', { timeout: 30_000 }, () => {
 
   it('busy_loser.live_claim_gives_busy: a claim that stays live for one lease gives StageBusy, with Mastra status success', async () => {
     const lease = 1_500
-    const env = db.env({ timing: { claimLeaseMs: lease, judgeDeadlineMs: 1_000, pollMs: 100 } })
+    const env = db.env({ timing: { claimLeaseMs: lease, judgeDeadlineMs: 1_000, draftDeadlineMs: 1_000, pollMs: 100 } })
     const runId = 'judge-held'
     await drafted(env, runId)
     // Another process holds the claim, and takes a new attempt before each lease ends.
@@ -55,7 +55,7 @@ describe('busy_loser', { timeout: 30_000 }, () => {
   // stage.draft_claim: another process holds the draft claim of round 1 and never writes the draft.
   it('busy_loser.draft_claim_live_gives_busy: a holder that keeps its draft claim live for one lease gives the waiter StageBusy, not failed', async () => {
     const lease = 1_500
-    const env = db.env({ timing: { claimLeaseMs: lease, judgeDeadlineMs: 1_000, pollMs: 100 } })
+    const env = db.env({ timing: { claimLeaseMs: lease, judgeDeadlineMs: 1_000, draftDeadlineMs: 1_000, pollMs: 100 } })
     const runId = 'draft-held'
     await env.graph.recordStageRun({ runId, stage: 'create_node', nodeId: 'sunscreen', ruleSetHash: planOf().ruleSetHash })
     const hold = () => env.pool.query(`insert into harness.draft_claims (run_id, round, attempt) select $1, 1, coalesce(max(attempt), 0) + 1 from harness.draft_claims where run_id = $1 and round = 1`, [runId])
@@ -76,7 +76,7 @@ describe('busy_loser', { timeout: 30_000 }, () => {
   // A hung holder that stops: its claim expires after one lease, and the waiter takes attempt 2.
   it('busy_loser.draft_claim_expired_takes_over: a holder whose claim ages past the lease loses it, and the waiter drafts and ends the run', async () => {
     const lease = 1_000
-    const env = db.env({ timing: { claimLeaseMs: lease, judgeDeadlineMs: 800, pollMs: 100 } })
+    const env = db.env({ timing: { claimLeaseMs: lease, judgeDeadlineMs: 800, draftDeadlineMs: 800, pollMs: 100 } })
     const runId = 'draft-hung'
     await env.graph.recordStageRun({ runId, stage: 'create_node', nodeId: 'sunscreen', ruleSetHash: planOf().ruleSetHash })
     expect(await env.graph.claimDraft(runId, 1, lease)).toBe(1)

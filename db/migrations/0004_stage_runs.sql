@@ -47,11 +47,13 @@ end $$;
 create table if not exists harness.drafts (
   run_id text not null references harness.stage_runs (run_id),
   round integer not null check (round between 1 and 3),
-  reply_text text not null,  -- JSON.stringify(reply): exact, with NUL and lone surrogates as escapes
+  reply_text text,           -- JSON.stringify(reply): exact, with NUL and lone surrogates as escapes. Null only with an error.
   reply jsonb,               -- harness.try_jsonb(reply_text): null when jsonb refuses it
+  error text check (error is null or btrim(error) <> ''),  -- stage.draft_deadline: such as 'drafter deadline'
   drafter text not null check (drafter ~ '^[^/]+/.+$'),
   created_at timestamptz not null default now(),
-  primary key (run_id, round)
+  primary key (run_id, round),
+  check ((reply_text is null) = (error is not null))
 );
 
 -- stage.draft_claim: one row for each attempt to draft one round, with the lease of

@@ -116,8 +116,9 @@ export const drafts = harness.table(
       .notNull()
       .references(() => stageRuns.runId),
     round: integer('round').notNull(),
-    replyText: text('reply_text').notNull(),
+    replyText: text('reply_text'), // null only for a draft with an error (stage.draft_deadline)
     reply: jsonb('reply').$type<unknown>(),
+    error: text('error'),
     drafter: text('drafter').notNull(),
     createdAt: at('created_at'),
   },

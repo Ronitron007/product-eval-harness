@@ -60,7 +60,7 @@ const Round = z.number().int().min(1)
 // stage.person_payload: a reviewer or a note that is blank after a trim is refused. No transform.
 const Filled = z.string().refine(v => v.trim() !== '', 'Give a value that is not blank.')
 const ModelId = z.string().regex(/^[^/]+\/.+$/, 'Give a provider/model id.')
-export const DraftRowInput = z.object({ runId: Text, round: Round, reply: z.unknown(), drafter: ModelId }).strict()
+export const DraftRowInput = z.object({ runId: Text, round: Round, reply: z.unknown(), drafter: ModelId, error: Filled.optional() }).strict()
 export const DecisionRowInput = z.discriminatedUnion('decision', [
   z.object({ runId: Text, round: Round, decision: z.literal('accept'), reviewer: Filled, note: Filled.optional() }).strict(),
   z.object({ runId: Text, round: Round, decision: z.literal('reject'), reviewer: Filled, note: Filled }).strict(),
@@ -71,8 +71,9 @@ export type RunEnd = z.infer<typeof RunEnd>
 export interface DraftRow {
   runId: string
   round: number
-  reply: unknown // JSON.parse of reply_text (stage.reply_lossless)
+  reply: unknown // JSON.parse of reply_text (stage.reply_lossless). Undefined for a draft with an error.
   drafter: string // provider/model
+  error?: string // stage.draft_deadline: the drafter gave no reply, such as 'drafter deadline'
 }
 // stage.decision_first: one row for each run, written before assimilate runs.
 export type DecisionRow = { readonly runId: string; readonly round: number; readonly reviewer: string } & (
@@ -287,9 +288,9 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
     // column keeps each reply. The jsonb column is null when jsonb refuses the text.
     async addDraft(row) {
       const d = DraftRowInput.parse(row)
-      const text = JSON.stringify(d.reply)
+      const text = d.error === undefined ? JSON.stringify(d.reply) : null
       if (text === undefined) throw new Error(`The drafter gave no reply for round ${d.round} of run ${d.runId}.`)
-      await pool.query('insert into harness.drafts (run_id, round, reply_text, reply, drafter) values ($1, $2, $3, harness.try_jsonb($3), $4)', [d.runId, d.round, text, d.drafter])
+      await pool.query('insert into harness.drafts (run_id, round, reply_text, reply, drafter, error) values ($1, $2, $3, harness.try_jsonb($3), $4, $5)', [d.runId, d.round, text, d.drafter, d.error ?? null])
     },
 
     // One statement, as claimJudge. A row, not a session lock: no connection stays open across
@@ -308,10 +309,12 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
 
     async draftOf(runId, round) {
       const [d] = await db
-        .select({ runId: drafts.runId, round: drafts.round, replyText: drafts.replyText, drafter: drafts.drafter })
+        .select({ runId: drafts.runId, round: drafts.round, replyText: drafts.replyText, drafter: drafts.drafter, error: drafts.error })
         .from(drafts)
         .where(and(eq(drafts.runId, runId), eq(drafts.round, round)))
-      return d && { runId: d.runId, round: d.round, reply: JSON.parse(d.replyText), drafter: d.drafter }
+      if (!d) return undefined
+      if (d.replyText === null) return { runId: d.runId, round: d.round, reply: undefined, drafter: d.drafter, error: d.error ?? 'no reply' }
+      return { runId: d.runId, round: d.round, reply: JSON.parse(d.replyText), drafter: d.drafter }
     },
 
     async verdictsOf(runId, round) {

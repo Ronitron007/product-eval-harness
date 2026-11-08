@@ -117,6 +117,37 @@ describe('double_write', () => {
     expect([env.spies.drafter.calls, env.spies.judge.calls]).toEqual([12, 12])
   })
 
+  // stage.draft_deadline: the drafter call ends at the deadline, inside the claim lease, so the draft
+  // of the round is in the store before the claim expires. No other attempt calls the drafter.
+  it('double_write.drafter_deadline_one_call: a drafter past its deadline gets one call for the round, keeps a draft row with the error, and the round repairs', { timeout: 20_000 }, async () => {
+    const rounds: number[] = []
+    const env = db.env({
+      timing: { claimLeaseMs: 1_000, judgeDeadlineMs: 500, draftDeadlineMs: 500, pollMs: 50 },
+      drafter: spy => ({
+        id: 'drafter/slow',
+        async draft({ round }) {
+          spy.calls++
+          rounds.push(round)
+          if (round === 1) await sleep(2_500)
+          return GOOD_OUTPUT
+        },
+      }),
+    })
+    const runs = await Promise.all([1, 2].map(() => env.workflow().createRun({ runId: 'slow-drafter' })))
+    const results = await Promise.all(runs.map(r => r.start({ inputData: { nodeId: 'sunscreen' } })))
+    expect(results.map(r => r.status)).toEqual(['success', 'success'])
+    expect(results.map(r => r.status === 'success' && r.result)).toEqual([expect.objectContaining({ end: 'accepted', round: 2 }), expect.objectContaining({ end: 'accepted', round: 2 })])
+    await sleep(2_500) // the late call of round 1 settles, and nothing calls the drafter again
+    expect(rounds).toEqual([1, 2])
+    expect(await env.graph.draftOf('slow-drafter', 1)).toEqual({ runId: 'slow-drafter', round: 1, reply: undefined, drafter: 'drafter/slow', error: 'drafter deadline' })
+    const { rows } = await env.pool.query(`select round, reply_text, error from harness.drafts where run_id = 'slow-drafter' order by round`)
+    expect(rows.map(r => [r.round, r.reply_text === null, r.error])).toEqual([
+      [1, true, 'drafter deadline'],
+      [2, false, null],
+    ])
+    expect((await env.graph.verdictsOf('slow-drafter', 1)).length).toBeGreaterThan(0)
+  })
+
   it('double_write.start_on_ended_run: a second start on an ended run id gives the stored end, with no research and no drafter call', async () => {
     const env = db.env()
     const first = await start(env)

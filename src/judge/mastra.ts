@@ -39,9 +39,10 @@ export type PlanFor = (run: { readonly runId: string; readonly stage: Stage; rea
 export interface Timing {
   readonly claimLeaseMs: number // a new attempt can take a claim older than this. A loser waits at most this long.
   readonly judgeDeadlineMs: number // a winner that judged for longer writes nothing, and its step fails
+  readonly draftDeadlineMs: number // the drafter call is aborted at this time, and the round keeps a draft row with an error (stage.draft_deadline)
   readonly pollMs: number // a loser reads the rows at this interval
 }
-export const TIMING: Timing = { claimLeaseMs: 15 * 60_000, judgeDeadlineMs: 10 * 60_000, pollMs: 2_000 }
+export const TIMING: Timing = { claimLeaseMs: 15 * 60_000, judgeDeadlineMs: 10 * 60_000, draftDeadlineMs: 10 * 60_000, pollMs: 2_000 }
 
 // stage.judge_wait: the outcome of a round whose judge runs in another process, after one lease.
 export const Busy = z.object({ kind: z.literal('busy'), retryAfterMs: z.number().int().min(0) }).strict()
