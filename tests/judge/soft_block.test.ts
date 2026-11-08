@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { planOf, withRules } from '../compiler/library'
 import { attributeIsProduct, GOOD_EVIDENCE, keyKnown } from '../compiler/rules'
-import { ans, draftWith, JUDGE, run } from './helpers'
+import { ans, draftWith, JUDGE, run, type Spy } from './helpers'
 
 // Hazard `soft_block`: a soft fail blocks the output or enters the repair errors. These tests and
 // outcome_table.each_binding_each_verdict close the plan check "Tests with mocked judges, one for
@@ -33,5 +33,15 @@ describe('soft_block', () => {
       ['attributes.key_known@1', 'warning'],
       [`${JUDGE}@1`, 'note'], // the skipped soft judge
     ])
+  })
+
+  it('soft_block.code_fail_keeps_gate_open: a soft code fail does not shut the gate, so a strict judge yes gives accept with exactly one judge call', async () => {
+    const spy: Spy = { calls: 0 }
+    const plan = planOf({ rules: withRules(soft(keyKnown)) })
+    const o = await run({ plan, reply: draftWith({ key: 'trending' }), items: [ans('yes', '500 mg')], spy })
+    expect(spy.calls).toBe(1)
+    expect(o.rows.find(r => r.ruleId === JUDGE)).toMatchObject({ binding: 'strict', verdict: 'pass' })
+    expect(o.kind).toBe('accept')
+    expect(o.warnings).toEqual([expect.objectContaining({ rule: 'attributes.key_known@1', kind: 'warning' })])
   })
 })
