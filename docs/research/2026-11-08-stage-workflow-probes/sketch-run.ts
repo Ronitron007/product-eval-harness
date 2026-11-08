@@ -16,6 +16,15 @@ export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/)
 
 export const StageInput = z.object({ nodeId: NodeId }).strict()
 
+// stage.claim_lease, stage.judge_wait: the claim lease is longer than the judge deadline.
+export interface Timing { readonly claimLeaseMs: number; readonly judgeDeadlineMs: number; readonly pollMs: number }
+export const TIMING: Timing = { claimLeaseMs: 15 * 60_000, judgeDeadlineMs: 10 * 60_000, pollMs: 2_000 }
+
+// stage.judge_wait: the outcome of a round whose judge runs in another process, after one lease.
+export const Busy = z.object({ kind: z.literal('busy'), retryAfterMs: z.number().int().min(0) }).strict()
+export const RoundOutcome = z.union([JudgeStepOutput, Busy])
+export type RoundOutcome = z.infer<typeof RoundOutcome>
+
 // The context bundle of graph.traversal that exists today. Records come with plan.research_tools.
 export const NodeContext = z.object({
   path: z.array(z.object({ id: NodeId, label: z.string() })), // from the root down to the node
@@ -33,7 +42,7 @@ export const Round = z.object({
   context: NodeContext,
   evidence: RunEvidence,
   round: z.number().int().min(0).max(REPAIR_BUDGET), // the rounds so far
-  last: JudgeStepOutput.nullable(), // the outcome of the last round
+  last: RoundOutcome.nullable(), // the outcome of the last round
 })
 export type Round = z.infer<typeof Round>
 
@@ -65,6 +74,9 @@ export type PersonDecision = z.infer<typeof PersonDecision>
 export const RunEnd = z.enum(['accepted', 'person_accepted', 'person_rejected'])
 export const StageResult = z.object({ runId: z.string(), end: RunEnd, round: z.number().int().min(1), outputId: z.string().nullable() }).strict()
 export type StageResult = z.infer<typeof StageResult>
+// A retryable result: start the run id again after retryAfterMs. It is never failed (stage.judge_wait).
+export const StageBusy = z.object({ runId: z.string(), busy: z.literal(true), round: z.number().int().min(1), retryAfterMs: z.number().int().min(0) }).strict()
+export const StageRunResult = z.union([StageResult, StageBusy])
 
 // ---- ports ----
 export interface ResearchInput {
@@ -102,8 +114,9 @@ export interface StageStore extends Pick<GraphStore, 'recordStageRun' | 'pathToR
   // The judge step: the rows of one round. writeVerdicts of GraphStore gets the round (stage.round_rows).
   writeVerdicts(rows: readonly VerdictInput[], round: number): Promise<unknown>
   verdictsOf(runId: string, round: number): Promise<readonly VerdictInput[]>
-  // stage.judge_claim: true for the one caller whose insert of (run_id, round) wins.
-  claimJudge(runId: string, round: number): Promise<boolean>
+  // stage.judge_claim, stage.claim_lease: the new attempt number, or null. It inserts attempt max + 1 only when
+  // the latest claim is older than leaseMs and the round has no verdict row.
+  claimJudge(runId: string, round: number, leaseMs: number): Promise<number | null>
   // stage.decision_first: an equal row again is a no-op. Another row for the run throws.
   addDecision(row: DecisionRow): Promise<void>
   decisionOf(runId: string): Promise<DecisionRow | undefined>
@@ -120,6 +133,7 @@ export interface StageDeps {
   readonly research: ResearchPort
   readonly drafter: Drafter
   readonly judgeModel: JudgeModel
+  readonly timing?: Timing // tests give short times. Default TIMING.
 }
 
 // The agent adapter for a real drafter (plan.stage_workflow). errorStrategy warn keeps a bad reply.
@@ -152,23 +166,51 @@ export function checkModels(drafterId: string, judgeId: string): void {
 
 // judgeStep with the round in its input (src/judge/mastra.ts, changed): the shape of the changed step.
 export const JudgeStepInput = z.object({ runId: z.string().min(1), stage: Stage, nodeId: NodeId, ruleSetHash: Sha256, round: z.number().int().min(1), reply: z.unknown(), evidence: z.unknown() })
+// judgeDraft with the judge model, with no write (src/judge/step.ts).
 export const script: JudgeStepOutput[] = []
-export const judgeCalls = { n: 0 }
-// The judge step of stage.rerun_reuses and stage.judge_claim, with a scripted outcome in place of judgeDraft.
-export async function judgeRound(deps: StageDeps, input: z.infer<typeof JudgeStepInput>): Promise<JudgeStepOutput> {
-  await planOrThrow(deps, input)
-  for (let wait = 0; ; wait++) {
-    if ((await deps.store.verdictsOf(input.runId, input.round)).length > 0) return script[input.round - 1]! // reuse: no call, no write
-    if (await deps.store.claimJudge(input.runId, input.round)) break
-    if (wait > 50) throw new Error(`The judge of round ${input.round} runs elsewhere and wrote no rows.`)
-    await new Promise(r => setTimeout(r, 20))
-  }
+export const judgeCalls = { n: 0, delayMs: 0 }
+async function judgeOnce(_deps: StageDeps, input: z.infer<typeof JudgeStepInput>, _plan: StagePlan): Promise<{ rows: readonly VerdictInput[]; output: JudgeStepOutput }> {
   judgeCalls.n++
-  await deps.store.writeVerdicts([{ runId: input.runId, ruleId: 'r.x', ruleVersion: 1, ruleHash: 'a'.repeat(64), binding: 'strict', target: 't', verdict: 'pass', decider: { by: 'code' }, reason: 'ok' }], input.round)
-  return script[input.round - 1]!
+  if (judgeCalls.delayMs > 0) await sleep(judgeCalls.delayMs)
+  const out = script[input.round - 1]!
+  const verdict = out.kind === 'accept' ? 'pass' : out.kind === 'repair' ? 'fail' : 'cannot_verify'
+  return { rows: [{ runId: input.runId, ruleId: 'r.x', ruleVersion: 1, ruleHash: 'a'.repeat(64), binding: 'strict', target: 't', verdict, decider: { by: 'code' }, reason: 'ok' }], output: out }
+}
+// decideOutcome on stored rows and plan.decode of the reply. No model.
+function outcomeOf(_plan: StagePlan, input: z.infer<typeof JudgeStepInput>, _rows: readonly VerdictInput[]): JudgeStepOutput { return script[input.round - 1]! }
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+// stage.rerun_reuses, stage.judge_claim, stage.claim_lease, stage.judge_wait
+export async function judgeRound(deps: StageDeps, input: z.infer<typeof JudgeStepInput>): Promise<RoundOutcome> {
+  const plan = await planOrThrow(deps, input)
+  const t = deps.timing ?? TIMING
+  const stored = await deps.store.verdictsOf(input.runId, input.round)
+  if (stored.length > 0) return outcomeOf(plan, input, stored) // reuse: no call, no write
+  let attempt = await deps.store.claimJudge(input.runId, input.round, t.claimLeaseMs)
+  if (attempt === null) {
+    // Another attempt holds a live claim. Wait up to one lease for its rows, or for its claim to expire.
+    for (const until = Date.now() + t.claimLeaseMs; attempt === null && Date.now() < until; ) {
+      await sleep(t.pollMs)
+      const rows = await deps.store.verdictsOf(input.runId, input.round)
+      if (rows.length > 0) return outcomeOf(plan, input, rows)
+      attempt = await deps.store.claimJudge(input.runId, input.round, t.claimLeaseMs)
+    }
+    if (attempt === null) return { kind: 'busy', retryAfterMs: t.claimLeaseMs }
+  }
+  const started = Date.now()
+  const judged = await judgeOnce(deps, input, plan)
+  if (Date.now() - started > t.judgeDeadlineMs) throw new Error(`The judge of round ${input.round} passed its deadline, so its claim may have expired. It writes nothing.`)
+  try {
+    await deps.store.writeVerdicts(judged.rows, input.round)
+  } catch (e) {
+    const rows = await deps.store.verdictsOf(input.runId, input.round) // the unique key: another attempt wrote first
+    if (rows.length === 0) throw e
+    return outcomeOf(plan, input, rows)
+  }
+  return judged.output
 }
 function judgeStep(deps: StageDeps) {
-  return createStep({ id: 'judge', inputSchema: JudgeStepInput, outputSchema: JudgeStepOutput, execute: async ({ inputData }) => judgeRound(deps, inputData) })
+  return createStep({ id: 'judge', inputSchema: JudgeStepInput, outputSchema: RoundOutcome, execute: async ({ inputData }) => judgeRound(deps, inputData) })
 }
 
 // stage.decision_first: the body of assimilate, and the operator path of scripts/finish-run.ts.
@@ -256,6 +298,7 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
       if (ended !== undefined) return bail(ended)
       const last = inputData.last
       if (last === null) throw new Error('The loop ended with no round.')
+      if (last.kind === 'busy') return bail({ runId: inputData.runId, busy: true, round: inputData.round, retryAfterMs: last.retryAfterMs }) // stage.judge_wait
       const { context: _c, evidence: _e, last: _l, ...run } = inputData
       if (last.kind === 'accept') return { ...run, decision: null }
       const plan = await planOrThrow(deps, inputData) // stage.hash_on_resume: also on the first pass
@@ -283,7 +326,7 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
     execute: async ({ inputData }) => finishRun(deps, inputData),
   })
 
-  return createWorkflow({ id: stage, description: `The stage ${stage} at one node (graph.stage).`, inputSchema: StageInput, outputSchema: StageResult })
+  return createWorkflow({ id: stage, description: `The stage ${stage} at one node (graph.stage).`, inputSchema: StageInput, outputSchema: StageRunResult })
     .then(context)
     .then(research)
     .dountil(draftAndJudge, async ({ inputData, iterationCount }) => inputData.last?.kind !== 'repair' || iterationCount >= REPAIR_BUDGET)

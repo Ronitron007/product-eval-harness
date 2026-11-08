@@ -38,7 +38,7 @@ Each term has one definition. Docs link here at the first use of a term.
 | Inner node | A node of the rule graph between a domain node and a leaf node. |
 | Judge (LLM judge) | A model call that answers one rule question about one output, with an "unknown" answer. |
 | Judge outcome | What the ruleset judge returns for one draft: `accept`, `repair` with all strict errors, or `person` with the open strict rows. The stage workflow acts on it. |
-| Judge claim | The one row in `harness.judge_claims` for one judged round of a stage run. Only the caller whose insert wins calls the judge. |
+| Judge claim | One row in `harness.judge_claims` for one attempt to judge one round of a stage run. Only the caller whose insert wins calls the judge. A claim expires after its lease, and then a new attempt can claim the round. |
 | Lane | One sequence of items in the improvement stream. Each domain has one lane, and its items run in a fixed order. |
 | Layout | The rules for how an evaluation shows a product at a leaf node. |
 | Manifest | The compiled artifacts of one stage run, as plain JSON. The rule-set hash covers exactly the manifest. |

@@ -9,6 +9,7 @@ Status. Research evidence of 2026-11-08 for [the stage workflow spec](../../desi
 | `run-sketch.ts` | Runs `sketch-run.ts` with fake ports: a pass on the first round, a pass after a repair, a spent budget, a strict `cannot_verify`, a resume with accept or reject, a blank note, and a resume after a rule change. It also runs the fixes of the interrogate run: a store error after a decision, `finishRun`, a second start on an ended run, two judge steps of one round, and the vendor check. |
 | `0004_stage_runs.sql` | A prototype of the migration of `stage.store` |
 | `migration.ts` | Applies 0001 to 0003 and the prototype twice, then 0003 again, on a fresh test database. Then it tests the rules of `stage.store` as `harness_app`. |
+| `pg-env.ts`, `pg-child.ts`, `pg-crash.ts`, `pg-slow.ts` | The fixed sketch on Postgres, adapted from the verify repros: a child that dies after the judge claim, after the decision, or after `endRun`, then the boot sweep. Also two starts with a judge of 3 seconds. |
 | `mastra-semantics.ts` | `.dountil` counts, the body of a suspended step on resume, a second suspend, two resumes at the same time, a second resume, and `bail` |
 | `suspend-schemas.ts` | A suspend payload that breaks `suspendSchema`, and resume data that breaks `resumeSchema` |
 
@@ -33,6 +34,7 @@ Status. Research evidence of 2026-11-08 for [the stage workflow spec](../../desi
    MASTRA_TELEMETRY_DISABLED=1 npx tsx docs/research/2026-11-08-stage-workflow-probes/mastra-semantics.ts
    MASTRA_TELEMETRY_DISABLED=1 npx tsx docs/research/2026-11-08-stage-workflow-probes/suspend-schemas.ts
    npx tsx docs/research/2026-11-08-stage-workflow-probes/migration.ts
+   cd docs/research/2026-11-08-stage-workflow-probes && MASTRA_TELEMETRY_DISABLED=1 npx tsx pg-slow.ts && MASTRA_TELEMETRY_DISABLED=1 npx tsx pg-crash.ts
    ```
 
 On 2026-11-08, after the interrogate run, the type check gave exit code 0. Each runtime probe gave exit code 0, with the output that `stage.mastra_facts` quotes.

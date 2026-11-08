@@ -5,6 +5,7 @@ Status. Research evidence of 2026-11-08. Two adversaries, Opus and Sonnet, inter
 | Folder | What it holds |
 |---|---|
 | `opus/` | `probe-a.ts` to `probe-c.ts`, `probe-d1.sql`, the 0004 prototype of the adversary, and its copy of `sketch-run.ts`. Claude added `run-d1.ts` and `make-db.ts`. |
+| `opus-verify/` | The repros of the verify of `12053b7`: `crash.ts` with `child.ts`, `slow.ts`, `inproc.ts`, their store `env.ts`, and the sketch and 0004 prototype of `12053b7` |
 | `sonnet/` | `p1_pg_resume.ts` to `p13_models.ts`, the prototype workflow `proto_workflow.ts`, its setup `proto_env.ts`, and the 0004 prototype of the adversary. Claude added `p14_registry.ts`, `p15_blank.ts`, `p9_lease.ts`, and `p9b_lease.ts`. |
 
 ## Run the repros `stage_interrogate.run`

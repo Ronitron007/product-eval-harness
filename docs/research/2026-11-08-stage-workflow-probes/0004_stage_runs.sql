@@ -22,12 +22,15 @@ create table if not exists harness.drafts (
   primary key (run_id, round)
 );
 
--- stage.judge_claim: one row for each judged round. Only the caller whose insert wins calls the judge.
+-- stage.judge_claim, stage.claim_lease: one row for each attempt to judge one round. Only the caller whose
+-- insert wins calls the judge. A new attempt is a new row, so the table stays append-only. The store inserts
+-- attempt max + 1 only when the latest claim is older than the lease and the round has no verdict row.
 create table if not exists harness.judge_claims (
   run_id text not null,
   round integer not null,
-  created_at timestamptz not null default now(),
-  primary key (run_id, round),
+  attempt integer not null check (attempt >= 1),
+  claimed_at timestamptz not null default now(),
+  primary key (run_id, round, attempt),
   foreign key (run_id, round) references harness.drafts (run_id, round)
 );
 
@@ -84,6 +87,16 @@ begin
 end $$;
 create or replace trigger verdicts_open before insert on harness.verdicts for each row execute function harness.check_verdict_open();
 
+-- stage.decision_closed: no decision of a person after the run ended.
+create or replace function harness.check_decision_open() returns trigger language plpgsql set search_path = '' as $$
+begin
+  if exists (select 1 from harness.run_ends e where e.run_id = new.run_id) then
+    raise exception 'harness.person_decisions: run % has ended, so it takes no decision', new.run_id using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create or replace trigger person_decisions_open before insert on harness.person_decisions for each row execute function harness.check_decision_open();
+
 -- stage.loop_on_outcome, stage.decision_first: what each end needs.
 create or replace function harness.check_run_end() returns trigger language plpgsql set search_path = '' as $$
 begin
@@ -135,11 +148,11 @@ do $$ declare r text; begin
   foreach r in array array['anon', 'authenticated'] loop
     if exists (select 1 from pg_roles where rolname = r) then
       execute format('revoke all on harness.drafts, harness.judge_claims, harness.person_decisions, harness.run_ends from %I', r);
-      execute format('revoke all on function harness.try_jsonb(text), harness.check_verdict_open(), harness.check_run_end(), harness.check_output() from %I', r);
+      execute format('revoke all on function harness.try_jsonb(text), harness.check_verdict_open(), harness.check_decision_open(), harness.check_run_end(), harness.check_output() from %I', r);
     end if;
   end loop;
 end $$;
-revoke all on function harness.try_jsonb(text), harness.check_verdict_open(), harness.check_run_end(), harness.check_output() from public;
+revoke all on function harness.try_jsonb(text), harness.check_verdict_open(), harness.check_decision_open(), harness.check_run_end(), harness.check_output() from public;
 grant execute on function harness.try_jsonb(text) to harness_app;
 
 -- The guard of 0003_harness_role.sql, again, so that it also covers the new tables and functions.

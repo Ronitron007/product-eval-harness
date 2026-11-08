@@ -78,7 +78,8 @@ export const mastra = new Mastra({ storage, workflows: stageWorkflows(deps) })
 const workflow = mastra.getWorkflow('create_node')
 const run = await workflow.createRun()
 const result = await run.start({ inputData: { nodeId: 'sunscreen' } })
-if (result.status === 'success') void result.result.end // accepted, with result.result.outputId
+if (result.status === 'success' && 'busy' in result.result) void result.result.retryAfterMs // start the run id again later
+if (result.status === 'success' && 'end' in result.result) void result.result.end // accepted, with result.result.outputId
 if (result.status === 'suspended') void result.steps.person // its suspendPayload is a PersonPayload
 
 // Later, from a person. The person step compiles again first (stage.hash_on_resume).
@@ -89,7 +90,7 @@ if (state?.status === 'suspended') {
     step: 'person',
     resumeData: { decision: 'reject', reviewer: 'operator', note: 'Two criteria grade the same thing.' },
   })
-  if (ended.status === 'success') void ended.result.end // person_rejected, with outputId null
+  if (ended.status === 'success' && 'end' in ended.result) void ended.result.end // person_rejected, with outputId null
 }
 
 // Call site: the operator script, for a run with a decision row and no run end (stage.decision_first).
@@ -109,7 +110,7 @@ The result of `run.start` and `run.resume` has one of these Mastra statuses:
 
 | Status | When |
 |---|---|
-| `success` | The run ended. `result.end` is `accepted`, `person_accepted`, or `person_rejected`. |
+| `success` | The run ended. `result.end` is `accepted`, `person_accepted`, or `person_rejected`. Or the result is `StageBusy`: the judge of the round runs in another process. Start the run id again after `retryAfterMs` (`stage.judge_wait`). |
 | `suspended` | The person step waits for a person. |
 | `failed` | The rules refused, the models are not set, the rules changed, the drafter or the store threw, or a bug. No run end row exists. A decision row can exist: `scripts/finish-run.ts` ends that run. |
 
@@ -125,6 +126,15 @@ export const REPAIR_BUDGET = 3 // rounds: one draft and two repairs (mastra.stag
 export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/)
 
 export const StageInput = z.object({ nodeId: NodeId }).strict()
+
+// stage.claim_lease, stage.judge_wait: the claim lease is longer than the judge deadline.
+export interface Timing { readonly claimLeaseMs: number; readonly judgeDeadlineMs: number; readonly pollMs: number }
+export const TIMING: Timing = { claimLeaseMs: 15 * 60_000, judgeDeadlineMs: 10 * 60_000, pollMs: 2_000 }
+
+// stage.judge_wait: the outcome of a round whose judge runs in another process, after one lease.
+export const Busy = z.object({ kind: z.literal('busy'), retryAfterMs: z.number().int().min(0) }).strict()
+export const RoundOutcome = z.union([JudgeStepOutput, Busy])
+export type RoundOutcome = z.infer<typeof RoundOutcome>
 
 // The context bundle of graph.traversal that exists today. Records come with plan.research_tools.
 export const NodeContext = z.object({
@@ -143,7 +153,7 @@ export const Round = z.object({
   context: NodeContext,
   evidence: RunEvidence,
   round: z.number().int().min(0).max(REPAIR_BUDGET), // the rounds so far
-  last: JudgeStepOutput.nullable(), // the outcome of the last round
+  last: RoundOutcome.nullable(), // the outcome of the last round
 })
 export type Round = z.infer<typeof Round>
 
@@ -175,6 +185,9 @@ export type PersonDecision = z.infer<typeof PersonDecision>
 export const RunEnd = z.enum(['accepted', 'person_accepted', 'person_rejected'])
 export const StageResult = z.object({ runId: z.string(), end: RunEnd, round: z.number().int().min(1), outputId: z.string().nullable() }).strict()
 export type StageResult = z.infer<typeof StageResult>
+// A retryable result: start the run id again after retryAfterMs. It is never failed (stage.judge_wait).
+export const StageBusy = z.object({ runId: z.string(), busy: z.literal(true), round: z.number().int().min(1), retryAfterMs: z.number().int().min(0) }).strict()
+export const StageRunResult = z.union([StageResult, StageBusy])
 
 // ---- ports ----
 export interface ResearchInput {
@@ -212,8 +225,9 @@ export interface StageStore extends Pick<GraphStore, 'recordStageRun' | 'pathToR
   // The judge step: the rows of one round. writeVerdicts of GraphStore gets the round (stage.round_rows).
   writeVerdicts(rows: readonly VerdictInput[], round: number): Promise<unknown>
   verdictsOf(runId: string, round: number): Promise<readonly VerdictInput[]>
-  // stage.judge_claim: true for the one caller whose insert of (run_id, round) wins.
-  claimJudge(runId: string, round: number): Promise<boolean>
+  // stage.judge_claim, stage.claim_lease: the new attempt number, or null. It inserts attempt max + 1 only when
+  // the latest claim is older than leaseMs and the round has no verdict row.
+  claimJudge(runId: string, round: number, leaseMs: number): Promise<number | null>
   // stage.decision_first: an equal row again is a no-op. Another row for the run throws.
   addDecision(row: DecisionRow): Promise<void>
   decisionOf(runId: string): Promise<DecisionRow | undefined>
@@ -230,6 +244,7 @@ export interface StageDeps {
   readonly research: ResearchPort
   readonly drafter: Drafter
   readonly judgeModel: JudgeModel
+  readonly timing?: Timing // tests give short times. Default TIMING.
 }
 
 // The agent adapter for a real drafter (plan.stage_workflow). errorStrategy warn keeps a bad reply.
@@ -247,7 +262,7 @@ export function agentDrafter(agent: Agent, id: string): Drafter {
 
 ## The workflow `stage.workflow`
 
-The probe `sketch.ts` type-checks this sketch (exit code 0). The probe `run-sketch.ts` runs a copy of it with fake ports. The declared functions `planOrThrow` and `judgeRound` are the parts that `stage.decisions` defines.
+The probe `sketch.ts` type-checks this sketch (exit code 0). The probe `run-sketch.ts` runs a copy of it with fake ports. The declared functions `planOrThrow`, `judgeOnce`, and `outcomeOf` are the parts that `stage.decisions` defines.
 
 ```ts
 // src/stage/workflow.ts (new), src/stage/registry.ts (new)
@@ -265,9 +280,43 @@ export function checkModels(drafterId: string, judgeId: string): void {
 
 // judgeStep with the round in its input (src/judge/mastra.ts, changed): the shape of the changed step.
 export const JudgeStepInput = z.object({ runId: z.string().min(1), stage: Stage, nodeId: NodeId, ruleSetHash: Sha256, round: z.number().int().min(1), reply: z.unknown(), evidence: z.unknown() })
-declare function judgeRound(deps: StageDeps, input: z.infer<typeof JudgeStepInput>): Promise<JudgeStepOutput>
+// judgeDraft with the judge model, with no write (src/judge/step.ts).
+declare function judgeOnce(deps: StageDeps, input: z.infer<typeof JudgeStepInput>, plan: StagePlan): Promise<{ rows: readonly VerdictInput[]; output: JudgeStepOutput }>
+// decideOutcome on stored rows and plan.decode of the reply. No model.
+declare function outcomeOf(plan: StagePlan, input: z.infer<typeof JudgeStepInput>, rows: readonly VerdictInput[]): JudgeStepOutput
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+// stage.rerun_reuses, stage.judge_claim, stage.claim_lease, stage.judge_wait
+export async function judgeRound(deps: StageDeps, input: z.infer<typeof JudgeStepInput>): Promise<RoundOutcome> {
+  const plan = await planOrThrow(deps, input)
+  const t = deps.timing ?? TIMING
+  const stored = await deps.store.verdictsOf(input.runId, input.round)
+  if (stored.length > 0) return outcomeOf(plan, input, stored) // reuse: no call, no write
+  let attempt = await deps.store.claimJudge(input.runId, input.round, t.claimLeaseMs)
+  if (attempt === null) {
+    // Another attempt holds a live claim. Wait up to one lease for its rows, or for its claim to expire.
+    for (const until = Date.now() + t.claimLeaseMs; attempt === null && Date.now() < until; ) {
+      await sleep(t.pollMs)
+      const rows = await deps.store.verdictsOf(input.runId, input.round)
+      if (rows.length > 0) return outcomeOf(plan, input, rows)
+      attempt = await deps.store.claimJudge(input.runId, input.round, t.claimLeaseMs)
+    }
+    if (attempt === null) return { kind: 'busy', retryAfterMs: t.claimLeaseMs }
+  }
+  const started = Date.now()
+  const judged = await judgeOnce(deps, input, plan)
+  if (Date.now() - started > t.judgeDeadlineMs) throw new Error(`The judge of round ${input.round} passed its deadline, so its claim may have expired. It writes nothing.`)
+  try {
+    await deps.store.writeVerdicts(judged.rows, input.round)
+  } catch (e) {
+    const rows = await deps.store.verdictsOf(input.runId, input.round) // the unique key: another attempt wrote first
+    if (rows.length === 0) throw e
+    return outcomeOf(plan, input, rows)
+  }
+  return judged.output
+}
 function judgeStep(deps: StageDeps) {
-  return createStep({ id: 'judge', inputSchema: JudgeStepInput, outputSchema: JudgeStepOutput, execute: async ({ inputData }) => judgeRound(deps, inputData) })
+  return createStep({ id: 'judge', inputSchema: JudgeStepInput, outputSchema: RoundOutcome, execute: async ({ inputData }) => judgeRound(deps, inputData) })
 }
 
 // stage.decision_first: the body of assimilate, and the operator path of scripts/finish-run.ts.
@@ -355,6 +404,7 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
       if (ended !== undefined) return bail(ended)
       const last = inputData.last
       if (last === null) throw new Error('The loop ended with no round.')
+      if (last.kind === 'busy') return bail({ runId: inputData.runId, busy: true, round: inputData.round, retryAfterMs: last.retryAfterMs }) // stage.judge_wait
       const { context: _c, evidence: _e, last: _l, ...run } = inputData
       if (last.kind === 'accept') return { ...run, decision: null }
       const plan = await planOrThrow(deps, inputData) // stage.hash_on_resume: also on the first pass
@@ -382,7 +432,7 @@ export function stageWorkflow(stage: Stage, deps: StageDeps) {
     execute: async ({ inputData }) => finishRun(deps, inputData),
   })
 
-  return createWorkflow({ id: stage, description: `The stage ${stage} at one node (graph.stage).`, inputSchema: StageInput, outputSchema: StageResult })
+  return createWorkflow({ id: stage, description: `The stage ${stage} at one node (graph.stage).`, inputSchema: StageInput, outputSchema: StageRunResult })
     .then(context)
     .then(research)
     .dountil(draftAndJudge, async ({ inputData, iterationCount }) => inputData.last?.kind !== 'repair' || iterationCount >= REPAIR_BUDGET)
@@ -407,7 +457,11 @@ The parts that the sketch declares:
 
 - `planOrThrow(deps, run)` calls `deps.planFor`. It throws `RulesRefused` with all problems when the compile refuses. It throws "The rules changed during run" when the run has a hash and the plan has another hash.
 
-- `judgeRound(deps, input)` is the body of the shipped step of `src/judge/mastra.ts`, with the changes of `stage.round_rows`, `stage.rerun_reuses`, and `stage.judge_claim`. The copy in `sketch-run.ts` shows its order: reuse the stored rows, else claim the round, else wait.
+- `judgeOnce(deps, input, plan)` runs `judgeDraft` with the judge model and writes nothing.
+
+- `outcomeOf(plan, input, rows)` runs `plan.decode` on the reply and `decideOutcome` on stored rows. It calls no model.
+
+- `judgeRound` replaces the body of the shipped step of `src/judge/mastra.ts`. Its order is in `stage.judge_claim`, `stage.claim_lease`, and `stage.judge_wait`.
 
 ## States `stage.states`
 
@@ -422,7 +476,9 @@ stateDiagram-v2
   judge --> draft: repair and round below 3
   judge --> person: accept, person, or repair at round 3
   draft --> failed: rule change, drafter error
-  judge --> failed: rule change, a claimed round with no rows
+  judge --> failed: rule change, the judge passed its deadline
+  judge --> busy: another live claim for one lease
+  busy --> [*]
   person --> assimilate: accept outcome, no suspend
   person --> suspended: repair at round 3, or person
   suspended --> person: resume
@@ -448,6 +504,8 @@ stateDiagram-v2
 | `accepted`, `person_accepted` | `success` | Also one run end row and one output |
 | `person_rejected` | `success` | Also one decision row and one run end row. No output. |
 | A second start, a restart, or the boot sweep after an end | `success` | No new row. The result is the stored end. |
+| `busy` | `success`, with a `StageBusy` result | The rows that existed. No judge call. The boot sweep does not restart it. The caller starts the run id again. |
+| A crash after a judge claim | `running` | One claim row and no verdict row. After the claim lease, the boot sweep takes attempt 2 and finishes the run. |
 
 Mastra runs the boot sweep `restartAllActiveWorkflowRuns()` by default. `MastraRecoveryConfig.workflows` has the default `auto`, verified (read `dist/mastra/index.d.ts`). The sweep restarts each run with the status `running` or `waiting`, after the lease of its process lapses. The lease was 15 seconds in the repros (`stage.interrogate`).
 
@@ -458,15 +516,17 @@ The new migration `db/migrations/0004_stage_runs.sql` adds four tables and chang
 | Table | Change | Key columns and checks |
 |---|---|---|
 | `harness.drafts` | New | `run_id` (references `stage_runs`), `round` (1 to 3), `reply_text` (text, not null), `reply` (JSON, may be null), `drafter` (`provider/model`), `created_at`. Primary key `(run_id, round)`. |
-| `harness.judge_claims` | New | `run_id`, `round`, `created_at`. Primary key `(run_id, round)`, which references `drafts`. |
+| `harness.judge_claims` | New | `run_id`, `round`, `attempt` (1 or more), `claimed_at`. Primary key `(run_id, round, attempt)`. `(run_id, round)` references `drafts`. |
 | `harness.person_decisions` | New | `run_id` (primary key), `round`, `decision` (`accept`, `reject`), `reviewer`, `note`, `created_at`. `(run_id, round)` references `drafts`. The reviewer and a note are not blank after a trim. A reject needs a note. |
 | `harness.run_ends` | New | `run_id` (primary key, references `stage_runs`), `round`, `end` (`accepted`, `person_accepted`, `person_rejected`), `reviewer`, `note`, `created_at`. `(run_id, round)` references `drafts`, and it is unique, so that `outputs` can reference it. Only a person end has a `reviewer`. `person_rejected` needs a `note`. |
 | `harness.verdicts` | Adds `round` (not null, 1 to 3) and a unique key | `(run_id, round)` references `drafts`. The unique key is `(run_id, round, rule_id, rule_version, target)`. |
 | `harness.outputs` | Adds `round` (not null) and a unique key on `run_id` | `(run_id, round)` references `run_ends`. |
 
-Three triggers and one function hold the other rules in the database:
+Four triggers and one function hold the other rules in the database:
 
 - An insert of a `verdicts` row fails when the run has a run end (`stage.round_closed`).
+
+- An insert of a `person_decisions` row fails when the run has a run end (`stage.decision_closed`).
 
 - An insert of a `run_ends` row with `end` `accepted` needs at least one `strict` verdict row of that run and round. Each `strict` row of that round must be `pass`. The run must have no decision row. A person end needs the equal decision row: the same round, decision, reviewer, and note.
 
@@ -485,7 +545,7 @@ The store gets these calls:
 | `stageRun(runId)` | New | Reads one stage run, or `undefined` |
 | `addDraft(row)` | New | Inserts one draft row: `reply_text` is `JSON.stringify(reply)`, and `reply` is `harness.try_jsonb(reply_text)`. A second row for one round fails on the primary key. |
 | `draftOf(runId, round)` | New | Reads one draft row. `reply` is `JSON.parse(reply_text)`, so it equals the reply of the drafter. |
-| `claimJudge(runId, round)` | New | Inserts one claim row. It gives `true` when the insert wins, and `false` on the primary key. |
+| `claimJudge(runId, round, leaseMs)` | New | Inserts the claim of attempt max + 1 in one statement. It inserts only when the latest claim is older than `leaseMs` and the round has no verdict row. It gives the attempt number, or `null`. The SQL is in `pg-env.ts`. |
 | `writeVerdicts(rows, round)` | Changed | Adds `round` to each row. One statement, all rows or none. |
 | `verdictsOf(runId, round)` | New | Reads the rows of one round, as `VerdictInput` |
 | `addDecision(row)` | New | Inserts the decision row. An equal row that exists is not an error. Another row for the run fails. |
@@ -770,7 +830,7 @@ Tests: `double_write.start_on_ended_run`, `double_write.restart_after_end_commit
 
 ### Judge claim `stage.judge_claim`
 
-Decision. Before it calls a judge, the judge step writes a claim row into the new append-only table `harness.judge_claims`. Its primary key is `(run_id, round)`. Only the caller whose insert wins calls the judge. A caller that loses waits, and then reuses the rows of the round. `harness.verdicts` gets the unique key `(run_id, round, rule_id, rule_version, target)`.
+Decision. Before it calls a judge, the judge step writes a claim row into the new append-only table `harness.judge_claims`. Its primary key is `(run_id, round, attempt)`. Only the caller whose insert wins calls the judge. A caller that loses waits, and then reuses the rows of the round (`stage.judge_wait`). A claim has a lease (`stage.claim_lease`). `harness.verdicts` gets the unique key `(run_id, round, rule_id, rule_version, target)`.
 
 Why. The repro `sonnet/p10_dup.ts` ran two recoveries of one round at the same time. The judge ran twice, and round 1 got 20 rows for 10 rules. Reproduced (ran). The repro `sonnet/p2_migration.ts` wrote two equal rows for one rule, target, and round. Reproduced (ran).
 
@@ -778,13 +838,67 @@ Mechanism:
 
 - `judgeStep` reads `verdictsOf(runId, round)`. Rows that exist give the outcome with no call.
 
-- Else it calls `claimJudge(runId, round)`. The winner calls the judges and writes the rows.
+- Else it calls `claimJudge(runId, round, leaseMs)`. The winner calls the judges and writes the rows.
 
-- A loser reads `verdictsOf` again at a short interval. It fails the step when no rows come within the wait.
+- When `writeVerdicts` fails and the round has rows, another attempt wrote first. The step reuses those rows.
 
 - The unique key refuses a second row for one rule and target in one round. A scorer that gives two rows for one target is a bug, and the write fails.
 
 Tests: `double_write.concurrent_judge_one_call`, `double_write.verdict_row_unique`.
+
+### Claim lease `stage.claim_lease`
+
+Decision. A judge claim has a lease. A new attempt can claim a round only when the latest claim is older than the lease and the round has no verdict row. The lease is longer than the judge deadline. The times are in `TIMING`:
+
+| Time | Value | Use |
+|---|---|---|
+| `judgeDeadlineMs` | 10 minutes | A winner that judged for longer writes nothing, and its step fails. |
+| `claimLeaseMs` | 15 minutes | A new attempt can take a claim older than this. A loser waits at most this long. |
+| `pollMs` | 2 seconds | A loser reads the rows at this interval. |
+
+Why. The verify of `12053b7` killed a process after `claimJudge` (`opus-verify/crash.ts`). After the boot sweep, and after a new start, the run failed with "The judge of round 1 runs elsewhere and wrote no rows". The run could never end. Reproduced (ran).
+
+Mechanism:
+
+- `claimJudge` inserts attempt max + 1 in one statement, with `on conflict do nothing`. The primary key lets one caller win each attempt.
+
+- The statement inserts nothing while the latest claim is younger than the lease, or when the round has a verdict row.
+
+- The winner measures its judge time. Past `judgeDeadlineMs`, it throws before `writeVerdicts`. A late write that still lands fails on the unique key of `verdicts`, so the rows of one attempt stay.
+
+- A test gives short times through `StageDeps.timing`. The probe `pg-crash.ts` used a lease of 8 seconds. After the kill, the boot sweep took attempt 2 and ended the run, verified (ran).
+
+Tests: `stuck_claim.sweep_finishes_after_lease`, `stuck_claim.no_claim_while_live`, `stuck_claim.no_claim_with_rows`, `stuck_claim.late_winner_writes_nothing`.
+
+### The wait of a loser `stage.judge_wait`
+
+Decision. A judge step that loses the claim never ends as `failed`. It reads the rows every `pollMs`, for at most one `claimLeaseMs`. If the rows come, it reuses them. If the claim expires first, it tries a new attempt. If neither happens, it returns `{ kind: 'busy', retryAfterMs }`. The person step then ends the run with `StageBusy`, through `bail`. A busy run is a retryable result: the caller starts the run id again.
+
+Why. The verify of `12053b7` ran two starts of one round with a judge that took 3 seconds (`opus-verify/slow.ts`). The loser waited 1 second, and its run ended as `failed` with "runs elsewhere and wrote no rows". Reproduced (ran).
+
+Mechanism:
+
+- The loop in `judgeRound` of `stage.workflow`.
+
+- `RoundOutcome` is `JudgeStepOutput` or `Busy`. The loop ends on `busy`, because its kind is not `repair`.
+
+- The workflow output is `StageRunResult`: a `StageResult` or a `StageBusy`.
+
+- The boot sweep does not restart a busy run, because Mastra stores it as `success`. The caller retries.
+
+- The probe `pg-slow.ts` ran two starts with a judge of 3 seconds and a lease of 8 seconds. Both gave `success`, with one judge call, verified (ran).
+
+Tests: `busy_loser.slow_judge_reused`, `busy_loser.live_claim_gives_busy`, `busy_loser.never_failed`.
+
+### Decision closed `stage.decision_closed`
+
+Decision. A trigger refuses each insert into `harness.person_decisions` for a run that has a run end.
+
+Why. The verify of `12053b7` wrote a reject decision after an accepted end (`opus-verify/inproc.ts`, X1). The store then held an accepted output and a reject decision for one run. Reproduced (ran).
+
+Mechanism. The trigger `person_decisions_open` reads `run_ends` before each insert. The person step also reads the run end first (`stage.reuse_end`).
+
+Tests: `late_row.decision_after_end_refused`.
 
 ### Round closed `stage.round_closed`
 
@@ -852,7 +966,9 @@ Each hazard has a mechanism and tests that fail when the mechanism breaks. The n
 | `lost_draft`. A draft is lost or overwritten | `stage.draft_log`, `stage.reply_lossless` | `lost_draft.each_round_kept`, `lost_draft.verdict_needs_draft`, `lost_draft.no_overwrite`, `lost_draft.broken_reply_kept`, `lost_draft.nul_and_surrogate_kept`, `lost_draft.unparsed_reply_kept` |
 | `lost_accept`. A decision of a person is lost after a failure | `stage.decision_first` | `lost_accept.decision_kept_on_store_error`, `lost_accept.finish_run_ends_it`, `lost_accept.finish_run_twice_one_end`, `lost_accept.person_end_needs_decision` |
 | `double_write`. A resume, a second start, a restart, or a step that runs again writes twice, calls a model twice, or turns an end into `failed` | `stage.end_once`, `stage.rerun_reuses`, `stage.reuse_end`, `stage.judge_claim` | `double_write.second_resume_refused`, `double_write.concurrent_resume_one_end`, `double_write.end_run_twice_one_end`, `double_write.person_body_one_decision`, `double_write.context_rerun_one_run_row`, `double_write.draft_reused_on_rerun`, `double_write.judge_reused_on_rerun`, `double_write.start_on_ended_run`, `double_write.restart_after_end_commit`, `double_write.boot_sweep_after_end_commit`, `double_write.concurrent_judge_one_call`, `double_write.verdict_row_unique` |
-| `late_row`. A verdict row arrives after the run end | `stage.round_closed` | `late_row.verdict_after_end_refused` |
+| `late_row`. A verdict row or a decision arrives after the run end | `stage.round_closed`, `stage.decision_closed` | `late_row.verdict_after_end_refused`, `late_row.decision_after_end_refused` |
+| `stuck_claim`. A crash after a judge claim blocks the run | `stage.claim_lease` | `stuck_claim.sweep_finishes_after_lease`, `stuck_claim.no_claim_while_live`, `stuck_claim.no_claim_with_rows`, `stuck_claim.late_winner_writes_nothing` |
+| `busy_loser`. A judge step that loses the claim ends as `failed` | `stage.judge_wait` | `busy_loser.slow_judge_reused`, `busy_loser.live_claim_gives_busy`, `busy_loser.never_failed` |
 | `rule_drift`. A resume after a rule change writes an end | `stage.hash_on_resume` | `rule_drift.resume_accept_refused`, `rule_drift.resume_reject_refused`, `rule_drift.context_rerun_refused` |
 | `budget_overrun`. A run makes more than 3 rounds, or an auto accept skips a strict row | `stage.loop_on_outcome`, `stage.budget_in_db` | `budget_overrun.three_drafts_max`, `budget_overrun.draft_refuses_round_four`, `budget_overrun.db_refuses_round_four`, `budget_overrun.accepted_end_needs_pass`, `budget_overrun.accepted_end_needs_strict_row` |
 | `reject_writes`. A reject writes an output | `stage.reject_end` | `reject_writes.no_output`, `reject_writes.end_row_with_note`, `reject_writes.note_required`, `reject_writes.blank_note_refused`, `reject_writes.output_trigger_refuses` |
@@ -924,6 +1040,22 @@ The fixture is the library of `tests/compiler/rules.ts`, with `GOOD_OUTPUT` and 
 - `double_write.verdict_row_unique`. A second row for one rule, target, and round fails on the unique key.
 
 - `late_row.verdict_after_end_refused`. A verdict insert for a run with a run end fails on the trigger.
+
+- `late_row.decision_after_end_refused`. A decision insert for a run with a run end fails on the trigger.
+
+- `stuck_claim.sweep_finishes_after_lease`. A child process dies after `claimJudge`. After the Mastra lease and the claim lease, `restartAllActiveWorkflowRuns()` ends the run. The round has two claim rows and one set of verdict rows.
+
+- `stuck_claim.no_claim_while_live`. A second `claimJudge` inside the lease gives `null`.
+
+- `stuck_claim.no_claim_with_rows`. A `claimJudge` after the lease, for a round with rows, gives `null`.
+
+- `stuck_claim.late_winner_writes_nothing`. A judge that takes longer than `judgeDeadlineMs` makes the step fail with no row written.
+
+- `busy_loser.slow_judge_reused`. Two starts of one round, with a judge of about 3 seconds, both give `success`. The judge gets one call.
+
+- `busy_loser.live_claim_gives_busy`. A claim that stays live for one lease gives `StageBusy`, with Mastra status `success`.
+
+- `busy_loser.never_failed`. In both tests above, no run gives `failed`.
 
 - `double_write.context_rerun_one_run_row`. The context step that runs twice for one run id leaves one stage run row.
 
@@ -1099,9 +1231,19 @@ Two adversaries, Opus and Sonnet, interrogated this spec at `7fb8f87` on 2026-11
 | A blank reviewer or note passes | `sonnet/p15_blank.ts` | Reproduced | `stage.person_payload` |
 | The database cannot check that each rule has a row | `sonnet/p11_sql.ts` (S13) | Reproduced | `stage.store`, `stage.loop_on_outcome`: the text now says what the database holds |
 | Two resumes on `@mastra/pg` | `opus/probe-b.ts`, `sonnet/p1_pg_resume.ts` | No finding: one resume wins | None |
-| A crash inside the judge, then `restart` | `opus/probe-c.ts` | No finding: the run suspended at round 3 with 3 drafter calls | None |
+| A crash inside the judge, then `restart` | `opus/probe-c.ts` | No finding on the sketch of `7fb8f87`, which had no judge claim: the run suspended at round 3 with 3 drafter calls. With the claim of `12053b7`, the same crash blocked the run (see `opus-verify/crash.ts` below). | `stage.claim_lease` |
 | A crash before `endRun`, then a resume | `sonnet/p8_crash.ts` | Reproduced only while the lease holds: the status stays `running` | `stage.decision_first` keeps the decision. No repro ran after the lease. |
 | An accept of a draft that breaks the schema | `sonnet/p12_broken.ts` | No finding: the run suspended again with a refusal | None |
+
+The verify of `12053b7` closed the findings above and found three new ones. Claude ran each verify repro again (ran):
+
+| Finding | Repro | Result | Fix |
+|---|---|---|---|
+| A crash after `claimJudge` blocks the run, also after the boot sweep and a new start | `opus-verify/crash.ts` | Reproduced | `stage.claim_lease` |
+| The loser of two starts ends as `failed` when the judge takes 3 seconds | `opus-verify/slow.ts` | Reproduced | `stage.judge_wait` |
+| A decision insert after the run end | `opus-verify/inproc.ts` (X1) | Reproduced | `stage.decision_closed` |
+
+The probes `pg-crash.ts` and `pg-slow.ts` run the same cases on the fixed sketch. Each gave `success`, verified (ran).
 
 Claude wrote `opus/run-d1.ts`, `opus/make-db.ts`, `sonnet/p14_registry.ts`, `sonnet/p15_blank.ts`, and the two `_lease` copies. The other files are as the adversaries wrote them, with relative paths.
 
@@ -1127,7 +1269,11 @@ Claude wrote `opus/run-d1.ts`, `opus/make-db.ts`, `sonnet/p14_registry.ts`, `son
 
 - The research step runs again after `run.restart()`, and after a second start on a suspended run id, verified (ran `opus/probe-a.ts`, A3). When `plan.research_tools` ships, that is a second paid call. That unit stores research records and can reuse them.
 
-- A judge claim whose winner dies before it writes the rows blocks that round. A loser fails after its wait, and the run needs a new run. The claim table is append-only, so no code takes the claim over.
+- After a crash after a judge claim, the run waits one claim lease (15 minutes) before the boot sweep can take attempt 2.
+
+- A busy run needs a new start from its caller. The boot sweep does not restart it.
+
+- A judge step that loses the claim holds its Mastra step for up to one lease.
 
 - `scripts/finish-run.ts` refuses after a rule change. The decision row then stays with no run end.
 
