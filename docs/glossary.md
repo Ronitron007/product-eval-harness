@@ -50,12 +50,12 @@ Each term has one definition. Docs link here at the first use of a term.
 | Probe | One stage run of a candidate rule set in the improvement loop. |
 | Promotion gate | The step that publishes a draft rule version only after the held-out suite passes over the subtree of the node that owns the rule, and Rohan says yes. |
 | Product fact | One value of one attribute for one product, with its source and its quote. |
-| Provenance | The research record or the decision that made a rule or an output. |
+| Provenance | The subject record or the decision that made a rule or an output. |
 | Reference run | One stage run of the published rules in the improvement loop. The editors compare the probes with the reference runs. |
 | Reflector | The part of the improvement loop that writes one verdict for each edit and at most one lesson. |
 | Reference knowledge | A value that is the same for each product of a category, such as an upper limit. It is never a product fact. |
 | Repair | A round in which a stage sends the exact errors back to the model, and the model fixes its output. |
-| Research record | The research or thinking work behind an output: the question, the sources with quotes, the findings, and the run. Records are append-only. |
+| Research record | The old name of a subject record. Use "subject record" (Rohan, 2026-11-09). |
 | Research port | The injected function that the research step calls. It returns the run evidence of one stage run. |
 | Rule | One instruction, with an id, a version, a statement, a reason, a kind, a scope, a binding, golden examples, and provenance. A rule and an instruction are the same thing. |
 | Rule library | Every rule that the loader read and checked, with its hash. The compiler takes the rules in scope of one stage run from it. |
@@ -72,6 +72,7 @@ Each term has one definition. Docs link here at the first use of a term.
 | Stage | One kind of work at one node: `define_criteria`, `create_node`, `create_pack`, or `create_layout`. |
 | Stage rule | A rule that governs how a stage works and the shape of its output. Rohan approves it. It lives in git. |
 | Stage workflow | The Mastra workflow of one stage at one node: context, research, the repair loop of drafts and judge steps, the person step, and assimilate. |
+| Subject record | One unit of information about the world, never about one specific product. Examples are a disease claim, a finding about an ingredient, a regulation, and a fact about a category. It keeps its sources with quotes and the run that made it. Subject records are append-only. A fact about one product is a product fact, not a subject record. |
 | Test vector | A test case of a check template. It holds parameters, a value, evidence, and the expected verdict. Vectors are tests, not hash inputs. |
 | Trial | A compile of one candidate rule version as watch, beside the active rules. The candidate gets a scorer only, so it does not change the drafts. Its hash differs from the live hash. |
 | Verdict | The result of one check: pass, fail, or cannot verify. |
