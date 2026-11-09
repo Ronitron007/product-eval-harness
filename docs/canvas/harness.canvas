@@ -62,7 +62,14 @@
 		{"id":"chsh","type":"text","text":"## rule-set hash\nsha256 of the manifest of the compiled artifacts.\nreads: `code.lock.json`, `RUNTIME_VERSION`\nwrites: `stage_runs.rule_set_hash`","x":3440,"y":500,"width":920,"height":200},
 		{"id":"cstamp","type":"text","text":"## stamp\ncode: `main` at `0703520`, 2026-11-04\ndescribes: design/compiler.md, `src/compiler/`","x":3440,"y":760,"width":920,"height":160},
 		{"id":"f8","type":"file","file":"design/compiler.md","x":3700,"y":1000,"width":400,"height":120},
-		{"id":"f9","type":"file","file":"design/stage-workflow.md","x":2420,"y":600,"width":440,"height":100}
+		{"id":"f9","type":"file","file":"design/stage-workflow.md","x":2420,"y":600,"width":440,"height":100},
+		{"id":"gT","type":"group","x":3400,"y":1240,"width":1000,"height":900,"color":"5","label":"How does a run get its tools? (built, #35)"},
+		{"id":"treg","type":"text","text":"## tool registry\nOne entry for each tool.\nholds: toolset, effects, `openWorld`, version\nwrappers: one for each stage, status only","x":3440,"y":1300,"width":440,"height":200},
+		{"id":"tsnap","type":"text","text":"## tool snapshot\nThe toggles of a run, read once.\nholds: consumer, toggles, manifest, hash\nrefuses: `openWorld` with `db_write`","x":3920,"y":1300,"width":440,"height":200},
+		{"id":"tsrv","type":"text","text":"## stdio tool server\nOne process for each run, `@mastra/mcp` 1.18.0.\nlists: the tools that are on\nsecrets: from the env file, never the argv","x":3440,"y":1560,"width":440,"height":200},
+		{"id":"tagent","type":"text","text":"## locked agent and front door\n`claude -p` through `ClaudeSDKAgent`, options locked.\nfront door: today gives `cannot_route`\nwrites: `harness.tool_runs`, `harness.tool_run_ends`","x":3920,"y":1560,"width":440,"height":200},
+		{"id":"tstamp","type":"text","text":"## stamp\ncode: `main` at `84cb958`, 2026-11-09\ndescribes: design/tool-registry.md, `src/tools/`, `src/agent/`\n`0005_tool_runs.sql` is not live","x":3440,"y":1820,"width":920,"height":140},
+		{"id":"f10","type":"file","file":"design/tool-registry.md","x":3700,"y":2000,"width":400,"height":100}
 	],
 	"edges":[
 		{"id":"eA1","fromNode":"dom","fromSide":"right","toNode":"inn","toSide":"left","label":"criteria"},
@@ -113,6 +120,12 @@
 		{"id":"eH4","fromNode":"cshp","fromSide":"bottom","toNode":"chsh","toSide":"top","label":"schema"},
 		{"id":"eH5","fromNode":"cstamp","fromSide":"bottom","toNode":"f8","toSide":"top"},
 		{"id":"eH6","fromNode":"cmp","fromSide":"top","toNode":"gH","toSide":"left","label":"details"},
-		{"id":"eB9","fromNode":"per","fromSide":"bottom","toNode":"f9","toSide":"left","label":"spec"}
+		{"id":"eB9","fromNode":"per","fromSide":"bottom","toNode":"f9","toSide":"left","label":"spec"},
+		{"id":"eT1","fromNode":"treg","fromSide":"right","toNode":"tsnap","toSide":"left","label":"resolve"},
+		{"id":"eT2","fromNode":"tsnap","fromSide":"bottom","toNode":"tagent","toSide":"top"},
+		{"id":"eT3","fromNode":"tsnap","fromSide":"left","toNode":"tsrv","toSide":"top","label":"one list"},
+		{"id":"eT4","fromNode":"tagent","fromSide":"left","toNode":"tsrv","toSide":"right","label":"mcp__harness__*"},
+		{"id":"eT5","fromNode":"tstamp","fromSide":"bottom","toNode":"f10","toSide":"top"},
+		{"id":"eT6","fromNode":"treg","fromSide":"top","toNode":"gB","toSide":"right","label":"stage wrappers"}
 	]
 }

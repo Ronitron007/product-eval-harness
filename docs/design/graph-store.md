@@ -2,7 +2,7 @@
 
 Status. Spec of 2026-10-29 for `plan.graph_store`. The code shipped on 2026-10-30 in [#12](https://github.com/Ronitron007/product-eval-harness/pull/12): `src/store/`, `db/migrations/`, and `db/README.md`. Rohan ruled on 2026-10-29 that the authoring database is the Kyaloon Supabase Postgres database ([decisions.tsv](../decisions.tsv)). A spike on a local Postgres 18 verified the parts below ([the spike](../research/2026-10-29-postgres-spike.md)). Terms are in [glossary.md](../glossary.md).
 
-On 2026-10-31, [#14](https://github.com/Ronitron007/product-eval-harness/pull/14) made the migrations safe for the live database (`store.safety`). On 2026-11-08, [#29](https://github.com/Ronitron007/product-eval-harness/pull/29) added `0004_stage_runs.sql` (`store.stage_tables`). Nobody applied any of them to the Kyaloon database yet. They wait for [Ronitron007/RealDose#470](https://github.com/Ronitron007/RealDose/pull/470).
+On 2026-10-31, [#14](https://github.com/Ronitron007/product-eval-harness/pull/14) made the migrations safe for the live database (`store.safety`). On 2026-11-08, [#29](https://github.com/Ronitron007/product-eval-harness/pull/29) added `0004_stage_runs.sql` (`store.stage_tables`). On 2026-11-09, [#35](https://github.com/Ronitron007/product-eval-harness/pull/35) added `0005_tool_runs.sql` (`store.tool_tables`), which is not live yet. Nobody applied any of them to the Kyaloon database yet. They wait for [Ronitron007/RealDose#470](https://github.com/Ronitron007/RealDose/pull/470).
 
 ## Where it lives `store.place`
 
@@ -74,6 +74,17 @@ This unit builds the tables that every stage needs. The tables of the stage outp
 | `harness.run_ends` | The end of a run, one for each run | `run_id`, `round`, `end` (`accepted`, `person_accepted`, `person_rejected`), `reviewer`, `note`, `created_at` |
 
 The migration also adds the column `round` to `harness.verdicts` and `harness.outputs`. Triggers refuse a verdict row or a decision after the run end. Each claim is a row, not a session lock, so the claims work through the transaction pooler.
+
+## The tables of the tool registry `store.tool_tables`
+
+`plan.tool_server` added `db/migrations/0005_tool_runs.sql` in [#35](https://github.com/Ronitron007/product-eval-harness/pull/35). Nobody applied it to the live Kyaloon database yet. Its live apply needs Rohan's yes. The migration runs in one transaction. It stops when the role `harness_app` or the function `harness.refuse_change()` is missing. The spec is `tools.run_record` in [tool-registry.md](tool-registry.md).
+
+| Table | Holds | Key columns |
+|---|---|---|
+| `harness.tool_runs` | The tool snapshot of a run, written before its first tool call | `run_id`, `consumer` (`agent`, `mcp_client`, `step`), `toggles` (JSON), `manifest` (JSON), `snapshot_hash`, `allowed_tools`, `started_at` |
+| `harness.tool_run_ends` | The end of a run, from the result message of the CLI | `run_id`, `subtype`, `cost_usd`, `num_turns`, `terminal_reason`, `denials` (JSON), `ended_at` |
+
+Both tables only grow. Each has row level security with the `harness_app` policies, and PUBLIC, `anon` and `authenticated` hold no right on them (`store.safety`). The store calls are `recordToolRun`, `endToolRun`, and `toolRunOf`.
 
 ## The tree walk `store.tree`
 

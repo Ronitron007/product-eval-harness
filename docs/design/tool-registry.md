@@ -1,6 +1,6 @@
 # The tool registry, the tool server, and the front door `tools`
 
-Status. Spec of 2026-11-09 for the unit `plan.tool_server` ([the plan](../plans/2026-10-24-harness-plan.md)). Nobody built it yet. Written against `main` at `680a395`. Terms are in [glossary.md](../glossary.md). Each decision is a row in [decisions.tsv](../decisions.tsv), for Rohan to review.
+Status. Spec of 2026-11-09 for the unit `plan.tool_server` ([the plan](../plans/2026-10-24-harness-plan.md)). Written against `main` at `680a395`. The code shipped on 2026-11-09 in [#35](https://github.com/Ronitron007/product-eval-harness/pull/35), at `84cb958`. `tools.reconciliation` lists each difference of the code from this text. Nobody applied `0005_tool_runs.sql` to the live database yet. Its live apply needs Rohan's yes. Terms are in [glossary.md](../glossary.md). Each decision is a row in [decisions.tsv](../decisions.tsv), for Rohan to review.
 
 Review. Two adversaries interrogated this spec at `7a4ced0` on 2026-11-09. The coordinator ran the key repros again, with no model call. The spec folds in each fix whose repro reproduced. `tools.interrogate` lists them. The repros are in [the interrogate folder](../research/2026-11-09-tool-registry/interrogate/README.md).
 
