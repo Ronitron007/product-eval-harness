@@ -76,12 +76,13 @@ The fences hold only while no caller can change the options. `tools.locked_agent
 ## Usage `tools.usage`
 
 ```ts
-import { readSnapshot, resolveTools, toolFor, buildToolServer, snapshotFromServerEnv } from '../tools'
+import { readSnapshot, resolveTools, toolFor, buildToolServer, prepareServerProcess, recordedServerSnapshot, toolRunWriter } from '../tools'
 import { lockedClaudeAgent, routerAgent, frontDoor } from '../agent'
 
 // Call site: the start of each run. The run reads its toggles once.
 const snapshot = readSnapshot(process.env, { runId, consumer: 'agent' }) // throws on bad toggles or a refused mix
-await store.recordToolRun({ runId, snapshot })
+// A step or a router agent writes its run row first: await store.recordToolRun({ runId, snapshot }).
+// An agent on claude -p does not: run() writes the row itself, with its allowedTools.
 
 // Consumer: a workflow step (stage.research_port, after plan.research_tools).
 const context = await toolFor('get_node_context', snapshot, handles).execute({ nodeId }, ctx)
@@ -92,10 +93,11 @@ const found = await researcher.run(prompt)
 
 // Consumer: claude -p through ClaudeSDKAgent, inside the locked wrapper.
 const fd = lockedClaudeAgent({ id: 'front_door', systemPrompt: FRONT_DOOR_PROMPT, snapshot, budget, store })
-const result = await frontDoor(fd, { kind: 'product_url', url }) // a FrontDoorResult. It never throws.
+const result = await frontDoor(fd, { kind: 'product_url', url }, snapshot) // a FrontDoorResult. It never throws.
 
 // The stdio entry of the server: scripts/tool-server.ts.
-const server = buildToolServer(snapshotFromServerEnv(process.env), handlesFromEnvFile(process.env))
+const prepared = prepareServerProcess(process.env) // loads the env file, checks the snapshot, prunes the env
+const server = buildToolServer(await recordedServerSnapshot(prepared, toolRunWriter(prepared.databaseUrl).record), handlesFromEnvFile(process.env))
 await server.startStdio()
 ```
 
@@ -106,7 +108,7 @@ await server.startStdio()
 | A Mastra router agent | `routerAgent(input).run(prompt)` | The reply. The model sees only the tools that are on (`tools.consumers`). |
 | An agent on `claude -p` | `lockedClaudeAgent(input).run(prompt, schema)` | A `RunOutcome`. No caller can change the options (`tools.locked_agent`). |
 | `scripts/tool-server.ts` | `buildToolServer(snapshot, handles)` | An `MCPServer` with the tools that are on, and no `workflows` or `agents` option |
-| An operator or a test | `frontDoor(agent, request)` | A `FrontDoorResult` (`tools.front_door`) |
+| An operator or a test | `frontDoor(agent, request, snapshot)` | A `FrontDoorResult` (`tools.front_door`) |
 
 ## Types `tools.types`
 
@@ -947,13 +949,13 @@ Two adversaries, Opus and Sonnet, interrogated this spec at `7a4ced0` on 2026-11
 
 ## Reconciliation `tools.reconciliation`
 
-Status. Written on 2026-11-09 by the implementer of `plan.tool_server`, on the branch `rohan/tools`. Each item names a place where the code differs from the text above, or a fact that the code verified. Rohan reviews each item. No item changes a decision of `docs/decisions.tsv`.
+Status. Written on 2026-11-09 by the implementer of `plan.tool_server`, on the branch `rohan/tools`. Each item names a place where the code differs from the text above, or a fact that the code verified. Rohan reviews each item. The first text of this section said that no item changes a decision. That was wrong: the first fallback of the server wrote no run row, and so it broke the row of `tools.toggles` in `docs/decisions.tsv`. The fix of 2026-11-09 below writes the row.
 
 ### Differences from the spec `tools.reconciliation.changes`
 
 - `workflowTool` takes no `workflow` and no `deps`. A wrapper starts its stage through its write door, the type `StageWrite`. `stageWriteDoors` in `src/tools/handles.ts` makes the four doors from a Mastra instance. So the registry needs no database at import, as `stage.registry_no_db` asks. Each door is one write function for one entry.
 
-- `createPaidDoor` is in `src/tools/resolve.ts`, not in `src/tools/handles.ts`. `resolveTools` makes one door for each paid tool that is on. A cache keyed on the snapshot and the handle set keeps one door for each run. So a second call of `toolFor` does not reset the count.
+- The paid door is in `src/tools/resolve.ts`, not in `src/tools/handles.ts`. `runPaidDoor` keeps one count for each run id and paid tool, in the process. New handles, a copy of the snapshot, and each call of `toolFor` share it. The test is `budget_burn.cap_per_run_id`.
 
 - `frontDoor(agent, request, snapshot)` takes the snapshot of the run as a third argument. The front door needs it to give `tool_off`, because the locked object has no field other than `run`.
 
@@ -965,13 +967,17 @@ Status. Written on 2026-11-09 by the implementer of `plan.tool_server`, on the b
 
 - A run with a schema passes `errorStrategy: 'warn'` to `structuredOutput`. A reply that fails the schema then reaches `frontDoor` as `reply_unparsed`, not as a throw.
 
+- A wrapper catches each throw of its write door. The result is then `failed` with `store_error` or `unknown`. `get_node_context` gives a fixed error text. The detail goes to stderr of the process, never into a tool result. The test is `status_only.door_throw_gives_code`.
+
 - The failure codes of a stage wrapper are `rules_refused`, `models_unset`, `research_error`, `drafter_error`, `judge_error`, `store_error`, `busy`, `max_calls`, and `unknown`. The code `busy` maps the result `StageBusy`. The code `max_calls` is a paid call that the door refused. Its `runId` names no Mastra run.
 
 - The tool server keeps `MASTRA_TELEMETRY_DISABLED` after the prune, together with `PATH` and the named keys. The variable holds no secret.
 
 - The `env` list of each stage wrapper holds `HARNESS_DATABASE_URL`, `HARNESS_DRAFTER_MODEL`, `HARNESS_JUDGE_MODEL`, and the key name of each provider of the Mastra model router. In `@mastra/core` 1.79.0 that list has 203 names. So a server with the toolset `stages` on keeps each provider key of the env file.
 
-- A server with no `HARNESS_TOOL_SNAPSHOT` serves an outside MCP client, such as the Cursor CLI. It makes a snapshot from `HARNESS_TOOLS`, with the consumer `mcp_client` and a new run id. It writes no `tool_runs` row.
+- A server with no `HARNESS_TOOL_SNAPSHOT` serves an outside MCP client, such as the Cursor CLI. It makes a snapshot from `HARNESS_TOOLS`, with the consumer `mcp_client` and a new run id. Before it lists or calls a tool, it writes the `tool_runs` row of that snapshot, with its hash and manifest (`recordedServerSnapshot`). When it cannot write the row, it serves the read tools only: no `paid` and no `db_write` tool. The test is `toggle_flip.fallback_row_before_list`.
+
+- The review of [Ronitron007/product-eval-harness#35](https://github.com/Ronitron007/product-eval-harness/pull/35) asked for the consumer `cursor`. The code keeps `mcp_client`, the consumer that `tools.consumers` gives to the Cursor CLI. A new consumer would change the type `Consumer`, the hash, and the check of `0005_tool_runs.sql`. Rohan rules on this item.
 
 - Each stage wrapper has the inner list `[]` today, because the research tools come with `plan.research_tools`. The write door writes the inner snapshot to `harness.tool_runs` under the stage run id before the stage starts. The stage does not read the inner snapshot yet.
 
