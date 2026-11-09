@@ -1,0 +1,3 @@
+{"tools":{"run_create_node":true},"allowEffects":["read","paid","db_write"]} -> REFUSED: Invalid input: expected boolean, received undefined @tools.get_node_context; Invalid input: expected boolean, received undefined @tools.web_fetch
+{"toolsets":{"research":false}} -> REFUSED: Invalid input: expected boolean, received undefined @toolsets.graph; Invalid input: expected boolean, received undefined @toolsets.stages
+{"tools":{"nope":true}} -> REFUSED: Invalid input: expected boolean, received undefined @tools.get_node_context; Invalid input: expected boolean, received undefined @tools.run_create_node; Invalid input: expected boolean, received undefined @tools.web_fetch; Unrecognized key: "nope" @tools

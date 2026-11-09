@@ -1,0 +1,13 @@
+http://127.0.0.1:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://localhost:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://[::1]:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://[::ffff:127.0.0.1]:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://[::ffff:7f00:1]:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://0.0.0.0:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://2130706433:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://0x7f.1:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://127.1:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://127.0.0.1.nip.io:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://localtest.me:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://[0:0:0:0:0:ffff:127.0.0.1]:P/a -> blocked | Failed to fetch URL: URL resolves to a private or reserved address.
+http://[::127.0.0.1]:P/a -> blocked | Failed to fetch URL: connect EHOSTUNREACH ::7f00:1:57299 - Local (:::5

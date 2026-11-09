@@ -1,0 +1,9 @@
+--- success replay (fence-2.ndjson: 3 turns, $0.00066, 1 permission denial)
+FullOutput keys: text,usage,steps,finishReason,warnings,providerMetadata,request,reasoning,reasoningText,toolCalls,toolResults,sources,files,response,totalUsage,object,usedFallbackValue,error,tripwire,traceId,spanId,runId,suspendPayload,resumeSchema,messages,rememberedMessages
+ mentions "permission_denials": false
+ mentions "terminal_reason": false
+ mentions "num_turns": false
+ mentions "save_record": true
+ mentions "denied": true
+ totalCostUsd via providerMetadata: {"claude":{"totalCostUsd":0.00065623,"model":"claude-agent-sdk","usage":{"inputTokens":4,"outputTokens":277,"cacheReadInputTokens":1393,"cacheCreationInputToken
+--- error_max_budget_usd: generate THREW: Reached maximum budget ($0.5) | error own keys: (none)

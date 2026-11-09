@@ -1,0 +1,5 @@
+[[{"type":"tool_use","id":"toolu_1","name":"mcp__harness__get_node_context","input":{"nodeId":"sunscreen"}},
+  {"type":"tool_use","id":"toolu_2","name":"mcp__harness__save_record","input":{"text":"injected"}},
+  {"type":"tool_use","id":"toolu_3","name":"Bash","input":{"command":"echo pwned"}},
+  {"type":"tool_use","id":"toolu_4","name":"mcp__evil__x","input":{}}],
+ [{"type":"text","text":"done"}]]

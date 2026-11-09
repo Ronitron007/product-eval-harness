@@ -1,0 +1,4 @@
+consumer=step  hash 95a7770fb2cd
+consumer=agent hash 95a7770fb2cd (same: consumer not covered)
+after registry gains an off tool: 5e12ac69b19b
+openWorld+db_write both on: true -> refused only if consumer in {mcp,agent}; "step" is allowed

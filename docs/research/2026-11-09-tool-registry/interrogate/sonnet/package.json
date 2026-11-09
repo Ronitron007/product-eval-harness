@@ -1,0 +1,1 @@
+{"name":"tools-spike","private":true,"type":"module","dependencies":{"@mastra/claude":"0.3.3","@mastra/core":"1.79.0","@mastra/mcp":"1.18.0","tsx":"4.23.15","zod":"4.6.7"}}

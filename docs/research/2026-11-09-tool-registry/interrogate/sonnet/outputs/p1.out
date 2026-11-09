@@ -1,0 +1,17 @@
+capabilities: {"logging":{"enabled":true},"tools":{"listChanged":true}}
+tools/list: get_node_context
+call save_record: {"content":[{"type":"text","text":"Unknown tool: save_record"}],"isError":true}
+call web_search: {"content":[{"type":"text","text":"Unknown tool: web_search"}],"isError":true}
+call toString: {"content":[{"type":"text","text":"Error: Cannot read properties of undefined (reading 'validate')"}],"isError":true}
+call constructor: {"content":[{"type":"text","text":"Error: Cannot read properties of undefined (reading 'validate')"}],"isError":true}
+call __proto__: {"content":[{"type":"text","text":"Error: Cannot read properties of undefined (reading 'validate')"}],"isError":true}
+call hasOwnProperty: {"content":[{"type":"text","text":"Error: Cannot read properties of undefined (reading 'validate')"}],"isError":true}
+call valueOf: {"content":[{"type":"text","text":"Error: Cannot read properties of undefined (reading 'validate')"}],"isError":true}
+call get_node_context: {"content":[{"type":"text","text":"{\"path\":[\"skincare\",\"sunscreen\"]}"}],"structuredContent":{"path":["skincare","sunscreen"]},"isError":false}
+listResources THREW MCP error -32601: Method not found
+listPrompts THREW MCP error -32601: Method not found
+listResourceTemplates THREW MCP error -32601: Method not found
+[mismatch] tools/list names: get_node_context
+[mismatch] call get_node_context: {"content":[{"type":"text","text":"{\"ok\":\"WRITE_RAN\"}"}],"isError":false}
+[mismatch] call save_record: {"content":[{"type":"text","text":"Unknown tool: save_record"}],"isError":true}
+[parallel x4, cap 1] "{\"ran\":true,\"maxInFlight\":4}" | "{\"ran\":true,\"maxInFlight\":4}" | "{\"ran\":true,\"maxInFlight\":4}" | "{\"ran\":true,\"maxInFlight\":4}"

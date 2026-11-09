@@ -1,0 +1,1 @@
+[[{"type":"tool_use","id":"toolu_B","name":"Bash","input":{"command":"echo pwned > pwned","description":"x"}}],[{"type":"text","text":"done"}]]

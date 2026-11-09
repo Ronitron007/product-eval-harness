@@ -1,0 +1,22 @@
+ARGV:
+  [--output-format]
+  [stream-json]
+  [--verbose]
+  [--input-format]
+  [stream-json]
+  [--max-turns=12]
+  [--max-budget-usd=0.5]
+  [--resume=abc]
+  [--allowedTools=Bash]
+  [--tools=Bash,WebFetch]
+  [--mcp-config]
+  [{"mcpServers":{"harness":{"type":"stdio","command":"node","args":["x.js"],"env":{"HARNESS_TOOL_SNAPSHOT":"{}"}}}}]
+  [--setting-sources=project,user]
+  [--permission-mode=bypassPermissions]
+  [--allow-dangerously-skip-permissions]
+  [--no-session-persistence]
+ENV_KEYS:
+CLAUDE_AGENT_SDK_VERSION CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SDK_READS_SESSION_STATE FAKE_CLI_OUT HOME MASTRA_TELEMETRY_DISABLED PATH PWD SHLVL _ 
+HOME=<home>
+ANTHROPIC_API_KEY set: 
+CWD=<tmp>
