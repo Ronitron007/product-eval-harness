@@ -92,6 +92,7 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `lockedClaudeAgent`, `lockedSdkOptions`, `SealedClaudeSDKAgent`, `tapSpawn`, `RunOutcome` | The locked agent on `claude -p`, its options, its sealed inner agent, the tap on the CLI stream, and the result of `run` | `tools.agent_run`, `tools.locked_agent`, `tools.run_record` |
 | `routerAgent` | The wrapper of a Mastra agent on the model router | `tools.consumers` |
 | `agent`, `mcp_client`, `step` | The three consumers of a tool snapshot | `tools.consumers` |
+| `innerSnapshot` | The snapshot of the model steps inside a stage wrapper: the research tools, and no `db_write` tool | `tools.injection_scope` |
 | `tools_interrogate` | The interrogate run of the tool registry spec, and its repros | [../research/2026-11-09-tool-registry/interrogate/README.md](../research/2026-11-09-tool-registry/interrogate/README.md) |
 | `frontDoor`, `FrontDoorRequest`, `FrontDoorReply`, `FrontDoorResult`, `MatchInput` | The front door, its request and result, and the open seam of the matcher | `tools.front_door` |
 | `harness.tool_runs`, `harness.tool_run_ends` | The snapshot of each run, and the end of each run | `tools.run_record` |

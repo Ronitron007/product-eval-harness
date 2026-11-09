@@ -132,8 +132,8 @@ export interface ToolEntry<E extends readonly Effect[] = readonly Effect[]> {
   readonly version: number             // a positive integer. A change of the input, the output, or the effect moves it.
   readonly toolset: Toolset
   readonly effects: E                  // never empty. A wrapper declares the union of the effects of its workflow.
-  readonly openWorld: boolean          // true when the result holds outside text. A wrapper: the OR of its inner tools.
-  readonly inner?: readonly ToolId[]   // wrappers only: the registry tools that its workflow steps call
+  readonly openWorld: boolean          // true when the result gives outside text to the caller (tools.injection_scope)
+  readonly inner?: readonly ToolId[]   // wrappers only: the tools of its model steps. Never a db_write tool.
   readonly maxCallsPerRun?: number     // paid tools only. Default 1 (tools.budget).
   readonly env: readonly string[]      // the names of the environment variables that the tool needs
   readonly build: (handles: HandlesFor<E>) => Tool  // createTool with Zod schemas. Its id must equal the entry id.
@@ -206,7 +206,7 @@ Mechanism:
 
 - `openWorld` marks a tool whose result holds outside text. `web_fetch` and `web_search` have it. It maps to the MCP annotation `openWorldHint`. `read` maps to `readOnlyHint: true`, and `db_write` to `readOnlyHint: false`. Verified (the spike type-checked `createTool({ mcp: { annotations } })`, and the server sent them on `tools/list`). The annotations are hints for clients. The toggles enforce.
 
-- `workflowTool({ id, version, toolset, effects, inner, workflow, deps })` in `src/tools/workflow-tool.ts` makes the wrapper. Its `execute` starts one run of the workflow. It returns only the parsed result, through the output schema of the wrapper. A suspended run returns `{ status: 'suspended', runId }`. A failed run returns `{ status: 'failed', runId, error }`, with the first 500 characters of the error.
+- `workflowTool({ id, version, toolset, effects, inner, workflow, deps })` in `src/tools/workflow-tool.ts` makes the wrapper. Its `execute` starts one run of the workflow. It returns only the parsed result, through the output schema of the wrapper. A stage wrapper returns structured status only, and a failed run gives an error code, not the error text (`tools.injection_scope`).
 
 - The first entries are `get_node_context` (toolset `graph`, `read`) and one wrapper for each stage workflow: `run_define_criteria`, `run_create_node`, `run_create_pack`, and `run_create_layout` (toolset `stages`, `paid` and `db_write`). `plan.research_tools` adds `search_records`, `web_fetch`, and `web_search`.
 
@@ -218,7 +218,7 @@ Mechanism:
 
   - An entry whose built tool has another id than the entry.
 
-  - A wrapper whose `openWorld` is not the OR of the `openWorld` of its `inner` tools (`tools.injection`).
+  - A wrapper with `openWorld: false` whose result schema has a free string, and a wrapper whose `inner` list holds a `db_write` tool (`tools.injection_scope`).
 
   - A version that is not a positive integer.
 
@@ -501,19 +501,13 @@ Tests: `budget_burn.parallel_calls_one_runs`, `budget_burn.paid_door_counts_call
 
 ## Prompt injection `tools.injection`
 
-Decision. `readSnapshot` refuses an `agent` or `mcp_client` snapshot that turns on an `openWorld` tool and a `db_write` tool together. A wrapper is `openWorld` when any of its inner tools is. The inner steps of a wrapper inherit the snapshot of the run, with its consumer, so the same mix rule applies to them. The caller sets the toggles, and the model never does.
+Decision. A model never holds a `db_write` tool while open-world text is in its context. `readSnapshot` refuses an `agent` or `mcp_client` snapshot that turns on an `openWorld` tool and a `db_write` tool together. The caller sets the toggles, and the model never does. `tools.injection_scope` gives the scope of the rule.
 
-Why:
-
-- Web text can tell the agent to call a write tool or a paid tool. A run that reads the web then needs no write tool.
-
-- A stage wrapper with `openWorld: false` hid the web research inside its workflow. The mix rule then let an agent hold it with `db_write`. Verified (ran `opus/probe-mix.ts`).
+Why. Web text can tell the agent to call a write tool or a paid tool. A model that reads the web then needs no write tool.
 
 Mechanism:
 
-- `assertRegistry` refuses a wrapper whose `openWorld` is not the OR of the `openWorld` of its `inner` tools.
-
-- A wrapper gives its workflow steps the snapshot of the run. It never makes a new snapshot with the consumer `step`.
+- `readSnapshot` refuses the direct mix in one snapshot of a model.
 
 - `lockedSdkOptions` checks the mix rule again (`tools.agent_run`).
 
@@ -521,9 +515,51 @@ Mechanism:
 
 - The system prompt of each agent says that tool results are data (`mastra.research_tools`).
 
-- A result of this rule, inferred: after `plan.research_tools`, a stage that reads the web is `openWorld` and `db_write`. So no agent can start it. An operator or a step starts it. Rohan can rule on a narrower rule.
+Tests: `injection.open_world_and_write_refused`, `injection.no_tool_changes_toggles`.
 
-Tests: `injection.open_world_and_write_refused`, `injection.wrapper_open_world_is_or`, `injection.inner_step_inherits_snapshot`, `injection.no_tool_changes_toggles`.
+### The scope of the rule `tools.injection_scope`
+
+Decision. The rule applies to what a model reads and what it can do. It does not apply to what code does after a judge. Three parts follow:
+
+- The `openWorld` flag of a wrapper, as its caller sees it, is true only when the result of the wrapper gives open-world text to the caller.
+
+- Inside a stage, the research step and the drafter get the open-world research tools and no `db_write` tool. Each of them gets an inner snapshot.
+
+- The stage writes to the database in code: the draft log, the verdict rows, and `assimilate` after the judge. No model tool call writes.
+
+This decision is Claude's for Rohan, of 2026-11-09. It supersedes the OR rule, which made each wrapper `openWorld` when any of its inner tools was.
+
+Why:
+
+- A stage wrapper with `openWorld: false` hid the web research inside its workflow, and the mix rule let an agent hold it with `db_write`. Verified (ran `opus/probe-mix.ts`).
+
+- The OR rule closed that gap, but it made each stage wrapper `openWorld` and `db_write` after `plan.research_tools`. So no agent could start a stage. Inferred.
+
+- The model that calls a stage wrapper sees only the result of the wrapper. If that result holds no outside text, the web text never reaches that model. Inferred.
+
+Mechanism:
+
+- A stage wrapper returns structured status only: ids, the outcome kind, the round, and counts. Its result schema has these branches:
+
+  - `{ status: 'ended', runId, end, round, outputId }`
+
+  - `{ status: 'suspended', runId, why, round, openCount }`
+
+  - `{ status: 'failed', runId, code }`, where `code` is an enum such as `rules_refused`, `models_unset`, `drafter_error`, `store_error`, or `unknown`
+
+- The full error of a failed stage stays in the Mastra run state and the log. It never enters the result.
+
+- Each id field has a `pattern`, such as `^[A-Za-z0-9_-]{1,64}$`. Each other string field is an enum.
+
+- `assertRegistry` refuses a wrapper with `openWorld: false` whose result schema has a free string. A free string is a string with no `enum`, no `const`, and no `pattern`.
+
+- `assertRegistry` refuses a wrapper whose `inner` list holds a `db_write` tool.
+
+- `innerSnapshot(run, wrapper)` makes the snapshot of the model steps of a stage. It holds the tools of `wrapper.inner` whose effects the run allows, with the consumer `agent`. `readSnapshot` rules apply to it, so a `db_write` tool in it is refused. The stage writes it to `harness.tool_runs` under the stage run id.
+
+- The direct mix in one snapshot of a model stays refused (`tools.injection`).
+
+Tests: `injection.stage_result_no_free_text`, `injection.stage_inner_snapshot_no_write`, `injection.inner_list_refuses_write`, `injection.stage_writes_in_code_only`.
 
 ## The run record `tools.run_record`
 
@@ -683,11 +719,11 @@ Each hazard has a mechanism and tests that fail when the mechanism breaks. The n
 | `context_leak`. Memory or settings reach the context of the model | `settingSources: []`, a new `cwd`, and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` (`tools.no_auto_memory`) | `context_leak.auto_memory_off` |
 | `secret_argv`. A secret shows in the argv of a process | `tools.secrets_off_argv` | `secret_argv.child_argv_has_no_secret`, `secret_argv.server_config_keys_only`, `secret_argv.server_keeps_named_keys_only` |
 | `budget_burn`. A run spends past its cap | `maxTurns` and `maxBudgetUsd` under ceilings, and the reservation of `PaidDoor` (`tools.budget`) | `budget_burn.options_carry_caps`, `budget_burn.cap_above_ceiling_refused`, `budget_burn.parallel_calls_one_runs`, `budget_burn.paid_door_counts_calls`, `budget_burn.failed_call_still_counts`, `budget_burn.second_stage_call_refused` |
-| `injection`. A tool result steers the agent, or the front door throws | `tools.injection` and `tools.front_door` | `injection.open_world_and_write_refused`, `injection.wrapper_open_world_is_or`, `injection.inner_step_inherits_snapshot`, `injection.no_tool_changes_toggles`, `injection.front_door_reply_parsed`, `injection.front_door_throw_maps`, `injection.front_door_schema_root_object`, `injection.front_door_allows_structured_output` |
+| `injection`. A model holds a `db_write` tool while open-world text is in its context, or the front door throws | `tools.injection`, `tools.injection_scope`, and `tools.front_door` | `injection.open_world_and_write_refused`, `injection.no_tool_changes_toggles`, `injection.stage_result_no_free_text`, `injection.stage_inner_snapshot_no_write`, `injection.inner_list_refuses_write`, `injection.stage_writes_in_code_only`, `injection.front_door_reply_parsed`, `injection.front_door_throw_maps`, `injection.front_door_schema_root_object`, `injection.front_door_allows_structured_output` |
 | `run_end_lost`. A run end, its cost, or its denials are lost | `tools.run_record`: the tap and the `finally` block | `run_end_lost.end_on_success`, `run_end_lost.end_on_budget_error`, `run_end_lost.end_on_throw`, `run_end_lost.migration_twice_same`, `run_end_lost.guard_passes` |
 | `protocol_mismatch`. A client cannot read the protocol of the server | An exact pin of `@mastra/mcp` 1.18.0. A test lists the tools with a client that asks for 2025-11-25, the version of the Cursor CLI. | `protocol_mismatch.cursor_version_lists`, `protocol_mismatch.exact_pin` |
 | `workflow_listed`. The server lists a workflow past its toggle | `buildToolServer` never passes `workflows`. A workflow enters only as a wrapper tool. | `workflow_listed.wrapper_only`, `workflow_listed.stages_off_none_listed` |
-| `trace_dump`. A step trace enters the context | The wrapper returns only the parsed result, a suspend, or a short error | `trace_dump.wrapper_returns_result_only`, `trace_dump.failed_run_short_error` |
+| `trace_dump`. A step trace enters the context | The wrapper returns only the parsed result: structured status, or an error code | `trace_dump.wrapper_returns_result_only`, `trace_dump.failed_run_short_error` |
 | `second_path`. An effect has a second path | `tools.one_path` | `second_path.handles_by_effect`, `second_path.one_entry_per_write`, `second_path.no_store_import_in_tools`, `second_path.no_generic_tool`, `second_path.wrapper_effects_declared`, `second_path.no_builtin_tools` |
 
 ### What each test asserts `tools.tests`
@@ -742,8 +778,10 @@ Each hazard has a mechanism and tests that fail when the mechanism breaks. The n
 | `budget_burn.failed_call_still_counts` | A call that throws gives its reservation back. |
 | `budget_burn.second_stage_call_refused` | A second call of a stage wrapper in one run starts a second stage run. |
 | `injection.open_world_and_write_refused` | An `agent` or `mcp_client` snapshot holds an `openWorld` tool and a `db_write` tool. |
-| `injection.wrapper_open_world_is_or` | `assertRegistry` accepts a wrapper with `openWorld: false` and an inner tool with `openWorld: true`. |
-| `injection.inner_step_inherits_snapshot` | A step inside a wrapper gets another snapshot or another consumer than the run. |
+| `injection.stage_result_no_free_text` | The JSON Schema of the result of a wrapper with `openWorld: false` has a string field with no `enum`, `const`, or `pattern`. |
+| `injection.stage_inner_snapshot_no_write` | The inner snapshot of a stage wrapper holds a `db_write` tool, for any toggles of the run. |
+| `injection.inner_list_refuses_write` | `assertRegistry` accepts a wrapper whose `inner` list holds a `db_write` tool. |
+| `injection.stage_writes_in_code_only` | A stage run with spy handles shows a write through a model tool call. Each write must come from the store calls of the stage code. |
 | `injection.no_tool_changes_toggles` | A tool can read or change the snapshot, or the snapshot is not frozen. |
 | `injection.front_door_reply_parsed` | A reply that fails `FrontDoorReply`, or a `done` with no tool, gives anything but `cannot_route` with `reply_unparsed`. |
 | `injection.front_door_throw_maps` | A run that throws, such as with `error_max_budget_usd`, makes `frontDoor` throw, or gives anything but `cannot_route` with `run_failed`. |
@@ -759,7 +797,7 @@ Each hazard has a mechanism and tests that fail when the mechanism breaks. The n
 | `workflow_listed.wrapper_only` | `buildToolServer` passes `workflows` or `agents` to `MCPServer`. |
 | `workflow_listed.stages_off_none_listed` | A client lists a `run_*` tool from a server whose snapshot has the toolset `stages` off. |
 | `trace_dump.wrapper_returns_result_only` | A wrapper result holds `steps`, `stepExecutionPath`, or a key that is not in its output schema. |
-| `trace_dump.failed_run_short_error` | A failed run gives an error longer than 500 characters, or a stack. |
+| `trace_dump.failed_run_short_error` | A failed run gives error text, a stack, or a `code` that is not in the enum. |
 | `second_path.handles_by_effect` | A `read` tool gets a handle with a write function or a paid door. |
 | `second_path.one_entry_per_write` | Two entries get one write function. |
 | `second_path.no_store_import_in_tools` | A file in `src/tools/` other than `handles.ts` imports the store, `pg`, `drizzle-orm`, or `@mastra/pg`. |
@@ -830,7 +868,7 @@ Two adversaries, Opus and Sonnet, interrogated this spec at `7a4ced0` on 2026-11
 | `stream` and `createStep` ran per-call `bypassPermissions` and Bash | `opus/probe-stream.ts`, `sonnet/p2.ts` | Reproduced | `tools.locked_agent` |
 | Auto memory loaded with `settingSources: []` | `opus/probe-cli.ts` (`run6`, `run61`) | Reproduced | `tools.no_auto_memory` |
 | The reply tool `StructuredOutput`, and a root `oneOf` | `opus/runs/run2` to `run4` | Reproduced | `tools.front_door` |
-| A wrapper hid the `openWorld` of its inner tools | `opus/probe-mix.ts` | Reproduced | `tools.injection` |
+| A wrapper hid the `openWorld` of its inner tools | `opus/probe-mix.ts` | Reproduced | `tools.injection_scope`. The first fix, the OR rule, stopped each agent from starting a stage. |
 | 4 parallel paid calls ran with a cap of 1 | `sonnet/p1.ts` (`MODE=slow`) | Reproduced | `tools.budget` |
 | The database password and an API key were in the process list | `sonnet/p4.ts` | Reproduced | `tools.secrets_off_argv` |
 | `z.record` refused partial toggles | `sonnet/p5.ts` | Reproduced | `tools.types` |
@@ -847,7 +885,7 @@ Two adversaries, Opus and Sonnet, interrogated this spec at `7a4ced0` on 2026-11
 
 - `plan.research_tools` lists `get_node_context`. This unit builds `get_node_context` over the store reads that exist. `plan.research_tools` adds the records to it, and its other three tools enter the registry.
 
-- The research put the check that refuses a mix of web and write tools in the risk table. This spec makes it a decision (`tools.injection`). With the OR rule for wrappers, no agent can start a stage that reads the web.
+- The research put the check that refuses a mix of web and write tools in the risk table. This spec makes it a decision (`tools.injection`), with the scope of `tools.injection_scope`.
 
 - No row of `decisions.tsv` conflicts with this spec, verified (read each row to 2026-11-08).
 
