@@ -82,7 +82,9 @@ Each term has one definition. Docs link here at the first use of a term.
 | Handle | What a tool gets to touch the world: the read calls of the store, one write door, or a paid door. A tool gets only the handles that its effects name. |
 | Paid door | The one handle of a paid outside service. It counts the calls of a run and refuses calls past the cap of the tool. |
 | Tool registry | The one list of the tools of the harness, in `src/tools/registry.ts`. Each tool has one entry, with a toolset, its effects, and an open-world flag. |
-| Tool snapshot | The toggles of one run, read once at the start, frozen, and hashed. Each consumer of the run reads the tools from it. |
+| Tool snapshot | The toggles of one run, read once at the start, frozen, and hashed with the consumer and the manifest of the tools that are on. Each consumer of the run reads the tools from it. |
+| Locked agent | The object that `lockedClaudeAgent` returns. It holds a `ClaudeSDKAgent` and its frozen options in private fields, and it has one method, `run`. No call can change its options. |
+| Manifest of a snapshot | The id, version, toolset, effects, and open-world flag of each tool that a tool snapshot turns on, sorted by id. |
 | Toggle | A switch that turns tools on or off for a run: a toolset switch, a tool switch, or the list of allowed effects. |
 | Toolset | A named group of tools in the tool registry, such as `graph`, `research`, or `stages`. A toolset switch turns on or off each tool of the group that has no tool switch. |
 | Wrapper tool | A tool of the tool registry that starts one run of a workflow and returns only its parsed result. A workflow reaches an agent only through a wrapper tool. |

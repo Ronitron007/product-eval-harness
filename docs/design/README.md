@@ -86,11 +86,14 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `tools.*` | The sections of the tool registry spec | [tool-registry.md](tool-registry.md) |
 | `tools_research` | The research and the spike behind the tool registry spec, with the paid probe | [../research/2026-11-09-tool-registry/README.md](../research/2026-11-09-tool-registry/README.md) |
 | `read`, `paid`, `db_write` | The three effects of a tool | `tools.registry` |
-| `ToolEntry`, `ToolSnapshot`, `Toggles`, `HandlesFor`, `PaidDoor`, `WriteDoor` | The registry entry, the snapshot of one run, the toggles, and the handles of a tool | `tools.types` |
-| `readSnapshot`, `resolveTools`, `resolveToolsets`, `allowedToolsFor`, `toolFor`, `ToolOff` | The calls that read the toggles and give each consumer its tools | `tools.toggles`, `tools.consumers` |
+| `ToolEntry`, `ToolSnapshot`, `ManifestRow`, `Toggles`, `HandlesFor`, `PaidDoor`, `WriteDoor` | The registry entry, the snapshot of one run, the toggles, and the handles of a tool | `tools.types` |
+| `readSnapshot`, `resolveTools`, `allowedToolsFor`, `toolFor`, `ToolOff` | The calls that read the toggles and give each consumer its tools | `tools.toggles`, `tools.consumers` |
 | `workflowTool`, `buildToolServer`, `harnessServerCommand` | The wrapper of a workflow, the MCP server, and the command that starts it | `tools.registry`, `tools.consumers` |
-| `claudeAgent`, `lockedSdkOptions` | The agent on `claude -p` and its locked SDK options | `tools.agent_run` |
-| `frontDoor`, `FrontDoorRequest`, `FrontDoorResult`, `MatchInput` | The front door, its request and result, and the open seam of the matcher | `tools.front_door` |
+| `lockedClaudeAgent`, `lockedSdkOptions`, `SealedClaudeSDKAgent`, `tapSpawn`, `RunOutcome` | The locked agent on `claude -p`, its options, its sealed inner agent, the tap on the CLI stream, and the result of `run` | `tools.agent_run`, `tools.locked_agent`, `tools.run_record` |
+| `routerAgent` | The wrapper of a Mastra agent on the model router | `tools.consumers` |
+| `agent`, `mcp_client`, `step` | The three consumers of a tool snapshot | `tools.consumers` |
+| `tools_interrogate` | The interrogate run of the tool registry spec, and its repros | [../research/2026-11-09-tool-registry/interrogate/README.md](../research/2026-11-09-tool-registry/interrogate/README.md) |
+| `frontDoor`, `FrontDoorRequest`, `FrontDoorReply`, `FrontDoorResult`, `MatchInput` | The front door, its request and result, and the open seam of the matcher | `tools.front_door` |
 | `harness.tool_runs`, `harness.tool_run_ends` | The snapshot of each run, and the end of each run | `tools.run_record` |
-| `model_call`, `toggle_flip`, `write_unallowed`, `toggle_bypass`, `mode_unset`, `budget_burn`, `injection`, `protocol_mismatch`, `workflow_listed`, `trace_dump`, `second_path` | The hazards of the tool registry. Each test name starts with one of them. `model_call` has the meaning of `judge.hazards`. | `tools.hazards` |
+| `model_call`, `toggle_flip`, `write_unallowed`, `toggle_bypass`, `mode_unset`, `context_leak`, `secret_argv`, `budget_burn`, `injection`, `run_end_lost`, `protocol_mismatch`, `workflow_listed`, `trace_dump`, `second_path` | The hazards of the tool registry. Each test name starts with one of them. `model_call` has the meaning of `judge.hazards`. | `tools.hazards` |
 | `plan.matcher`, `plan.product_acquisition` | The later units that match a product to a node and read the product data behind a URL | [../plans/2026-10-24-harness-plan.md](../plans/2026-10-24-harness-plan.md) |

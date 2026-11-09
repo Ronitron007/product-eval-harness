@@ -15,6 +15,7 @@ Status. Copied into the repo on 2026-11-09 from the session scratchpad, with per
 | `spike/workflow.ts` | A workflow step that calls a tool through `toolFor` |
 | `spike/client-check.ts` | The checks with no model call: lists, the flip over HTTP, the stale call, the workflow step |
 | `spike/package.json` | The packages of the spike. `npm install` resolves the versions above. |
+| `interrogate/` | The repros of the interrogate run of the spec, with their outputs ([interrogate/README.md](interrogate/README.md)) |
 | `fence-2.ndjson` | The stream of the paid probe, cut down. It has no uuids, no session ids, no message or request ids, no paths, no thinking text, and no rate-limit event. The tool use ids are `toolu_A` and `toolu_B`. |
 
 ## The CLI flags `tools_research.flags`
@@ -223,4 +224,4 @@ Other facts in the `init` event, verified (read `fence-2.ndjson`):
 
 - The CLI still loaded its built-in plugins, and it listed bundled skills and agents. With no built-in tools, the model has no Skill tool and no Agent tool to use them.
 
-- The `init` event named an auto-memory folder. The input of 3.3K tokens suggests that no memory text loaded. A guess: not checked.
+- The `init` event named an auto-memory folder. The first text guessed that no memory text loaded. The interrogate run showed that it did load, and that `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` stops it ([interrogate/README.md](interrogate/README.md)).
