@@ -7,7 +7,7 @@ import { createTool } from '@mastra/core/tools'
 import { agentEnv, BUDGET, markerCli, memoryRecorder, structuredReply, withResult } from '../agent/helpers'
 import { resetSdk, sdkState } from '../agent/sdk-mock'
 import { useDb } from '../stage/helpers'
-import { BASE_ENTRIES, FIXTURE, fixtureHandles, WITH_WRAPPER, webEntry, writeEntry } from './fixture'
+import { BASE_ENTRIES, runWrapper, FIXTURE, fixtureHandles, WITH_WRAPPER, webEntry, writeEntry } from './fixture'
 import { snapshotFor } from './helpers'
 import { spyDrafterOptions, stageTool, wrapStore, type StageSpy } from './stage-env'
 
@@ -111,7 +111,7 @@ describe('injection', () => {
     const spy: StageSpy = { writes: [], drafterTools: [] }
     const env = db.env({ drafter: spyDrafterOptions(spy), wrap: wrapStore(spy) })
     const { tool } = stageTool(env, spy)
-    const result = (await tool.execute!({ nodeId: 'sunscreen' }, {} as never)) as { status: string; runId: string }
+    const result = (await runWrapper(tool)) as { status: string; runId: string }
     expect(result).toMatchObject({ status: 'ended', end: 'accepted' })
     expect(spy.drafterTools).toEqual([[]]) // the drafter model holds no tool
     expect(spy.writes[0]).toBe('recordToolRun') // the inner snapshot, in code

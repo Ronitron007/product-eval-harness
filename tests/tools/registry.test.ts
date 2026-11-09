@@ -38,7 +38,7 @@ describe('registry', () => {
       for (const id of REGISTRY.ids.filter(i => i.startsWith('run_'))) {
         const r = await callText(server, id, { nodeId: 'skincare' })
         expect(r.isError, id).toBe(false)
-        const result = JSON.parse(r.text) as { status: string; runId: string; code: string }
+        const result = (JSON.parse(r.text) as { result: { status: string; runId: string; code: string } }).result
         expect(result, id).toEqual({ status: 'failed', runId: expect.stringMatching(/^[0-9a-f-]{36}$/), code: 'models_unset' })
         // The inner snapshot of the stage is in harness.tool_runs under the stage run id (tools.injection_scope).
         expect(await store.toolRunOf(result.runId), id).toMatchObject({ consumer: 'agent', manifest: [], allowedTools: [] })

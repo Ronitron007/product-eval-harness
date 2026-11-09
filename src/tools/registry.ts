@@ -128,10 +128,10 @@ export const REGISTRY: Registry = defineRegistry([
         },
       }),
   }),
-  workflowTool({ id: 'run_define_criteria', version: 2, description: `Runs the stage define_criteria at one domain node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
-  workflowTool({ id: 'run_create_node', version: 2, description: `Runs the stage create_node at one node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
-  workflowTool({ id: 'run_create_pack', version: 2, description: `Runs the stage create_pack at one leaf node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
-  workflowTool({ id: 'run_create_layout', version: 2, description: `Runs the stage create_layout at one leaf node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
+  workflowTool({ id: 'run_define_criteria', version: 3, description: `Runs the stage define_criteria at one domain node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
+  workflowTool({ id: 'run_create_node', version: 3, description: `Runs the stage create_node at one node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
+  workflowTool({ id: 'run_create_pack', version: 3, description: `Runs the stage create_pack at one leaf node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
+  workflowTool({ id: 'run_create_layout', version: 3, description: `Runs the stage create_layout at one leaf node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
 ])
 
 if (REGISTRY.ids.join(',') !== [...TOOL_IDS].sort().join(',')) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { assertStatusOnly, readSnapshot, REGISTRY, StageToolResult, toolFor } from '../../src/tools'
-import { fixtureHandles, ONLY_NODE } from './fixture'
+import { fixtureHandles, ONLY_NODE, runWrapper } from './fixture'
 import { callText, connectServer, envFileWith, snapshotFor } from './helpers'
 import { PROBE } from './probe'
 import { useDb } from '../stage/helpers'
@@ -62,7 +62,7 @@ describe('status_only', () => {
     }
     let result: { status: string; runId: string; outputId: string }
     try {
-      result = (await tool.execute!({ nodeId: 'sunscreen' }, {} as never)) as typeof result
+      result = (await runWrapper(tool)) as typeof result
     } finally {
       crypto.randomUUID = original
     }
@@ -82,7 +82,7 @@ describe('status_only', () => {
     for (const [thrown, code] of cases) {
       const handles = { ...fixtureHandles(), writes: { run_create_node: async () => Promise.reject(thrown) } }
       const tool = toolFor('run_create_node', readSnapshot({ HARNESS_TOOLS: ONLY_NODE }, { runId: crypto.randomUUID(), consumer: 'step' }), handles)
-      const r = (await tool.execute!({ nodeId: 'sunscreen' }, {} as never)) as Record<string, unknown>
+      const r = await runWrapper(tool)
       expect(r, code).toEqual({ status: 'failed', runId: expect.stringMatching(/^[0-9a-f-]{36}$/), code })
       expect(JSON.stringify(r)).not.toMatch(/Failed query|tool_runs|params|HARNESS_DATABASE_URL|IGNORE|WEB TEXT|postgresql/)
     }
@@ -93,7 +93,7 @@ describe('status_only', () => {
     try {
       const wrapper = await callText(server, 'run_create_node', { nodeId: 'sunscreen' })
       expect(wrapper.isError).toBe(false)
-      expect(JSON.parse(wrapper.text)).toEqual({ status: 'failed', runId: expect.any(String), code: 'store_error' })
+      expect(JSON.parse(wrapper.text)).toEqual({ result: { status: 'failed', runId: expect.any(String), code: 'store_error' } })
       const read = await callText(server, 'get_node_context', { nodeId: 'sunscreen' })
       expect(read.isError).toBe(true)
       expect(read.text).toMatch(/get_node_context failed \(store_error\)/)

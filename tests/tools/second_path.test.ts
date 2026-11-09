@@ -116,8 +116,8 @@ describe('second_path', () => {
       await original({ nodeId: 'sunscreen' }, {} as never)
       // A paid door is reserved inside execute. A second call is refused, so the door was used.
       if (entry.effects.includes('paid')) {
-        const again = (await original({ nodeId: 'sunscreen' }, {} as never)) as { code?: string }
-        if (again.code === 'max_calls') seen.add('paid')
+        const again = (await original({ nodeId: 'sunscreen' }, {} as never)) as { result?: { code?: string } }
+        if (again.result?.code === 'max_calls') seen.add('paid')
       }
       for (const effect of seen) expect(entry.effects, `${entry.id} shows ${effect}`).toContain(effect)
     }

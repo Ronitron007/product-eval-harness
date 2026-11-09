@@ -3,7 +3,7 @@ import { lockedClaudeAgent, lockedSdkOptions, MAX_BUDGET_USD_CEILING, MAX_TURNS_
 import { checkedSnapshot, createPaidDoor, readSnapshot, toolFor, type StageOutcome } from '../../src/tools'
 import { agentEnv, agentSnapshot, fenceMessages, markerCli, memoryRecorder, tmp } from '../agent/helpers'
 import { resetSdk, sdkState } from '../agent/sdk-mock'
-import { FIXTURE, fixtureHandles, ONLY_NODE, SUCCESS } from './fixture'
+import { FIXTURE, fixtureHandles, ONLY_NODE, runWrapper, SUCCESS } from './fixture'
 import { callText, connectFixture } from './helpers'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', async () => (await import('../agent/sdk-mock')).sdkModule())
@@ -60,13 +60,13 @@ describe('budget_burn', () => {
     const results = []
     for (const s of [snapshot, checkedSnapshot(JSON.parse(JSON.stringify(snapshot))), checkedSnapshot(snapshot)]) {
       const handles = { ...counting, store: fixtureHandles().store }
-      results.push(await toolFor('run_create_node', s, handles).execute!({ nodeId: 'sunscreen' }, {} as never))
+      results.push(await runWrapper(toolFor('run_create_node', s, handles)))
     }
     expect(runs).toBe(1)
     expect(results.map(r => (r as { code?: string }).code ?? (r as { status: string }).status)).toEqual(['ended', 'max_calls', 'max_calls'])
     // Another run id has its own count.
     const other = readSnapshot({ HARNESS_TOOLS: ONLY_NODE }, { runId: crypto.randomUUID(), consumer: 'step' })
-    expect(await toolFor('run_create_node', other, counting).execute!({ nodeId: 'sunscreen' }, {} as never)).toMatchObject({ status: 'ended' })
+    expect(await runWrapper(toolFor('run_create_node', other, counting))).toMatchObject({ status: 'ended' })
     expect(runs).toBe(2)
   })
 
@@ -83,7 +83,7 @@ describe('budget_burn', () => {
     const handles = { ...fixtureHandles(), writes: { run_create_node: write } }
     const snapshot = readSnapshot({ HARNESS_TOOLS: ONLY_NODE }, { runId: crypto.randomUUID(), consumer: 'step' })
     const tool = toolFor('run_create_node', snapshot, handles)
-    const [a, b] = await Promise.all([tool.execute!({ nodeId: 'sunscreen' }, {} as never), tool.execute!({ nodeId: 'sunscreen' }, {} as never)])
+    const [a, b] = await Promise.all([runWrapper(tool), runWrapper(tool)])
     expect(starts).toHaveLength(1)
     expect([a, b].map(r => (r as { status: string }).status).sort()).toEqual(['ended', 'failed'])
     expect([a, b].find(r => (r as { status: string }).status === 'failed')).toMatchObject({ code: 'max_calls' })

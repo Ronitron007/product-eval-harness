@@ -1,6 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
-import { defineEntry, defineRegistry, workflowTool, type HandleSet, type HandlesFor, type ReadStore, type StageOutcome, type ToolEntry } from '../../src/tools'
+import { defineEntry, defineRegistry, workflowTool, type AnyTool, type HandleSet, type HandlesFor, type ReadStore, type StageOutcome, type ToolEntry } from '../../src/tools'
 
 // A registry of test tools, with no store and no model. Each entry goes through defineRegistry, so
 // assertRegistry checks it as it checks the real registry. tests/tools/fixture-server.ts serves it.
@@ -108,3 +108,10 @@ export const SUCCESS: StageOutcome = { status: 'success', result: { runId: 'x', 
 
 // The toggles that turn on the one stage wrapper run_create_node, with its effects.
 export const ONLY_NODE = '{"toolsets":{"stages":false},"tools":{"run_create_node":true},"allowEffects":["read","paid","db_write"]}'
+
+// One call of a stage wrapper. Its output is { result }, and nothing else (StageToolOutput).
+export async function runWrapper(tool: AnyTool, input: unknown = { nodeId: 'sunscreen' }): Promise<Record<string, unknown>> {
+  const out = (await tool.execute!(input, {} as never)) as Record<string, unknown>
+  if (Object.keys(out).join(',') !== 'result') throw new Error(`A wrapper output has the keys ${Object.keys(out).join(',')}, not result.`)
+  return out.result as Record<string, unknown>
+}

@@ -16,6 +16,11 @@ export const StageToolResult = z.discriminatedUnion('status', [
   z.object({ status: z.enum(['failed']), runId: z.uuid(), code: z.enum(FAILURE_CODES) }).strict(),
 ])
 export type StageToolResult = z.infer<typeof StageToolResult>
+// The output of a stage wrapper: one object with the status in result. An MCP tool needs an output
+// schema with an object root. @mastra/mcp 1.18.0 wraps a root union as { result }, so the wrapper
+// gives that shape itself, and the structured content matches the listed schema (review of #35).
+export const StageToolOutput = z.object({ result: StageToolResult }).strict()
+export type StageToolOutput = z.infer<typeof StageToolOutput>
 export type FailureCode = (typeof FAILURE_CODES)[number]
 
 export const StageToolInput = z.object({ nodeId: NodeId }).strict()
@@ -164,24 +169,26 @@ export function workflowTool(spec: {
         id: spec.id,
         description: spec.description,
         inputSchema: StageToolInput,
-        outputSchema: StageToolResult,
+        outputSchema: StageToolOutput,
         mcp: { annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
         execute: async input => {
           const runId = crypto.randomUUID() // status_only.ids_from_code: the stage run id is this Mastra run id
           try {
             const outcome = await paid.call(spec.id, 0, () => write(runId, StageToolInput.parse(input)))
-            if ('refused' in outcome) return StageToolResult.parse({ status: 'failed', runId, code: 'max_calls' })
+            if ('refused' in outcome) return out({ status: 'failed', runId, code: 'max_calls' })
             if (outcome.status === 'failed') logToolFailure(spec.id, runId, outcome.error)
-            return StageToolResult.parse(stageResult(runId, outcome))
+            return out(stageResult(runId, outcome))
           } catch (error) {
             // A throw of the door, such as a store error before the stage starts, gives a code only.
             logToolFailure(spec.id, runId, error)
-            return StageToolResult.parse({ status: 'failed', runId, code: isStoreError(error) ? 'store_error' : 'unknown' })
+            return out({ status: 'failed', runId, code: isStoreError(error) ? 'store_error' : 'unknown' })
           }
         },
       })
     },
   })
 }
+
+const out = (result: StageToolResult): StageToolOutput => StageToolOutput.parse({ result })
 
 export const stageOf = (id: StageToolId) => STAGE_TOOLS[id]
