@@ -14,6 +14,7 @@ Status. Design of 2026-10-24. The code implements the units from `plan.scaffold`
 | [compiler.md](compiler.md) | `compile` | The rule compiler of `plan.compiler`. Spec of 2026-11-02, shipped 2026-11-04 in [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). |
 | [judge-step.md](judge-step.md) | `judge` | The judge step of `plan.judge_step`: the order, the binding table, the outcome, and the quote check. Shipped 2026-11-08 in [Ronitron007/product-eval-harness#26](https://github.com/Ronitron007/product-eval-harness/pull/26). |
 | [stage-workflow.md](stage-workflow.md) | `stage` | The stage workflow of `plan.stage_workflow`: the steps, the repair loop, the person step, the draft log, the run end, and the hazards. Spec of 2026-11-08, shipped on 2026-11-08 in [#29](https://github.com/Ronitron007/product-eval-harness/pull/29). |
+| [tool-registry.md](tool-registry.md) | `tools` | The tool registry, the toggles, the tool server, the agent run on `claude -p`, and the front door of `plan.tool_server`. Spec of 2026-11-09, not built. |
 
 ## Name map `harness.names`
 
@@ -82,3 +83,14 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `stage_interrogate` | The interrogate run of the stage workflow spec, and its repros | [../research/2026-11-08-stage-interrogate/README.md](../research/2026-11-08-stage-interrogate/README.md) |
 | `accepted`, `person_accepted`, `person_rejected` | The three run ends | `stage.types` |
 | `flow`, `lost_draft`, `lost_accept`, `double_write`, `late_row`, `stuck_claim`, `busy_loser`, `rule_drift`, `budget_overrun`, `reject_writes`, `watch_block`, `model_call`, `empty_payload`, `wrong_level`, `broken_accept`, `extra_key`, `self_judge`, `no_round` | The hazards of the stage workflow. Each test name starts with one of them. `model_call` has the meaning of `judge.hazards`. | `stage.hazards` |
+| `tools.*` | The sections of the tool registry spec | [tool-registry.md](tool-registry.md) |
+| `tools_research` | The research and the spike behind the tool registry spec, with the paid probe | [../research/2026-11-09-tool-registry/README.md](../research/2026-11-09-tool-registry/README.md) |
+| `read`, `paid`, `db_write` | The three effects of a tool | `tools.registry` |
+| `ToolEntry`, `ToolSnapshot`, `Toggles`, `HandlesFor`, `PaidDoor`, `WriteDoor` | The registry entry, the snapshot of one run, the toggles, and the handles of a tool | `tools.types` |
+| `readSnapshot`, `resolveTools`, `resolveToolsets`, `allowedToolsFor`, `toolFor`, `ToolOff` | The calls that read the toggles and give each consumer its tools | `tools.toggles`, `tools.consumers` |
+| `workflowTool`, `buildToolServer`, `harnessServerCommand` | The wrapper of a workflow, the MCP server, and the command that starts it | `tools.registry`, `tools.consumers` |
+| `claudeAgent`, `lockedSdkOptions` | The agent on `claude -p` and its locked SDK options | `tools.agent_run` |
+| `frontDoor`, `FrontDoorRequest`, `FrontDoorResult`, `MatchInput` | The front door, its request and result, and the open seam of the matcher | `tools.front_door` |
+| `harness.tool_runs`, `harness.tool_run_ends` | The snapshot of each run, and the end of each run | `tools.run_record` |
+| `model_call`, `toggle_flip`, `write_unallowed`, `toggle_bypass`, `mode_unset`, `budget_burn`, `injection`, `protocol_mismatch`, `workflow_listed`, `trace_dump`, `second_path` | The hazards of the tool registry. Each test name starts with one of them. `model_call` has the meaning of `judge.hazards`. | `tools.hazards` |
+| `plan.matcher`, `plan.product_acquisition` | The later units that match a product to a node and read the product data behind a URL | [../plans/2026-10-24-harness-plan.md](../plans/2026-10-24-harness-plan.md) |

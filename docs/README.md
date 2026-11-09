@@ -36,6 +36,7 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [design/compiler.md](design/compiler.md) | `compile`: the rule compiler of `plan.compiler`. Shipped 2026-11-04 in [Ronitron007/product-eval-harness#19](https://github.com/Ronitron007/product-eval-harness/pull/19). |
 | [design/judge-step.md](design/judge-step.md) | `judge`: the judge step of `plan.judge_step`. Shipped 2026-11-08 in [Ronitron007/product-eval-harness#26](https://github.com/Ronitron007/product-eval-harness/pull/26). |
 | [design/stage-workflow.md](design/stage-workflow.md) | `stage`: the stage workflow of `plan.stage_workflow`. Spec of 2026-11-08, shipped on 2026-11-08 in [#29](https://github.com/Ronitron007/product-eval-harness/pull/29). |
+| [design/tool-registry.md](design/tool-registry.md) | `tools`: the tool registry, the toggles, the tool server, the agent run, and the front door of `plan.tool_server`. Spec of 2026-11-09, not built. |
 | [design/formal-checks.md](design/formal-checks.md) | `formal`: the TLA+ models, the migration sweep, and the replays that check the code |
 
 ## Plan `docs.plan`
@@ -65,3 +66,4 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [research/2026-11-08-stage-workflow-probes/README.md](research/2026-11-08-stage-workflow-probes/README.md) | The Mastra probes behind the stage workflow spec: the sketch type check, and the suspend, resume, and loop facts |
 | [research/2026-11-08-stage-interrogate/README.md](research/2026-11-08-stage-interrogate/README.md) | The interrogate run of the stage workflow spec: the repros of two adversaries, and which ones reproduced |
 | [research/2026-11-09-research-and-records-study/README.md](research/2026-11-09-research-and-records-study/README.md) | The study before the researcher and record modules: RealDose today, research agents, record models, knowledge stores, and product models |
+| [research/2026-11-09-tool-registry/README.md](research/2026-11-09-tool-registry/README.md) | How `claude -p` reaches tools, the CLI flags, the MCP server filters, the toggle spike, and the paid fence probe |
