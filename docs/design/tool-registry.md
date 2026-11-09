@@ -944,3 +944,57 @@ Two adversaries, Opus and Sonnet, interrogated this spec at `7a4ced0` on 2026-11
 - The ceilings, 12 turns and 0.50 USD, are a guess. Rohan sets them.
 
 - Nobody ran the SQL of `0005_tool_runs.sql` yet. Its live apply needs Rohan's yes.
+
+## Reconciliation `tools.reconciliation`
+
+Status. Written on 2026-11-09 by the implementer of `plan.tool_server`, on the branch `rohan/tools`. Each item names a place where the code differs from the text above, or a fact that the code verified. Rohan reviews each item. No item changes a decision of `docs/decisions.tsv`.
+
+### Differences from the spec `tools.reconciliation.changes`
+
+- `workflowTool` takes no `workflow` and no `deps`. A wrapper starts its stage through its write door, the type `StageWrite`. `stageWriteDoors` in `src/tools/handles.ts` makes the four doors from a Mastra instance. So the registry needs no database at import, as `stage.registry_no_db` asks. Each door is one write function for one entry.
+
+- `createPaidDoor` is in `src/tools/resolve.ts`, not in `src/tools/handles.ts`. `resolveTools` makes one door for each paid tool that is on. A cache keyed on the snapshot and the handle set keeps one door for each run. So a second call of `toolFor` does not reset the count.
+
+- `frontDoor(agent, request, snapshot)` takes the snapshot of the run as a third argument. The front door needs it to give `tool_off`, because the locked object has no field other than `run`.
+
+- A request that fails `FrontDoorRequest` gives `cannot_route` with `run_failed`. The front door then calls no model.
+
+- `lockedClaudeAgent` makes one run. Its `run()` writes the `tool_runs` row itself, with its `allowedTools`, before the CLI starts. The caller does not call `recordToolRun` for an agent run. A second call of `run()` gives `failed`. The run removes its empty folder after the run.
+
+- The input of `lockedClaudeAgent` has an optional `env`, with the default `process.env`. The code reads only `CLAUDE_CLI_PATH`, `PATH`, `HOME`, and `HARNESS_ENV_FILE` from it. The options set no `model`, as the table of `tools.agent_run` says. So the CLI uses its default model.
+
+- A run with a schema passes `errorStrategy: 'warn'` to `structuredOutput`. A reply that fails the schema then reaches `frontDoor` as `reply_unparsed`, not as a throw.
+
+- The failure codes of a stage wrapper are `rules_refused`, `models_unset`, `research_error`, `drafter_error`, `judge_error`, `store_error`, `busy`, `max_calls`, and `unknown`. The code `busy` maps the result `StageBusy`. The code `max_calls` is a paid call that the door refused. Its `runId` names no Mastra run.
+
+- The tool server keeps `MASTRA_TELEMETRY_DISABLED` after the prune, together with `PATH` and the named keys. The variable holds no secret.
+
+- The `env` list of each stage wrapper holds `HARNESS_DATABASE_URL`, `HARNESS_DRAFTER_MODEL`, `HARNESS_JUDGE_MODEL`, and the key name of each provider of the Mastra model router. In `@mastra/core` 1.79.0 that list has 203 names. So a server with the toolset `stages` on keeps each provider key of the env file.
+
+- A server with no `HARNESS_TOOL_SNAPSHOT` serves an outside MCP client, such as the Cursor CLI. It makes a snapshot from `HARNESS_TOOLS`, with the consumer `mcp_client` and a new run id. It writes no `tool_runs` row.
+
+- Each stage wrapper has the inner list `[]` today, because the research tools come with `plan.research_tools`. The write door writes the inner snapshot to `harness.tool_runs` under the stage run id before the stage starts. The stage does not read the inner snapshot yet.
+
+- The fingerprint of an entry is the sha256 of its call in `src/tools/registry.ts`, with no types and no comments. A wrapper adds `src/tools/workflow-tool.ts`. `npm run tools:lock` runs `scripts/tools-lock.ts`, which adds a new version and refuses a moved fingerprint.
+
+- `assertStatusOnly` also refuses a strip object, a union with no discriminator, an overwrite check, and a `z.uuid()` with its own pattern. The verify of this unit found that `z.uuid({ pattern })` accepts free text.
+
+- The test `mode_unset.raw_agent_not_exported` reads `src/` and `scripts/`. The tests import `ClaudeSDKAgent`, to reach the inner agent through a spy.
+
+- The unit adds the tests `registry.calls_each_tool`, `second_path.web_fetch_blocks_loopback`, and a second `toggle_bypass.stale_call_unknown` for `opus/probe-surface.ts`.
+
+- The unit adds `@modelcontextprotocol/sdk` 1.32.2 as a dev dependency, for the client of `protocol_mismatch.cursor_version_lists`. It pins `@anthropic-ai/claude-agent-sdk` 0.3.319, the peer of `@mastra/claude`. `vitest.config.ts` inlines `@mastra/claude`, so that `vi.mock` reaches its call of `query`.
+
+### Guesses that the unit checked `tools.reconciliation.verified`
+
+- The tap of `tools.run_record` works. The real Agent SDK 0.3.319 ran against a fake CLI that replays `fence-2.ndjson`, and the row held the cost, 3 turns, and 1 denial. Verified (ran `run_end_lost.end_on_success`).
+
+- The real SDK takes the deep-frozen options. Verified (ran `run_end_lost.*` and `secret_argv.child_argv_has_no_secret`). `ClaudeSDKAgent` copies its options into a new object for each call. Verified (read `runClaude` in `@mastra/claude/dist/index.js`).
+
+- `z.discriminatedUnion` of zod 4.6.7 takes a one-value `z.enum` as the discriminator. Verified (ran `status_only.stage_schemas_pass`).
+
+- `process.loadEnvFile` exists in Node 22. Verified (ran `secret_argv.server_keeps_named_keys_only`).
+
+- The Mastra `web_fetch` tool refuses 11 loopback forms before any call of `fetch`. Verified (ran `second_path.web_fetch_blocks_loopback`). The two forms that need a DNS lookup are not in the test.
+
+- The guard of `0005_tool_runs.sql` passes on a clean database, and the migration sweep of `formal/` passes with 0005. Verified (ran `run_end_lost.guard_passes` and `npm run formal`). Nobody applied 0005 to a live database.
