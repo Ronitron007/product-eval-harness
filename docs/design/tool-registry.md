@@ -969,6 +969,8 @@ Status. Written on 2026-11-09 by the implementer of `plan.tool_server`, on the b
 
 - A wrapper catches each throw of its write door. The result is then `failed` with `store_error` or `unknown`. `get_node_context` gives a fixed error text. The detail goes to stderr of the process, never into a tool result. The test is `status_only.door_throw_gives_code`.
 
+- The output of a stage wrapper is `{ result }`, where `result` is one branch of `StageToolResult` (`StageToolOutput`). An MCP output schema needs an object root. `@mastra/mcp` 1.18.0 lists a root union as `{ result: oneOf }`, and the client of `@modelcontextprotocol/sdk` 1.32.2 refused a result with no wrapper (`-32602`). The test is `protocol_mismatch.stage_results_pass_output_schema`.
+
 - The failure codes of a stage wrapper are `rules_refused`, `models_unset`, `research_error`, `drafter_error`, `judge_error`, `store_error`, `busy`, `max_calls`, and `unknown`. The code `busy` maps the result `StageBusy`. The code `max_calls` is a paid call that the door refused. Its `runId` names no Mastra run.
 
 - The tool server keeps `MASTRA_TELEMETRY_DISABLED` after the prune, together with `PATH` and the named keys. The variable holds no secret.
