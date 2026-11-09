@@ -93,8 +93,9 @@ Each name has one meaning. Add each new name here (`rules.naming`).
 | `routerAgent` | The wrapper of a Mastra agent on the model router | `tools.consumers` |
 | `agent`, `mcp_client`, `step` | The three consumers of a tool snapshot | `tools.consumers` |
 | `innerSnapshot` | The snapshot of the model steps inside a stage wrapper: the research tools, and no `db_write` tool | `tools.injection_scope` |
+| `assertStatusOnly`, `status_only` | The check that a wrapper result holds status only, and its hazard | `tools.status_only` |
 | `tools_interrogate` | The interrogate run of the tool registry spec, and its repros | [../research/2026-11-09-tool-registry/interrogate/README.md](../research/2026-11-09-tool-registry/interrogate/README.md) |
 | `frontDoor`, `FrontDoorRequest`, `FrontDoorReply`, `FrontDoorResult`, `MatchInput` | The front door, its request and result, and the open seam of the matcher | `tools.front_door` |
 | `harness.tool_runs`, `harness.tool_run_ends` | The snapshot of each run, and the end of each run | `tools.run_record` |
-| `model_call`, `toggle_flip`, `write_unallowed`, `toggle_bypass`, `mode_unset`, `context_leak`, `secret_argv`, `budget_burn`, `injection`, `run_end_lost`, `protocol_mismatch`, `workflow_listed`, `trace_dump`, `second_path` | The hazards of the tool registry. Each test name starts with one of them. `model_call` has the meaning of `judge.hazards`. | `tools.hazards` |
+| `model_call`, `toggle_flip`, `write_unallowed`, `toggle_bypass`, `mode_unset`, `context_leak`, `secret_argv`, `budget_burn`, `injection`, `run_end_lost`, `status_only`, `protocol_mismatch`, `workflow_listed`, `trace_dump`, `second_path` | The hazards of the tool registry. Each test name starts with one of them. `model_call` has the meaning of `judge.hazards`. | `tools.hazards` |
 | `plan.matcher`, `plan.product_acquisition` | The later units that match a product to a node and read the product data behind a URL | [../plans/2026-10-24-harness-plan.md](../plans/2026-10-24-harness-plan.md) |

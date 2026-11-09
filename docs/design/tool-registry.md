@@ -549,9 +549,7 @@ Mechanism:
 
 - The full error of a failed stage stays in the Mastra run state and the log. It never enters the result.
 
-- Each id field has a `pattern`, such as `^[A-Za-z0-9_-]{1,64}$`. Each other string field is an enum.
-
-- `assertRegistry` refuses a wrapper with `openWorld: false` whose result schema has a free string. A free string is a string with no `enum`, no `const`, and no `pattern`.
+- The result schema holds only the types of `tools.status_only`. `assertRegistry` refuses each other type.
 
 - `assertRegistry` refuses a wrapper whose `inner` list holds a `db_write` tool.
 
@@ -560,6 +558,32 @@ Mechanism:
 - The direct mix in one snapshot of a model stays refused (`tools.injection`).
 
 Tests: `injection.stage_result_no_free_text`, `injection.stage_inner_snapshot_no_write`, `injection.inner_list_refuses_write`, `injection.stage_writes_in_code_only`.
+
+### Status only `tools.status_only`
+
+Decision. The result schema of a wrapper with `openWorld: false` holds only `z.enum`, `z.number`, `z.boolean`, `z.uuid`, and objects or arrays of those. Each id is a UUID that code makes, never a value from a model. This decision is Claude's for Rohan, of 2026-11-09. It replaces the free-string check of `tools.injection_scope`.
+
+Why. The free-string check accepted a field of type `z.unknown()`, and a field `z.string().regex(/^[\s\S]*$/)`. The id pattern `^[A-Za-z0-9_-]{1,64}$` let a 63-character instruction through. Verified by the verify run of `3102407`.
+
+Mechanism:
+
+- `assertStatusOnly(schema)` in `src/tools/workflow-tool.ts` walks the Zod schema. It accepts `ZodEnum`, `ZodNumber`, `ZodBoolean`, the UUID format of Zod (`z.uuid()`), `ZodObject` (strict), `ZodArray`, `ZodDiscriminatedUnion` of objects, `ZodNullable`, and `ZodOptional` of those.
+
+- The discriminator `status` of each branch is a one-value `z.enum`, such as `z.enum(['ended'])`, not a `z.literal`. Inferred: `z.discriminatedUnion` of zod 4.6.7 takes an enum discriminator. The unit checks it first.
+
+- It refuses each other type. Examples are `z.string` with or without a regex, `z.literal` of a string, `z.unknown`, `z.any`, `z.record`, `z.map`, `z.tuple` with a rest, a passthrough object, `z.lazy`, `z.transform`, and `z.custom`.
+
+- `assertRegistry` calls `assertStatusOnly` on each wrapper with `openWorld: false`.
+
+- The ids of a stage wrapper come from code only:
+
+  - `runId`. The wrapper makes it with `crypto.randomUUID()` and passes it to `createRun({ runId })`. The stage run id is that Mastra run id (`stage.usage`).
+
+  - `outputId`. It is `harness.outputs.id`, a `uuid` column with the default `gen_random_uuid()`. Verified (read `0001_harness_tables.sql`).
+
+- The other fields are enums (`status`, `end`, `why`, `code`) or numbers (`round`, `openCount`).
+
+Tests: `status_only.bypasses_refused`, `status_only.stage_schemas_pass`, `status_only.ids_from_code`.
 
 ## The run record `tools.run_record`
 
@@ -724,6 +748,7 @@ Each hazard has a mechanism and tests that fail when the mechanism breaks. The n
 | `protocol_mismatch`. A client cannot read the protocol of the server | An exact pin of `@mastra/mcp` 1.18.0. A test lists the tools with a client that asks for 2025-11-25, the version of the Cursor CLI. | `protocol_mismatch.cursor_version_lists`, `protocol_mismatch.exact_pin` |
 | `workflow_listed`. The server lists a workflow past its toggle | `buildToolServer` never passes `workflows`. A workflow enters only as a wrapper tool. | `workflow_listed.wrapper_only`, `workflow_listed.stages_off_none_listed` |
 | `trace_dump`. A step trace enters the context | The wrapper returns only the parsed result: structured status, or an error code | `trace_dump.wrapper_returns_result_only`, `trace_dump.failed_run_short_error` |
+| `status_only`. A wrapper result carries free text to the caller | `tools.status_only` | `status_only.bypasses_refused`, `status_only.stage_schemas_pass`, `status_only.ids_from_code` |
 | `second_path`. An effect has a second path | `tools.one_path` | `second_path.handles_by_effect`, `second_path.one_entry_per_write`, `second_path.no_store_import_in_tools`, `second_path.no_generic_tool`, `second_path.wrapper_effects_declared`, `second_path.no_builtin_tools` |
 
 ### What each test asserts `tools.tests`
@@ -778,7 +803,10 @@ Each hazard has a mechanism and tests that fail when the mechanism breaks. The n
 | `budget_burn.failed_call_still_counts` | A call that throws gives its reservation back. |
 | `budget_burn.second_stage_call_refused` | A second call of a stage wrapper in one run starts a second stage run. |
 | `injection.open_world_and_write_refused` | An `agent` or `mcp_client` snapshot holds an `openWorld` tool and a `db_write` tool. |
-| `injection.stage_result_no_free_text` | The JSON Schema of the result of a wrapper with `openWorld: false` has a string field with no `enum`, `const`, or `pattern`. |
+| `injection.stage_result_no_free_text` | `assertRegistry` accepts a wrapper with `openWorld: false` whose result schema fails `assertStatusOnly`. |
+| `status_only.bypasses_refused` | `assertStatusOnly` accepts any of these fields: `z.unknown()`, `z.any()`, `z.string()`, `z.string().regex(/^[\s\S]*$/)`, a string id pattern that fits a 63-character text, `z.literal('x')`, `z.record(z.string(), z.string())`, a passthrough object, `z.lazy`, or a transform. |
+| `status_only.stage_schemas_pass` | `assertStatusOnly` refuses the result schema of one of the four stage wrappers. |
+| `status_only.ids_from_code` | A stage wrapper run gives a `runId` that is not the UUID that the wrapper made, or an `outputId` that is not the id of the `harness.outputs` row. |
 | `injection.stage_inner_snapshot_no_write` | The inner snapshot of a stage wrapper holds a `db_write` tool, for any toggles of the run. |
 | `injection.inner_list_refuses_write` | `assertRegistry` accepts a wrapper whose `inner` list holds a `db_write` tool. |
 | `injection.stage_writes_in_code_only` | A stage run with spy handles shows a write through a model tool call. Each write must come from the store calls of the stage code. |
