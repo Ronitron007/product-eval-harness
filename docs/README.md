@@ -64,3 +64,4 @@ The board [canvas/harness.canvas](canvas/harness.canvas) shows the parts and lin
 | [research/2026-11-02-compiler-architect/README.md](research/2026-11-02-compiler-architect/README.md) | The architect run behind the compiler spec: two designs, their probes, and the synthesis |
 | [research/2026-11-08-stage-workflow-probes/README.md](research/2026-11-08-stage-workflow-probes/README.md) | The Mastra probes behind the stage workflow spec: the sketch type check, and the suspend, resume, and loop facts |
 | [research/2026-11-08-stage-interrogate/README.md](research/2026-11-08-stage-interrogate/README.md) | The interrogate run of the stage workflow spec: the repros of two adversaries, and which ones reproduced |
+| [research/2026-11-09-research-and-records-study/README.md](research/2026-11-09-research-and-records-study/README.md) | The study before the researcher and record modules: RealDose today, research agents, record models, knowledge stores, and product models |
