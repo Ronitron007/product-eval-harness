@@ -63,7 +63,7 @@ This unit builds the tables that every stage needs. The tables of the stage outp
 
 ## The tables of the stage workflow `store.stage_tables`
 
-`plan.stage_workflow` added `db/migrations/0004_stage_runs.sql` in [#29](https://github.com/Ronitron007/product-eval-harness/pull/29). Nobody applied the migration to the live database yet (NOT live). Its live apply needs Rohan's yes (`rules.gates`). The migration runs in one transaction. It stops when `harness.verdicts` or `harness.outputs` has rows before it adds their `round` column. The spec is `stage.store` in [stage-workflow.md](stage-workflow.md).
+`plan.stage_workflow` added `db/migrations/0004_stage_runs.sql` in [#29](https://github.com/Ronitron007/product-eval-harness/pull/29). Rohan applied it to the live Kyaloon database on 2026-11-09 through RealDose [#474](https://github.com/Ronitron007/RealDose/pull/474), as migration `20261108180447_harness_stage_runs`. A read-only check after the push found these facts: the 5 new tables exist, all 50 tables in `harness` and `mastra` have RLS, and PUBLIC, `anon`, `authenticated` and `chat_catalog_read` hold no right. The migration runs in one transaction. It stops when `harness.verdicts` or `harness.outputs` has rows before it adds their `round` column. The spec is `stage.store` in [stage-workflow.md](stage-workflow.md).
 
 | Table | Holds | Key columns |
 |---|---|---|
