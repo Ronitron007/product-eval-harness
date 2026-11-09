@@ -9,7 +9,7 @@ import { graphTables } from '../../src/store/schema'
 import { applyMigrations, freshDatabase, migrationFiles, pgDump, supabaseRoles, withUser, type TestDatabase } from '../db'
 
 // The database types that information_schema gives for the Drizzle column types.
-const UDT: Record<string, string> = { text: 'text', uuid: 'uuid', jsonb: 'jsonb', integer: 'int4', 'timestamp with time zone': 'timestamptz', ltree: 'ltree' }
+const UDT: Record<string, string> = { text: 'text', 'text[]': '_text', uuid: 'uuid', jsonb: 'jsonb', integer: 'int4', numeric: 'numeric', 'timestamp with time zone': 'timestamptz', ltree: 'ltree' }
 
 async function columns(pool: pg.Pool, schema: string) {
   const { rows } = await pool.query(
@@ -38,7 +38,7 @@ afterAll(async () => {
 
 describe('db/migrations', () => {
   it('has the files in their order', () => {
-    expect(migrationFiles()).toEqual(['0001_harness_tables.sql', '0002_mastra_schema.sql', '0003_harness_role.sql', '0004_stage_runs.sql'])
+    expect(migrationFiles()).toEqual(['0001_harness_tables.sql', '0002_mastra_schema.sql', '0003_harness_role.sql', '0004_stage_runs.sql', '0005_tool_runs.sql'])
   })
 
   it('makes the tables of src/store/schema.ts, column for column', async () => {
@@ -93,7 +93,7 @@ describe('the RealDose migration rules', () => {
         where n.nspname in ('harness', 'mastra') and c.relkind in ('r', 'p') group by n.nspname order by 1`,
     )
     expect(rows).toEqual([
-      { schema: 'harness', tables: 11, rls: 11, with_policy: 11 },
+      { schema: 'harness', tables: 13, rls: 13, with_policy: 13 },
       { schema: 'mastra', tables: 39, rls: 39, with_policy: 39 },
     ])
   })

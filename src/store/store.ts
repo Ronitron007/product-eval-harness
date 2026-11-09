@@ -4,7 +4,7 @@ import type pg from 'pg'
 import { z } from 'zod'
 import { ruleHash } from '../rules/hash'
 import { Binding, NodeId, NodeLevel, OWNER_ALL, RuleId, RuleRecord, Stage, Verdict } from '../rules/schema'
-import { derivedRules, drafts, nodes, outputs, records, stageRuns, verdicts } from './schema'
+import { derivedRules, drafts, nodes, outputs, records, stageRuns, toolRuns, verdicts } from './schema'
 
 // The graph store (docs/design/graph-store.md). The ltree type and operators live in
 // schema extensions (db/migrations/0001_harness_tables.sql), so the queries name that schema
@@ -92,6 +92,57 @@ export interface RunEndRow {
   outputId: string | null
 }
 
+// The run record of the tool registry (tools.run_record in docs/design/tool-registry.md). The
+// snapshot is a ToolSnapshot of src/tools/types.ts. The store reads it by its shape only.
+const ToolRunInputSchema = z
+  .object({
+    runId: Text,
+    snapshot: z
+      .object({
+        runId: Text,
+        consumer: z.enum(['agent', 'mcp_client', 'step']),
+        toggles: z.custom<object>(v => typeof v === 'object' && v !== null && !Array.isArray(v), 'Give the toggles as an object.'),
+        manifest: z.array(z.unknown()),
+        hash: Sha256,
+      })
+      .strict(),
+    allowedTools: z.array(Text).optional(), // the allowedTools of a claude -p run. Default: none.
+  })
+  .strict()
+  .refine(r => r.snapshot.runId === r.runId, 'The snapshot is for another run.')
+export const ToolRunEndInput = z
+  .object({
+    runId: Text,
+    subtype: z.string().nullable(),
+    costUsd: z.number().min(0).nullable(),
+    numTurns: z.number().int().min(0).nullable(),
+    terminalReason: z.string().nullable(),
+    denials: z.array(z.unknown()),
+  })
+  .strict()
+export interface ToolRunInput {
+  readonly runId: string
+  readonly snapshot: {
+    readonly runId: string
+    readonly consumer: 'agent' | 'mcp_client' | 'step'
+    readonly toggles: object
+    readonly manifest: readonly unknown[]
+    readonly hash: string
+  }
+  readonly allowedTools?: readonly string[]
+}
+export type ToolRunEndInput = z.infer<typeof ToolRunEndInput>
+export interface ToolRunRow {
+  runId: string
+  consumer: 'agent' | 'mcp_client' | 'step'
+  toggles: unknown
+  manifest: unknown[]
+  snapshotHash: string
+  allowedTools: string[]
+  startedAt: Date
+  end: (Omit<ToolRunEndInput, 'runId'> & { endedAt: Date }) | null
+}
+
 export type GraphNode = typeof nodes.$inferSelect
 export type StageRun = typeof stageRuns.$inferSelect
 export type Output = typeof outputs.$inferSelect
@@ -132,6 +183,12 @@ export interface GraphStore {
   // stage.end_once: one transaction, the run_ends row, then the output for an accepting end.
   // An equal end that is stored already gives the stored end. Another end throws.
   endRun(input: RunEndInput): Promise<RunEndRow>
+  // tools.run_record: one row for each run, before its first tool call. An equal row again is a
+  // no-op. A row with another consumer, hash, or allowed tools throws.
+  recordToolRun(input: ToolRunInput): Promise<void>
+  // tools.run_record: one end for each run. An equal end again is a no-op. Another end throws.
+  endToolRun(input: ToolRunEndInput): Promise<void>
+  toolRunOf(runId: string): Promise<ToolRunRow | undefined>
 }
 
 // The SQLSTATE of a unique or primary key violation.
@@ -167,6 +224,30 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
     const [node] = await db.select().from(nodes).where(eq(nodes.id, NodeId.parse(nodeId)))
     if (!node) throw new Error(`No node ${nodeId} in harness.nodes. Add it with addNode() first.`)
     return node
+  }
+
+  async function toolRunOf(runId: string): Promise<ToolRunRow | undefined> {
+    const { rows } = await pool.query(
+      `select r.run_id, r.consumer, r.toggles, r.manifest, r.snapshot_hash, r.allowed_tools, r.started_at,
+              e.run_id as end_run, e.subtype, e.cost_usd, e.num_turns, e.terminal_reason, e.denials, e.ended_at
+         from harness.tool_runs r left join harness.tool_run_ends e on e.run_id = r.run_id where r.run_id = $1`,
+      [runId],
+    )
+    const r = rows[0]
+    if (!r) return undefined
+    return {
+      runId: r.run_id,
+      consumer: r.consumer,
+      toggles: r.toggles,
+      manifest: r.manifest,
+      snapshotHash: r.snapshot_hash,
+      allowedTools: r.allowed_tools,
+      startedAt: r.started_at,
+      end:
+        r.end_run === null
+          ? null
+          : { subtype: r.subtype, costUsd: r.cost_usd === null ? null : Number(r.cost_usd), numTurns: r.num_turns, terminalReason: r.terminal_reason, denials: r.denials, endedAt: r.ended_at },
+    }
   }
 
   return {
@@ -396,5 +477,40 @@ export function createGraphStore(pool: pg.Pool): GraphStore {
       }
       return (await runEndOf(e.runId))!
     },
+
+    async recordToolRun(input) {
+      const r = ToolRunInputSchema.parse(input)
+      const allowed = r.allowedTools ?? []
+      const [row] = await db
+        .insert(toolRuns)
+        .values({ runId: r.runId, consumer: r.snapshot.consumer, toggles: r.snapshot.toggles, manifest: r.snapshot.manifest, snapshotHash: r.snapshot.hash, allowedTools: allowed })
+        .onConflictDoNothing({ target: toolRuns.runId })
+        .returning({ runId: toolRuns.runId })
+      if (row) return
+      const stored = await toolRunOf(r.runId)
+      const same = stored !== undefined && stored.consumer === r.snapshot.consumer && stored.snapshotHash === r.snapshot.hash && JSON.stringify(stored.allowedTools) === JSON.stringify(allowed)
+      if (!same) throw new Error(`Tool run ${r.runId} exists with another consumer, snapshot hash, or allowed tools. Start a new run.`)
+    },
+
+    async endToolRun(input) {
+      const e = ToolRunEndInput.parse(input)
+      const { rowCount } = await pool.query(
+        `insert into harness.tool_run_ends (run_id, subtype, cost_usd, num_turns, terminal_reason, denials) values ($1, $2, $3, $4, $5, $6::jsonb)
+         on conflict (run_id) do nothing`,
+        [e.runId, e.subtype, e.costUsd, e.numTurns, e.terminalReason, JSON.stringify(e.denials)],
+      )
+      if (rowCount === 1) return
+      const stored = (await toolRunOf(e.runId))?.end
+      const same =
+        stored != null &&
+        stored.subtype === e.subtype &&
+        stored.costUsd === e.costUsd &&
+        stored.numTurns === e.numTurns &&
+        stored.terminalReason === e.terminalReason &&
+        JSON.stringify(stored.denials) === JSON.stringify(e.denials)
+      if (!same) throw new Error(`Tool run ${e.runId} has another end. A run takes one end.`)
+    },
+
+    toolRunOf,
   }
 }

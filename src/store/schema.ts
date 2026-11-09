@@ -1,9 +1,10 @@
-import { customType, foreignKey, integer, jsonb, pgSchema, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { customType, foreignKey, integer, jsonb, numeric, pgSchema, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import type { RuleRecord } from '../rules/schema'
 
 // The graph tables of store.tables (docs/design/graph-store.md) and of stage.store
-// (docs/design/stage-workflow.md). db/migrations/0001_harness_tables.sql and
-// 0004_stage_runs.sql make them, with their checks, keys and triggers.
+// (docs/design/stage-workflow.md), and the run record of tools.run_record (docs/design/tool-registry.md).
+// db/migrations/0001_harness_tables.sql, 0004_stage_runs.sql and 0005_tool_runs.sql make them, with
+// their checks, keys and triggers.
 // tests/store/migrations.test.ts fails when this file and the migration drift apart.
 
 const ltree = customType<{ data: string }>({ dataType: () => 'ltree' })
@@ -181,4 +182,28 @@ export const runEnds = harness.table(
   t => [foreignKey({ columns: [t.runId, t.round], foreignColumns: [drafts.runId, drafts.round] })],
 )
 
-export const graphTables = { nodes, stageRuns, outputs, verdicts, records, derivedRules, drafts, draftClaims, judgeClaims, personDecisions, runEnds }
+// tools.toggles, tools.run_record: the tool snapshot of each run, written before its first tool call.
+export const toolRuns = harness.table('tool_runs', {
+  runId: text('run_id').primaryKey(),
+  consumer: text('consumer', { enum: ['agent', 'mcp_client', 'step'] }).notNull(),
+  toggles: jsonb('toggles').$type<unknown>().notNull(),
+  manifest: jsonb('manifest').$type<unknown[]>().notNull(),
+  snapshotHash: text('snapshot_hash').notNull(),
+  allowedTools: text('allowed_tools').array().notNull(),
+  startedAt: at('started_at'),
+})
+
+// tools.run_record: the end of each run, from the tap on the CLI stream. Null when no result message came.
+export const toolRunEnds = harness.table('tool_run_ends', {
+  runId: text('run_id')
+    .primaryKey()
+    .references(() => toolRuns.runId),
+  subtype: text('subtype'),
+  costUsd: numeric('cost_usd', { mode: 'number' }),
+  numTurns: integer('num_turns'),
+  terminalReason: text('terminal_reason'),
+  denials: jsonb('denials').$type<unknown[]>().notNull().default([]),
+  endedAt: at('ended_at'),
+})
+
+export const graphTables = { nodes, stageRuns, outputs, verdicts, records, derivedRules, drafts, draftClaims, judgeClaims, personDecisions, runEnds, toolRuns, toolRunEnds }
