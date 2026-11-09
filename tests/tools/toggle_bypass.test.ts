@@ -141,7 +141,7 @@ describe('toggle_bypass', () => {
     for (const dir of ['src/tools']) cpSync(join(REPO, dir), join(root, dir), { recursive: true })
     const source = readFileSync(join(root, REGISTRY_FILE), 'utf8')
     writeFileSync(join(root, REGISTRY_FILE), source.replace("description: 'Reads one node of the category tree", "description: 'Reads one node of the tree"))
-    expect(toolsLockProblems(readToolsLock(), currentTools(root))).toEqual([expect.stringMatching(/^The tool get_node_context changed under version 1/)])
+    expect(toolsLockProblems(readToolsLock(), currentTools(root))).toEqual([expect.stringMatching(/^The tool get_node_context changed under version \d+/)])
     writeFileSync(join(root, REGISTRY_FILE), source)
     writeFileSync(join(root, 'src/tools/workflow-tool.ts'), readFileSync(join(root, 'src/tools/workflow-tool.ts'), 'utf8').replace("'unknown'] as const", "'unknown', 'new_code'] as const"))
     expect(toolsLockProblems(readToolsLock(), currentTools(root)).length).toBe(4) // each stage wrapper

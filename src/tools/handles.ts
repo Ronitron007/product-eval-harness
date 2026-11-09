@@ -5,7 +5,7 @@ import { stageDepsFromEnv } from '../stage/ports'
 import { stageWorkflows } from '../stage/registry'
 import { createGraphStore, type GraphStore } from '../store/store'
 import { readOnly } from './resolve'
-import { STAGE_TOOLS, type HandleSet, type RawStageWrite, type ReadStore, type StageOutcome, type StageToolId } from './types'
+import { STAGE_TOOLS, type HandleSet, type ToolSnapshot, type RawStageWrite, type ReadStore, type StageOutcome, type StageToolId } from './types'
 
 // The handles of the tool registry (tools.one_path in docs/design/tool-registry.md). This is the
 // one file in src/tools/ that imports the store. resolveTools() gives each tool only the handles
@@ -65,6 +65,21 @@ export function handlesFromEnvFile(env: Readonly<Record<string, string | undefin
   return {
     store: lazyStore,
     writes,
+    close: async () => {
+      await pool?.end()
+    },
+  }
+}
+
+// The run row of a snapshot that the tool server made itself (recordedServerSnapshot in
+// src/tools/server.ts). The pool starts on the first write.
+export function toolRunWriter(databaseUrl: string | undefined): { record(snapshot: ToolSnapshot): Promise<void>; close(): Promise<void> } {
+  let pool: pg.Pool | undefined
+  return {
+    record: async snapshot => {
+      pool ??= harnessPool(resolveDatabaseUrl(databaseUrl))
+      await createGraphStore(pool).recordToolRun({ runId: snapshot.runId, snapshot })
+    },
     close: async () => {
       await pool?.end()
     },

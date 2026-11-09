@@ -28,6 +28,24 @@ export function createPaidDoor(cap: number): PaidDoor & { readonly used: () => n
   }
 }
 
+// tools.budget: one counter for each run and paid tool, in this process. Each handle set, each
+// copy of the snapshot, and each toolFor of one run id shares it.
+const runCounters = new Map<string, { used: number }>()
+
+export function runPaidDoor(runId: string, toolId: string, cap: number): PaidDoor & { readonly used: () => number } {
+  const key = JSON.stringify([runId, toolId])
+  const counter = runCounters.get(key) ?? { used: 0 }
+  runCounters.set(key, counter)
+  return {
+    used: () => counter.used,
+    call<T>(name: string, _costUsd: number, fn: () => Promise<T>): Promise<T | PaidRefused> {
+      if (counter.used >= cap) return Promise.resolve({ refused: true, name, cap })
+      counter.used += 1
+      return fn()
+    },
+  }
+}
+
 // Only the read calls, bound, so that a read tool has no write function in scope (second_path.handles_by_effect).
 export function readOnly(store: ReadStore): ReadStore {
   const out: Record<string, unknown> = {}
@@ -66,7 +84,7 @@ function assertWrites(handles: HandleSet, registry: Registry): void {
 
 function build(entry: ToolEntry, snapshot: ToolSnapshot, handles: HandleSet, registry: Registry): AnyTool {
   const h: Record<string, unknown> = { store: readOnly(handles.store) }
-  if (entry.effects.includes('paid')) h.paid = createPaidDoor(entry.maxCallsPerRun ?? 1)
+  if (entry.effects.includes('paid')) h.paid = runPaidDoor(snapshot.runId, entry.id, entry.maxCallsPerRun ?? 1)
   if (entry.effects.includes('db_write')) {
     const raw = handles.writes[entry.id]
     if (raw === undefined) throw new Error(`The tool ${entry.id} is on, and the handles have no write door for it.`)
@@ -81,7 +99,7 @@ function build(entry: ToolEntry, snapshot: ToolSnapshot, handles: HandleSet, reg
   return tool
 }
 
-// One built set for each snapshot and handle set, so that a paid door counts across the calls of one run.
+// One built set for each snapshot and handle set. The paid count lives with the run id (runPaidDoor).
 const built = new WeakMap<Registry, WeakMap<ToolSnapshot, WeakMap<HandleSet, Readonly<Record<string, AnyTool>>>>>()
 
 // The tools that are on, by id. The one resolver of the registry.

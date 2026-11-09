@@ -21,7 +21,7 @@ import { freshDatabase, withUser, type TestDatabase } from '../db'
 import { agentEnv, BUDGET, fenceMessages, markerCli } from '../agent/helpers'
 import { resetSdk, sdkState } from '../agent/sdk-mock'
 import { BASE_ENTRIES, FIXTURE, fixtureHandles, readEntry, slowPaidEntry } from './fixture'
-import { connect, REPO, snapshotFor } from './helpers'
+import { connect, envFileWith, REPO, snapshotFor, toolNames } from './helpers'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', async () => (await import('../agent/sdk-mock')).sdkModule())
 
@@ -161,4 +161,32 @@ describe('toggle_flip', () => {
     expect(() => toolFor('read_thing', snapshot, fixtureHandles(), FIXTURE)).toThrow(ToolOff)
     expect(REGISTRY.ids).toContain('get_node_context')
   })
+
+  it('toggle_flip.fallback_row_before_list (review of #35): with no snapshot, the server writes its run row before it lists a tool, else it serves read tools only', async () => {
+    const before = Number((await db.pool().query("select count(*)::int as n from harness.tool_runs where consumer = 'mcp_client'")).rows[0].n)
+    const outside = (envFile: string) => connect({ PATH: process.env.PATH!, HARNESS_ENV_FILE: envFile, HARNESS_TOOLS: '{"allowEffects":["read","paid","db_write"]}' })
+    const ok = await outside(envFileWith({ HARNESS_DATABASE_URL: withUser(db.url, 'harness_app') }))
+    try {
+      const { rows } = await db.pool().query("select run_id, manifest, snapshot_hash from harness.tool_runs where consumer = 'mcp_client' order by started_at")
+      expect(rows.length).toBe(before + 1)
+      const row = rows.at(-1)!
+      expect(row.manifest.map((m: { id: string }) => m.id)).toEqual([...REGISTRY.ids].sort())
+      expect(row.snapshot_hash).toMatch(/^[0-9a-f]{64}$/)
+      expect(await toolNames(ok)).toEqual([...REGISTRY.ids].sort())
+    } finally {
+      await ok.close()
+    }
+    const refused = await outside(envFileWith({ HARNESS_DATABASE_URL: 'postgresql://harness_app@127.0.0.1:1/none' }))
+    try {
+      expect(await toolNames(refused)).toEqual(['get_node_context'])
+    } finally {
+      await refused.close()
+    }
+    const none = await outside(envFileWith({}))
+    try {
+      expect(await toolNames(none)).toEqual(['get_node_context'])
+    } finally {
+      await none.close()
+    }
+  }, 90_000)
 })

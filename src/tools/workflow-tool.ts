@@ -84,13 +84,34 @@ const Suspended = z.object({ why: z.enum(['budget_spent', 'cannot_verify']), rou
 
 // The code of a failed run, from the failed step and the kind of the error. The text of the
 // error never leaves this function.
+const SQLSTATE = /^[0-9A-Z]{5}$/
+// A store error: a SQLSTATE of pg, on the error or its cause (a DrizzleQueryError), or a database that is not set.
+export function isStoreError(error: unknown): boolean {
+  const e = error as { name?: unknown; message?: unknown; code?: unknown; cause?: { code?: unknown } } | undefined
+  const message = typeof e?.message === 'string' ? e.message : ''
+  return (
+    (typeof e?.code === 'string' && SQLSTATE.test(e.code)) ||
+    (typeof e?.cause?.code === 'string' && SQLSTATE.test(e.cause.code)) ||
+    e?.name === 'DrizzleQueryError' ||
+    message.startsWith('Failed query') ||
+    /^(Set HARNESS_DATABASE_URL|HARNESS_DATABASE_URL must)/.test(message)
+  )
+}
+
+// The detail of a failed tool call goes to the log of the process (stderr of the tool server),
+// never into the tool result (tools.status_only).
+export function logToolFailure(tool: string, runId: string | null, error: unknown): void {
+  const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+  process.stderr.write(`${JSON.stringify({ at: new Date().toISOString(), tool, runId, failed: detail })}\n`)
+}
+
 export function failureCode(outcome: Extract<StageOutcome, { status: 'failed' }>): FailureCode {
   const error = outcome.error as { name?: unknown; message?: unknown; code?: unknown } | undefined
   const name = typeof error?.name === 'string' ? error.name : ''
   const message = typeof error?.message === 'string' ? error.message : String(outcome.error ?? '')
   if (name === 'RulesRefused' || message.startsWith('The rules refused the stage')) return 'rules_refused'
   if (/is not provider\/model|have one vendor/.test(message)) return 'models_unset'
-  if (typeof error?.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code)) return 'store_error' // a SQLSTATE of pg
+  if (isStoreError(error)) return 'store_error'
   switch (outcome.failedStep) {
     case 'research':
       return 'research_error'
@@ -147,9 +168,16 @@ export function workflowTool(spec: {
         mcp: { annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
         execute: async input => {
           const runId = crypto.randomUUID() // status_only.ids_from_code: the stage run id is this Mastra run id
-          const outcome = await paid.call(spec.id, 0, () => write(runId, StageToolInput.parse(input)))
-          if ('refused' in outcome) return StageToolResult.parse({ status: 'failed', runId, code: 'max_calls' })
-          return StageToolResult.parse(stageResult(runId, outcome))
+          try {
+            const outcome = await paid.call(spec.id, 0, () => write(runId, StageToolInput.parse(input)))
+            if ('refused' in outcome) return StageToolResult.parse({ status: 'failed', runId, code: 'max_calls' })
+            if (outcome.status === 'failed') logToolFailure(spec.id, runId, outcome.error)
+            return StageToolResult.parse(stageResult(runId, outcome))
+          } catch (error) {
+            // A throw of the door, such as a store error before the stage starts, gives a code only.
+            logToolFailure(spec.id, runId, error)
+            return StageToolResult.parse({ status: 'failed', runId, code: isStoreError(error) ? 'store_error' : 'unknown' })
+          }
         },
       })
     },

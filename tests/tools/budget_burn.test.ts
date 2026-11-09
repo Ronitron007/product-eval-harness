@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { lockedClaudeAgent, lockedSdkOptions, MAX_BUDGET_USD_CEILING, MAX_TURNS_CEILING, tapSpawn } from '../../src/agent'
-import { createPaidDoor, readSnapshot, toolFor, type StageOutcome } from '../../src/tools'
+import { checkedSnapshot, createPaidDoor, readSnapshot, toolFor, type StageOutcome } from '../../src/tools'
 import { agentEnv, agentSnapshot, fenceMessages, markerCli, memoryRecorder, tmp } from '../agent/helpers'
 import { resetSdk, sdkState } from '../agent/sdk-mock'
 import { FIXTURE, fixtureHandles, ONLY_NODE, SUCCESS } from './fixture'
@@ -46,12 +46,28 @@ describe('budget_burn', () => {
     for (let i = 0; i < 4; i++) results.push(await door.call('x', 0.01, async () => ++runs))
     expect(runs).toBe(2)
     expect(results.slice(2)).toEqual([{ refused: true, name: 'x', cap: 2 }, { refused: true, name: 'x', cap: 2 }])
-    const snapshot = readSnapshot({ HARNESS_TOOLS: '{"allowEffects":["read","paid"]}' }, { runId: 'r', consumer: 'step' }, FIXTURE)
+    const snapshot = readSnapshot({ HARNESS_TOOLS: '{"allowEffects":["read","paid"]}' }, { runId: crypto.randomUUID(), consumer: 'step' }, FIXTURE)
     const tool = toolFor('slow_paid', snapshot, fixtureHandles(), FIXTURE)
     const outs = [await tool.execute!({}, {} as never), await tool.execute!({}, {} as never)]
     expect(outs).toEqual([{ ran: true }, { ran: false }])
-    // The same snapshot and handles give the same tool and the same door: a second toolFor does not reset the count.
-    expect(await toolFor('slow_paid', snapshot, fixtureHandles(), FIXTURE).execute!({}, {} as never)).toEqual({ ran: true })
+  })
+
+  it('budget_burn.cap_per_run_id (review of #35): new handles, a copy of the snapshot, or a new toolFor of one run id share one count', async () => {
+    let runs = 0
+    const counting = { ...fixtureHandles(), writes: { run_create_node: async (): Promise<StageOutcome> => (runs++, { ...SUCCESS }) } }
+    const runId = crypto.randomUUID()
+    const snapshot = readSnapshot({ HARNESS_TOOLS: ONLY_NODE }, { runId, consumer: 'step' })
+    const results = []
+    for (const s of [snapshot, checkedSnapshot(JSON.parse(JSON.stringify(snapshot))), checkedSnapshot(snapshot)]) {
+      const handles = { ...counting, store: fixtureHandles().store }
+      results.push(await toolFor('run_create_node', s, handles).execute!({ nodeId: 'sunscreen' }, {} as never))
+    }
+    expect(runs).toBe(1)
+    expect(results.map(r => (r as { code?: string }).code ?? (r as { status: string }).status)).toEqual(['ended', 'max_calls', 'max_calls'])
+    // Another run id has its own count.
+    const other = readSnapshot({ HARNESS_TOOLS: ONLY_NODE }, { runId: crypto.randomUUID(), consumer: 'step' })
+    expect(await toolFor('run_create_node', other, counting).execute!({ nodeId: 'sunscreen' }, {} as never)).toMatchObject({ status: 'ended' })
+    expect(runs).toBe(2)
   })
 
   it('budget_burn.failed_call_still_counts: a call that throws keeps its reservation', async () => {
@@ -65,7 +81,7 @@ describe('budget_burn', () => {
     const starts: string[] = []
     const write = async ({ runId }: { runId: string }): Promise<StageOutcome> => (starts.push(runId), { ...SUCCESS })
     const handles = { ...fixtureHandles(), writes: { run_create_node: write } }
-    const snapshot = readSnapshot({ HARNESS_TOOLS: ONLY_NODE }, { runId: 'r', consumer: 'step' })
+    const snapshot = readSnapshot({ HARNESS_TOOLS: ONLY_NODE }, { runId: crypto.randomUUID(), consumer: 'step' })
     const tool = toolFor('run_create_node', snapshot, handles)
     const [a, b] = await Promise.all([tool.execute!({ nodeId: 'sunscreen' }, {} as never), tool.execute!({ nodeId: 'sunscreen' }, {} as never)])
     expect(starts).toHaveLength(1)

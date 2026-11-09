@@ -3,7 +3,7 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { NodeId } from '../rules/schema'
 import { defineEntry, EFFECTS, TOOL_IDS, TOOLSETS, type AnyTool, type HandlesFor, type PaidDoor, type ReadStore, type ToolEntry } from './types'
-import { assertStatusOnly, workflowTool } from './workflow-tool'
+import { assertStatusOnly, isStoreError, logToolFailure, workflowTool } from './workflow-tool'
 
 // The tool registry (tools.registry in docs/design/tool-registry.md): each tool has one entry,
 // with its version, toolset, effects, openWorld flag, and a build function. A workflow enters
@@ -102,7 +102,7 @@ const STAGE_TEXT = 'It starts one run of the stage workflow and returns its stat
 export const REGISTRY: Registry = defineRegistry([
   defineEntry({
     id: 'get_node_context',
-    version: 1,
+    version: 2,
     toolset: 'graph',
     effects: ['read'] as const,
     openWorld: false,
@@ -115,16 +115,23 @@ export const REGISTRY: Registry = defineRegistry([
         outputSchema: z.object({ path: z.array(NodeRef), siblings: z.array(NodeRef) }).strict(),
         mcp: { annotations: { readOnlyHint: true, openWorldHint: false } },
         execute: async ({ nodeId }) => {
-          const [path, siblings] = await Promise.all([handles.store.pathToRoot(nodeId), handles.store.siblings(nodeId)])
-          const pick = (n: { id: string; label: string }) => ({ id: n.id, label: n.label })
-          return { path: path.map(pick), siblings: siblings.map(pick) }
+          try {
+            const [path, siblings] = await Promise.all([handles.store.pathToRoot(nodeId), handles.store.siblings(nodeId)])
+            const pick = (n: { id: string; label: string }) => ({ id: n.id, label: n.label })
+            return { path: path.map(pick), siblings: siblings.map(pick) }
+          } catch (error) {
+            // The detail goes to the log. The model gets a fixed text (tools.status_only).
+            logToolFailure('get_node_context', null, error)
+            const missing = error instanceof Error && error.message.startsWith(`No node ${nodeId} `)
+            throw new Error(missing ? `The node ${nodeId} is not in the category tree.` : `get_node_context failed (${isStoreError(error) ? 'store_error' : 'unknown'}).`)
+          }
         },
       }),
   }),
-  workflowTool({ id: 'run_define_criteria', version: 1, description: `Runs the stage define_criteria at one domain node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
-  workflowTool({ id: 'run_create_node', version: 1, description: `Runs the stage create_node at one node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
-  workflowTool({ id: 'run_create_pack', version: 1, description: `Runs the stage create_pack at one leaf node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
-  workflowTool({ id: 'run_create_layout', version: 1, description: `Runs the stage create_layout at one leaf node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
+  workflowTool({ id: 'run_define_criteria', version: 2, description: `Runs the stage define_criteria at one domain node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
+  workflowTool({ id: 'run_create_node', version: 2, description: `Runs the stage create_node at one node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
+  workflowTool({ id: 'run_create_pack', version: 2, description: `Runs the stage create_pack at one leaf node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
+  workflowTool({ id: 'run_create_layout', version: 2, description: `Runs the stage create_layout at one leaf node. ${STAGE_TEXT}`, inner: [], env: STAGE_ENV }),
 ])
 
 if (REGISTRY.ids.join(',') !== [...TOOL_IDS].sort().join(',')) {

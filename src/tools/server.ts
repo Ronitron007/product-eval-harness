@@ -2,7 +2,8 @@ import { join } from 'node:path'
 import { MCPServer } from '@mastra/mcp'
 import { REGISTRY, type Registry } from './registry'
 import { resolveTools } from './resolve'
-import { snapshotFromServerEnv } from './toggles'
+import { snapshotFromServerEnv, snapshotOf } from './toggles'
+import { logToolFailure } from './workflow-tool'
 import type { HandleSet, ToolSnapshot } from './types'
 
 // The stdio MCP server of one run (tools.consumers, tools.secrets_off_argv in
@@ -51,16 +52,44 @@ export function keptEnvKeys(snapshot: ToolSnapshot, registry: Registry = REGISTR
   return new Set(['PATH', 'MASTRA_TELEMETRY_DISABLED', ...snapshot.manifest.flatMap(m => registry.byId(m.id)?.env ?? [])])
 }
 
+export interface PreparedServer {
+  readonly snapshot: ToolSnapshot
+  readonly fallback: boolean // true when the server made the snapshot from HARNESS_TOOLS, for an outside client
+  readonly databaseUrl: string | undefined // read before the prune, for the run row of a fallback snapshot
+}
+
 // The start of the server process: load the env file, check the snapshot, then delete each key
 // that no tool that is on names, except PATH and MASTRA_TELEMETRY_DISABLED (secret_argv.server_keeps_named_keys_only).
-export function prepareServerProcess(env: NodeJS.ProcessEnv = process.env, registry: Registry = REGISTRY): ToolSnapshot {
+export function prepareServerProcess(env: NodeJS.ProcessEnv = process.env, registry: Registry = REGISTRY): PreparedServer {
   const file = env.HARNESS_ENV_FILE
   if (file !== undefined && file !== '') {
     if (env !== process.env) throw new Error('prepareServerProcess loads the env file into process.env only.')
     process.loadEnvFile(file)
   }
+  const fallback = env.HARNESS_TOOL_SNAPSHOT === undefined || env.HARNESS_TOOL_SNAPSHOT === ''
   const snapshot = snapshotFromServerEnv(env, registry)
+  const databaseUrl = env.HARNESS_DATABASE_URL
   const keep = keptEnvKeys(snapshot, registry)
   for (const key of Object.keys(env)) if (!keep.has(key)) delete env[key]
-  return snapshot
+  return { snapshot, fallback, databaseUrl }
+}
+
+// tools.toggles: the run row exists before the first tool call. A parent writes it for its own
+// snapshot. For a fallback snapshot, the server writes it before it lists or calls a tool. When
+// the row cannot be written, the server serves the read tools only: no paid and no db_write tool.
+export async function recordedServerSnapshot(
+  prepared: PreparedServer,
+  record: ((snapshot: ToolSnapshot) => Promise<unknown>) | undefined,
+  registry: Registry = REGISTRY,
+): Promise<ToolSnapshot> {
+  const s = prepared.snapshot
+  if (!prepared.fallback) return s
+  try {
+    if (record === undefined) throw new Error('The server has no way to write the run row.')
+    await record(s)
+    return s
+  } catch (error) {
+    logToolFailure('tool_server', s.runId, error)
+    return snapshotOf(s.runId, s.consumer, { ...s.toggles, allowEffects: s.toggles.allowEffects.filter(e => e === 'read') }, registry)
+  }
 }
